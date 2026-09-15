@@ -1,0 +1,566 @@
+// Phase 1A: Authentication + Users + Roles + Permissions
+// Phase 1B: Products + Categories + Product images + Pricing
+// Phase 1C: Warehouses + dynamic location hierarchy
+// Phase 1D part 1: inventory_balances + inventory_transactions (core ledger)
+// Phase 1D part 2: receiving, transfers, stock adjustments (2-step approval),
+//                  stock counts
+// Phase 1E: Orders, order items, order status history, reservations, customers
+// See ARCHITECTURE.md §E for the full target schema. Only tables needed by
+// the current phase are created. Do not add tables for later phases here.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  fullName     String   @map("full_name")
+  status       UserStatus @default(ACTIVE)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  userRoles     UserRole[]
+  refreshTokens RefreshToken[]
+  auditLogs     AuditLog[]
+  inventoryTransactionsPerformed InventoryTransaction[]
+  stockAdjustmentsRequested StockAdjustment[] @relation("StockAdjustmentRequestedBy")
+  stockAdjustmentsReviewed  StockAdjustment[] @relation("StockAdjustmentReviewedBy")
+  stockCountsStarted        StockCount[]
+  ordersAsConsultant        Order[]
+  orderStatusChanges        OrderStatusHistory[]
+
+  @@map("users")
+}
+
+model Role {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  isSystem    Boolean  @default(false) @map("is_system")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  rolePermissions RolePermission[]
+  userRoles       UserRole[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String  @id @default(uuid())
+  key         String  @unique
+  description String?
+  module      String?
+
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String @map("role_id")
+  permissionId String @map("permission_id")
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model UserRole {
+  userId String @map("user_id")
+  roleId String @map("role_id")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@map("user_roles")
+}
+
+// Rotating refresh tokens. The raw token is only ever returned to the
+// client once; only its hash is persisted. Rotation revokes the old row
+// and issues a new one on every /auth/refresh call.
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  tokenHash String    @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  replacedByTokenId String? @map("replaced_by_token_id")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?  @map("user_id")
+  action    String
+  entity    String
+  entityId  String?  @map("entity_id")
+  oldValue  Json?    @map("old_value")
+  newValue  Json?    @map("new_value")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([entity, entityId])
+  @@index([userId])
+  @@map("audit_logs")
+}
+
+// -----------------------------------------------------------------------
+// Phase 1B: Catalogue
+// -----------------------------------------------------------------------
+
+enum ProductStatus {
+  ACTIVE
+  INACTIVE
+}
+
+// Reference data — soft-deleted via is_active (rule 10), never hard-deleted,
+// since products reference a category historically.
+model Category {
+  id       String  @id @default(uuid())
+  name     String
+  parentId String? @map("parent_id")
+  isActive Boolean @default(true) @map("is_active")
+
+  parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children Category[] @relation("CategoryTree")
+  products Product[]
+
+  @@index([parentId])
+  @@map("categories")
+}
+
+// Reference data — soft-deleted via status (rule 10), never hard-deleted,
+// since orders/inventory transactions reference products historically.
+model Product {
+  id             String        @id @default(uuid())
+  sku            String        @unique
+  name           String
+  description    String?
+  categoryId     String        @map("category_id")
+  sellingPrice   Decimal       @map("selling_price") @db.Decimal(12, 2)
+  costPrice      Decimal?      @map("cost_price") @db.Decimal(12, 2)
+  uom            String
+  minStockLevel  Decimal       @default(0) @map("min_stock_level") @db.Decimal(12, 2)
+  status         ProductStatus @default(ACTIVE)
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+
+  category Category      @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  images   ProductImage[]
+  inventoryBalances    InventoryBalance[]
+  inventoryTransactions InventoryTransaction[]
+  stockAdjustments      StockAdjustment[]
+  stockCountItems       StockCountItem[]
+  orderItems            OrderItem[]
+
+  @@index([categoryId])
+  @@map("products")
+}
+
+// Pure media rows, not historically referenced by orders/transactions —
+// hard-deleted is fine here, unlike products/categories.
+model ProductImage {
+  id        String  @id @default(uuid())
+  productId String  @map("product_id")
+  url       String
+  sortOrder Int     @default(0) @map("sort_order")
+  isPrimary Boolean @default(false) @map("is_primary")
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@map("product_images")
+}
+
+// -----------------------------------------------------------------------
+// Phase 1C: Warehouses + dynamic location hierarchy
+// -----------------------------------------------------------------------
+
+// Structural reference data — soft-deleted via is_active (rule 10), never
+// hard-deleted, since inventory_balances will reference locations (and
+// therefore warehouses) historically from Phase 1D onward.
+model Warehouse {
+  id       String  @id @default(uuid())
+  name     String
+  code     String  @unique
+  isActive Boolean @default(true) @map("is_active")
+
+  locations   Location[]
+  stockCounts StockCount[]
+
+  @@map("warehouses")
+}
+
+// Self-referencing tree, unlimited depth (rule 5). location_type is a free
+// label (e.g. ZONE/AISLE/RACK/SHELF/LEVEL/BIN/...) — never an enum, so admins
+// can invent new labels without a migration. Soft-deleted via is_active.
+model Location {
+  id           String   @id @default(uuid())
+  warehouseId  String   @map("warehouse_id")
+  parentId     String?  @map("parent_id")
+  name         String
+  code         String
+  locationType String   @map("location_type")
+  description  String?
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  warehouse Warehouse  @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  parent    Location?  @relation("LocationTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children  Location[] @relation("LocationTree")
+  inventoryBalances     InventoryBalance[]
+  transactionsFrom      InventoryTransaction[] @relation("InventoryTxFromLocation")
+  transactionsTo        InventoryTransaction[] @relation("InventoryTxToLocation")
+  stockAdjustments      StockAdjustment[]
+  stockCounts           StockCount[]
+  stockCountItems       StockCountItem[]
+
+  @@unique([warehouseId, code])
+  @@index([warehouseId, parentId])
+  @@map("locations")
+}
+
+// -----------------------------------------------------------------------
+// Phase 1D part 1: Inventory core — balances (cache) + transactions (truth)
+// -----------------------------------------------------------------------
+
+// inventory_transactions types (§E). There is no dedicated "EXPIRE" type —
+// the expired bucket is corrected via ADJUSTMENT (bucket: 'expired'), same
+// as any other manual correction. See InventoryService for the full
+// type -> bucket-effect config (rule 7: config, not scattered ifs).
+enum InventoryTransactionType {
+  RECEIVE
+  TRANSFER
+  ISSUE
+  SALE
+  RETURN
+  ADJUSTMENT
+  DAMAGED
+  LOST
+  STOCK_COUNT
+  RESERVATION
+  RELEASE_RESERVATION
+}
+
+// Cache of current quantities per (product, location) — rule 3. NEVER
+// written directly: only InventoryService.applyTransaction() writes this
+// table (rule 2), inside the same DB transaction as the ledger row that
+// justifies the change. A DB trigger (see migration SQL) backstops this at
+// the database level, independent of application discipline.
+//
+// Buckets are distinct (rule 4): on_hand, reserved, damaged, lost, expired.
+// available = on_hand - reserved (computed, not stored). All buckets are
+// CHECK-constrained >= 0 at the DB level.
+model InventoryBalance {
+  id         String  @id @default(uuid())
+  productId  String  @map("product_id")
+  locationId String  @map("location_id")
+  onHand     Decimal @default(0) @map("on_hand") @db.Decimal(14, 3)
+  reserved   Decimal @default(0) @map("reserved") @db.Decimal(14, 3)
+  damaged    Decimal @default(0) @map("damaged") @db.Decimal(14, 3)
+  lost       Decimal @default(0) @map("lost") @db.Decimal(14, 3)
+  expired    Decimal @default(0) @map("expired") @db.Decimal(14, 3)
+
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
+  location Location @relation(fields: [locationId], references: [id], onDelete: Restrict)
+
+  @@unique([productId, locationId])
+  @@map("inventory_balances")
+}
+
+// Append-only ledger — the source of truth (rule 2). Never updated or
+// deleted by the application. orderId is a plain column (no FK yet; the
+// orders table doesn't exist until Phase 1E).
+model InventoryTransaction {
+  id             String                   @id @default(uuid())
+  type           InventoryTransactionType
+  productId      String                   @map("product_id")
+  fromLocationId String?                  @map("from_location_id")
+  toLocationId   String?                  @map("to_location_id")
+  quantity       Decimal                  @db.Decimal(14, 3)
+  reason         String?
+  reference      String?
+  orderId        String?                  @map("order_id")
+  performedBy    String                   @map("performed_by")
+  createdAt      DateTime                 @default(now()) @map("created_at")
+
+  product        Product   @relation(fields: [productId], references: [id], onDelete: Restrict)
+  fromLocation   Location? @relation("InventoryTxFromLocation", fields: [fromLocationId], references: [id], onDelete: Restrict)
+  toLocation     Location? @relation("InventoryTxToLocation", fields: [toLocationId], references: [id], onDelete: Restrict)
+  performedByUser User     @relation(fields: [performedBy], references: [id], onDelete: Restrict)
+
+  @@index([productId])
+  @@index([fromLocationId])
+  @@index([toLocationId])
+  @@map("inventory_transactions")
+}
+
+// -----------------------------------------------------------------------
+// Phase 1D part 2: Receiving, transfers, stock adjustments (2-step
+// approval), stock counts. Receiving and transfers have no dedicated
+// table — they call InventoryService.applyTransaction() directly and the
+// resulting inventory_transactions row IS their record. Adjustments and
+// counts get their own tables because they have a lifecycle
+// (PENDING/APPROVED/REJECTED, OPEN/SUBMITTED) that exists BEFORE any
+// stock moves — the whole point of the approval workflow is that a
+// request can exist with zero ledger effect until reviewed.
+// -----------------------------------------------------------------------
+
+enum AdjustmentBucket {
+  ON_HAND
+  RESERVED
+  DAMAGED
+  LOST
+  EXPIRED
+}
+
+enum AdjustmentDirection {
+  INCREASE
+  DECREASE
+}
+
+enum AdjustmentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// Two-step approval (rule 7 / Open Decision #2, resolved): a request never
+// touches inventory_balances by itself. Only approve() calls
+// InventoryService.applyTransaction() — reject() and the PENDING state
+// have zero ledger effect. Separation of duties is enforced in
+// StockAdjustmentsService: reviewedBy must differ from requestedBy.
+model StockAdjustment {
+  id          String              @id @default(uuid())
+  productId   String              @map("product_id")
+  locationId  String              @map("location_id")
+  bucket      AdjustmentBucket
+  delta       Decimal             @db.Decimal(14, 3)
+  direction   AdjustmentDirection
+  reason      String
+  reference   String?
+  status      AdjustmentStatus    @default(PENDING)
+  requestedBy String              @map("requested_by")
+  requestedAt DateTime            @default(now()) @map("requested_at")
+  reviewedBy  String?             @map("reviewed_by")
+  reviewedAt  DateTime?           @map("reviewed_at")
+  reviewNote  String?             @map("review_note")
+
+  product         Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
+  location        Location @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  requestedByUser User     @relation("StockAdjustmentRequestedBy", fields: [requestedBy], references: [id], onDelete: Restrict)
+  reviewedByUser  User?    @relation("StockAdjustmentReviewedBy", fields: [reviewedBy], references: [id], onDelete: Restrict)
+
+  @@index([productId])
+  @@index([locationId])
+  @@index([status])
+  @@map("stock_adjustments")
+}
+
+enum StockCountStatus {
+  OPEN
+  SUBMITTED
+}
+
+// Scoped to one leaf location per count. Starting a count snapshots
+// expected_qty (current on_hand) per product into stock_count_items;
+// submitting fills in counted_qty and computes difference. The count
+// itself never moves stock — each nonzero difference becomes its own
+// PENDING StockAdjustment (reason: "stock count", reference: this
+// count's id), which only takes effect once approved through the same
+// flow as any other adjustment.
+model StockCount {
+  id          String           @id @default(uuid())
+  warehouseId String           @map("warehouse_id")
+  locationId  String           @map("location_id")
+  status      StockCountStatus @default(OPEN)
+  startedBy   String           @map("started_by")
+  startedAt   DateTime         @default(now()) @map("started_at")
+  submittedAt DateTime?        @map("submitted_at")
+
+  warehouse     Warehouse        @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  location      Location         @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  startedByUser User             @relation(fields: [startedBy], references: [id], onDelete: Restrict)
+  items         StockCountItem[]
+
+  @@index([warehouseId])
+  @@index([locationId])
+  @@map("stock_counts")
+}
+
+model StockCountItem {
+  id           String   @id @default(uuid())
+  stockCountId String   @map("stock_count_id")
+  productId    String   @map("product_id")
+  locationId   String   @map("location_id")
+  expectedQty  Decimal  @map("expected_qty") @db.Decimal(14, 3)
+  countedQty   Decimal? @map("counted_qty") @db.Decimal(14, 3)
+  difference   Decimal? @db.Decimal(14, 3)
+
+  stockCount StockCount @relation(fields: [stockCountId], references: [id], onDelete: Cascade)
+  product    Product    @relation(fields: [productId], references: [id], onDelete: Restrict)
+  location   Location   @relation(fields: [locationId], references: [id], onDelete: Restrict)
+
+  @@unique([stockCountId, productId])
+  @@index([stockCountId])
+  @@map("stock_count_items")
+}
+
+// -----------------------------------------------------------------------
+// Phase 1E: Orders, order items, order status history, reservations,
+// customers. STOP AT STOCK_RESERVED — picking/packing/dispatch is 1F and
+// intentionally not modeled here (no PICKING/PACKED/... enum values).
+// -----------------------------------------------------------------------
+
+// Reference data — soft-deleted via status (rule 10): orders reference a
+// customer historically.
+enum CustomerStatus {
+  ACTIVE
+  INACTIVE
+}
+
+model Customer {
+  id           String         @id @default(uuid())
+  name         String
+  phone        String?
+  address      String?
+  locationText String?        @map("location_text")
+  status       CustomerStatus @default(ACTIVE)
+  notes        String?
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+
+  orders Order[]
+
+  @@map("customers")
+}
+
+// Only the statuses reachable up to and including Phase 1E. PICKING /
+// PACKED / READY_FOR_DISPATCH / DISPATCHED / DELIVERED / COMPLETED /
+// RETURNED / PARTIALLY_FULFILLED (§I) are 1F+ and deliberately absent —
+// adding them now would let orders reach states this phase can't handle.
+// Phase 1F extends this list (picking/packing/dispatch through to
+// COMPLETED) rather than forking it — see ORDER_STATUS_TRANSITIONS in
+// src/orders/order-status-transitions.ts for the actual hop-by-hop map.
+enum OrderStatus {
+  DRAFT
+  SUBMITTED
+  PENDING_APPROVAL
+  APPROVED
+  STOCK_RESERVED
+  REJECTED
+  CANCELLED
+  PICKING
+  PACKED
+  READY_FOR_DISPATCH
+  DISPATCHED
+  PARTIALLY_FULFILLED
+  DELIVERED
+  COMPLETED
+}
+
+// Rule 6: separate from `status` and never touched by any status
+// transition in this phase — every verification in Phase 1E confirms it
+// stays UNPAID from creation through STOCK_RESERVED.
+enum PaymentStatus {
+  UNPAID
+  PARTIAL
+  PAID
+}
+
+model Order {
+  id            String        @id @default(uuid())
+  orderNumber   String        @unique @map("order_number")
+  customerId    String        @map("customer_id")
+  consultantId  String?       @map("consultant_id")
+  // No FK: sales_batches doesn't exist yet (Open Decision #4, not built).
+  // Plain column now so the schema doesn't need to change when it lands,
+  // same pattern as inventory_transactions.order_id before this phase.
+  salesBatchId  String?       @map("sales_batch_id")
+  status        OrderStatus   @default(DRAFT)
+  paymentStatus PaymentStatus @default(UNPAID) @map("payment_status")
+  orderDate     DateTime      @default(now()) @map("order_date")
+  deliveryInfo  String?       @map("delivery_info")
+  total         Decimal       @default(0) @db.Decimal(12, 2)
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+
+  customer      Customer            @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  consultant    User?               @relation(fields: [consultantId], references: [id], onDelete: Restrict)
+  items         OrderItem[]
+  statusHistory OrderStatusHistory[]
+
+  @@index([customerId])
+  @@index([consultantId])
+  @@index([status])
+  @@map("orders")
+}
+
+// Partial fulfilment (Open Decision #5, resolved): quantity_ordered vs
+// quantity_fulfilled per line. quantity_fulfilled stays 0 throughout
+// Phase 1E — fulfilment itself (picking/packing/dispatch) is 1F.
+model OrderItem {
+  id                String  @id @default(uuid())
+  orderId           String  @map("order_id")
+  productId         String  @map("product_id")
+  quantityOrdered   Decimal @map("quantity_ordered") @db.Decimal(14, 3)
+  quantityFulfilled Decimal @default(0) @map("quantity_fulfilled") @db.Decimal(14, 3)
+  // Phase 1F: intermediate fulfilment-workflow amounts. Neither is a
+  // ledger event by itself (rule: "picking is physical, not a ledger
+  // event") — quantityFulfilled, set at dispatch, is what actually moves
+  // inventory_balances.
+  quantityPicked    Decimal @default(0) @map("quantity_picked") @db.Decimal(14, 3)
+  quantityPacked    Decimal @default(0) @map("quantity_packed") @db.Decimal(14, 3)
+  unitPrice         Decimal @map("unit_price") @db.Decimal(12, 2)
+  lineTotal         Decimal @map("line_total") @db.Decimal(12, 2)
+
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@index([orderId])
+  @@index([productId])
+  @@map("order_items")
+}
+
+// One row per transition (append-only, mirrors inventory_transactions'
+// role as the truth for what happened and when). fromStatus is null for
+// the initial "created as DRAFT" row.
+model OrderStatusHistory {
+  id         String       @id @default(uuid())
+  orderId    String       @map("order_id")
+  fromStatus OrderStatus? @map("from_status")
+  toStatus   OrderStatus  @map("to_status")
+  changedBy  String       @map("changed_by")
+  note       String?
+  createdAt  DateTime     @default(now()) @map("created_at")
+
+  order         Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  changedByUser User  @relation(fields: [changedBy], references: [id], onDelete: Restrict)
+
+  @@index([orderId])
+  @@map("order_status_history")
+}

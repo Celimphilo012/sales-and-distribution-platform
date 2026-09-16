@@ -82,16 +82,26 @@ Backend Phase 1 (1A–1G) is complete and verified. Front-end F1+F2 done.
 Step 1 of the split (scaffold `/warehouse` standalone) is DONE. `/backend` (the
 existing back-office) stays running untouched as the reference system.
 
-**Next: Step 5 — rewire 1E/1F across the API boundary (the real rework).**
-Fill the step-4 stubs by calling the warehouse API: reserve on
-APPROVED→STOCK_RESERVED, release on cancel, issue on dispatch. Respect the
-200-with-discriminator contract and idempotency-on-reference.
-**Two holes step 4 opened that step 5 MUST close:** (1) `unitPrice` is
-currently CLIENT-SUPPLIED (rule 8 violated — a live hole) — fetch and snapshot
-the real price from the catalogue API instead; (2) add the product-name
-snapshot to order lines from the catalogue API. `/warehouse` (steps 1–3) is
-done and untouched. The back-office API key from step 3 gets configured into
-`/backend` here.
+Step 5 — rewire 1E/1F across the API boundary — is DONE. `/backend` now has a
+single `WarehouseApiClient` (`src/warehouse-api/`) as the sole path to
+`/warehouse`, configured via `WAREHOUSE_API_URL`/`WAREHOUSE_API_KEY` in `.env`.
+`OrdersService.reserve()`/`cancel()`/`dispatch()` call the warehouse's
+`POST /api/v1/stock/{reserve,release,issue}` (reference = order id) instead of
+throwing the step-4 stubs, branching on the 200-with-discriminator contract
+(never assuming HTTP 200 = success) and distinguishing that from a
+network/auth failure (503/502, order left unchanged, safe to retry — reserve/
+release/issue are idempotent on reference). Both rule-8 holes are closed:
+`buildLineInputs()` fetches each product from the warehouse catalogue and
+snapshots name + current sellingPrice server-side; `unitPrice` is no longer
+even an accepted field on `OrderItemInputDto` (whitelist-rejected if sent).
+`OrderItem` gained `productName` (nullable — never backfilled for pre-step-5
+rows) and `reservedLocationId` (set by `reserve()`, since there's no local
+ledger any more to recover it from — `dispatch()`'s issue call needs it
+verbatim).
+
+**Next: Step 6 — rewire the frontend.** Catalogue screens call the warehouse
+API directly; order screens call the ordering API. `/warehouse` (steps 1–3)
+and `/backend` (steps 4–5) are both done and untouched by this note.
 
 ---
 

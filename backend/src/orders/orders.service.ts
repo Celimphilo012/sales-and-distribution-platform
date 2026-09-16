@@ -4,11 +4,12 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
-  NotImplementedException,
 } from '@nestjs/common';
 import { OrderStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { CustomersService } from '../customers/customers.service';
+import { WarehouseApiClient } from '../warehouse-api/warehouse-api.client';
+import { WarehouseStockLine } from '../warehouse-api/warehouse-api.types';
 import {
   assertValidOrderTransition,
   ORDER_STATUSES_WITH_ACTIVE_RESERVATION,
@@ -23,9 +24,9 @@ import { PackOrderDto } from './dto/pack-order.dto';
 
 // items has no `product` relation to include any more (§A2: no FKs across
 // the database boundary — the product lives in warehouse_db). Order lines
-// carry only productId + the price snapshot; see OrderItemInputDto for the
-// step-5 TODO on restoring a server-side price snapshot and adding a name
-// snapshot.
+// carry their own catalogue snapshot (productName/unitPrice/lineTotal, set
+// by buildLineInputs() from the warehouse) plus reservedLocationId (set by
+// reserve()).
 const ORDER_INCLUDE = {
   customer: { select: { id: true, name: true, phone: true } },
   consultant: { select: { id: true, fullName: true, email: true } },
@@ -38,12 +39,14 @@ const ORDER_INCLUDE = {
 
 interface LineInput {
   productId: string;
+  productName: string;
   quantityOrdered: number;
   unitPrice: number;
   lineTotal: number;
 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
+const round3 = (n: number) => Math.round(n * 1000) / 1000;
 
 function generateOrderNumberCandidate(): string {
   const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
@@ -56,6 +59,7 @@ export class OrdersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly customersService: CustomersService,
+    private readonly warehouseApi: WarehouseApiClient,
   ) {}
 
   /**
@@ -178,20 +182,24 @@ export class OrdersService {
   }
 
   /**
-   * APPROVED -> STOCK_RESERVED.
-   *
-   * STUBBED (step 4 of the system split, ARCHITECTURE.md §A2 — step 5
-   * TODO): reservation used to check availability and call the in-process
-   * InventoryService.applyTransaction() directly. Inventory now lives in
-   * warehouse_db, a separate database this app has no transaction with —
-   * step 5 rewires this to call the warehouse's
-   * `POST /api/v1/stock/reserve` (reference = order id, all-or-none,
-   * idempotent) and only advance the order to STOCK_RESERVED on a
-   * `success: true` response, compensating via
-   * `POST /api/v1/stock/release` on a partial/failed order-side follow-up.
-   * The transition itself is validated first so an illegal call (wrong
-   * source state) still fails with the normal state-machine error, not
-   * this stub.
+   * APPROVED -> STOCK_RESERVED. Calls the warehouse's
+   * `POST /api/v1/stock/reserve` with reference = this order's id (so a
+   * client retry after a network blip re-plays the SAME reservation
+   * instead of doubling it) and one line per allocation. The warehouse
+   * itself guarantees all-or-none for the batch (§A2) — this method only
+   * has to branch on its discriminator:
+   *   - `success: true`  -> record each line's reservedLocationId (needed
+   *     verbatim by dispatch()'s issue() call later, since no local ledger
+   *     exists to recover it from) and advance to STOCK_RESERVED, all in
+   *     one local transaction.
+   *   - `success: false` -> a normal business outcome (insufficient
+   *     stock), NOT an error from the warehouse's point of view. Nothing
+   *     is written locally; the order stays APPROVED; the structured
+   *     short-line detail is surfaced to the caller.
+   * A network/HTTP-level failure (warehouse unreachable, bad key, wrong
+   * scope, ...) throws out of `this.warehouseApi.reserve()` before any of
+   * the above runs — the order is left at APPROVED and, since reserve is
+   * idempotent on reference, retrying this same call is always safe.
    */
   async reserve(id: string, dto: ReserveOrderDto, changedBy: string) {
     const order = await this.getExisting(id);
@@ -209,10 +217,33 @@ export class OrdersService {
       );
     }
 
-    throw new NotImplementedException(
-      'TODO step 5: reserve stock via warehouse POST /api/v1/stock/reserve (reference = this order id) ' +
-        'before transitioning this order to STOCK_RESERVED',
-    );
+    const itemById = new Map(order.items.map((i) => [i.id, i]));
+    const lines: WarehouseStockLine[] = dto.allocations.map((alloc) => ({
+      productId: itemById.get(alloc.orderItemId)!.productId,
+      locationId: alloc.locationId,
+      quantity: Number(itemById.get(alloc.orderItemId)!.quantityOrdered),
+    }));
+
+    const result = await this.warehouseApi.reserve(order.id, lines);
+
+    if (!result.success) {
+      const detail = result.shortLines
+        .map((l) => `product ${l.productId} at location ${l.locationId}: need ${l.requested}, only ${l.available} available`)
+        .join('; ');
+      throw new ConflictException(`Cannot reserve — insufficient available stock for: ${detail}`);
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      for (const alloc of dto.allocations) {
+        await tx.orderItem.update({
+          where: { id: alloc.orderItemId },
+          data: { reservedLocationId: alloc.locationId },
+        });
+      }
+      await this.applyTransition(tx, order.id, 'APPROVED', 'STOCK_RESERVED', changedBy, undefined);
+    });
+
+    return this.getExisting(id);
   }
 
   /**
@@ -220,26 +251,21 @@ export class OrdersService {
    * READY_FOR_DISPATCH; not DISPATCHED onward — enforced by the map
    * itself via applyTransition below, no extra check needed here).
    *
-   * STUBBED for orders with an active reservation (step 4 of the system
-   * split, ARCHITECTURE.md §A2 — step 5 TODO): releasing reserved stock
-   * used to look up this order's RESERVATION ledger rows in-process and
-   * call InventoryService.applyTransaction() directly. That ledger now
-   * lives in warehouse_db — step 5 rewires this to call the warehouse's
-   * `POST /api/v1/stock/release` (reference = order id, idempotent,
-   * no-op if nothing is reserved) before the status changes. Cancelling
-   * an order with NO active reservation (DRAFT/SUBMITTED/
-   * PENDING_APPROVAL/APPROVED) needs no stock effect at all and is left
-   * fully working — only the stock side effect is stubbed, not the state
-   * transition.
+   * For an order with an active reservation, calls the warehouse's
+   * `POST /api/v1/stock/release` (reference = order id) BEFORE changing
+   * the local status — if the warehouse is unreachable this throws and
+   * the order stays in its reserved state, uncancelled, rather than
+   * silently forgetting to release. release() is idempotent (an
+   * already-released or never-reserved reference is a no-op success), so
+   * retrying cancel() is always safe. Cancelling an order with NO active
+   * reservation (DRAFT/SUBMITTED/PENDING_APPROVAL/APPROVED) needs no
+   * warehouse call at all.
    */
   async cancel(id: string, changedBy: string, note?: string) {
     const order = await this.getExisting(id);
 
     if (ORDER_STATUSES_WITH_ACTIVE_RESERVATION.includes(order.status)) {
-      throw new NotImplementedException(
-        'TODO step 5: release reserved stock via warehouse POST /api/v1/stock/release ' +
-          '(reference = this order id) before cancelling an order with an active reservation',
-      );
+      await this.warehouseApi.release(order.id);
     }
 
     await this.prisma.$transaction((tx) =>
@@ -325,22 +351,24 @@ export class OrdersService {
 
   /**
    * READY_FOR_DISPATCH -> DISPATCHED or PARTIALLY_FULFILLED — the
-   * deduction point (Open Decision 1).
+   * deduction point (Open Decision 1). Ships exactly what was packed
+   * (quantityPacked) at the SAME leaf location each item was reserved at
+   * (reservedLocationId, set by reserve() — there's no local ledger any
+   * more to recover this from). One `POST /api/v1/stock/issue` call
+   * handles the whole order: per its contract, every line included is
+   * released-then-issued for the given quantity, and every RESERVED line
+   * NOT included (because nothing was packed for it) is released in
+   * full — exactly the "short pack releases the remainder" behaviour 1F
+   * always had, now performed server-side. If literally nothing was
+   * packed there is no line to issue at all (the warehouse requires at
+   * least one) — release() covers that degenerate case.
    *
-   * STUBBED (step 4 of the system split, ARCHITECTURE.md §A2 — step 5
-   * TODO): dispatch used to read the reservation's leaf location straight
-   * off the local RESERVATION ledger rows and call
-   * InventoryService.applyTransaction() in-process (RELEASE_RESERVATION
-   * then ISSUE per line, per-item remainder released for a short pack).
-   * That ledger now lives in warehouse_db — step 5 rewires this to call
-   * the warehouse's `POST /api/v1/stock/issue` (reference = order id,
-   * one call per order handles the full release-then-issue sequence and
-   * partial-fulfilment remainder release server-side, idempotent) and
-   * only set quantityFulfilled / advance the status once that call
-   * reports success. Deliberately NOT guessing a status or writing
-   * quantityFulfilled here — an order cannot be reported as DISPATCHED or
-   * PARTIALLY_FULFILLED until stock has actually left, and that fact only
-   * exists on the warehouse side.
+   * quantityFulfilled and the final status are set ONLY from the
+   * warehouse's response, never guessed locally — an order cannot be
+   * reported as DISPATCHED/PARTIALLY_FULFILLED until stock has actually
+   * left, and that fact only exists on the warehouse side. A
+   * network/HTTP-level failure throws before any local write; issue (and
+   * release) are idempotent on reference, so retrying dispatch() is safe.
    */
   async dispatch(id: string, changedBy: string, note?: string) {
     const order = await this.getExisting(id);
@@ -351,10 +379,56 @@ export class OrdersService {
       throw new ConflictException(`Cannot transition order from ${order.status} to DISPATCHED`);
     }
 
-    throw new NotImplementedException(
-      'TODO step 5: dispatch stock via warehouse POST /api/v1/stock/issue (reference = this order id) ' +
-        'before recording fulfilled quantities and transitioning this order to DISPATCHED/PARTIALLY_FULFILLED',
-    );
+    for (const item of order.items) {
+      if (!item.reservedLocationId) {
+        throw new ConflictException(
+          `No reservation location recorded for product ${item.productId} on this order — cannot dispatch`,
+        );
+      }
+    }
+
+    const issueLines: WarehouseStockLine[] = order.items
+      .filter((item) => Number(item.quantityPacked) > 0)
+      .map((item) => ({
+        productId: item.productId,
+        locationId: item.reservedLocationId!,
+        quantity: Number(item.quantityPacked),
+      }));
+
+    let issuedByLine: Map<string, number>;
+    if (issueLines.length > 0) {
+      const result = await this.warehouseApi.issue(order.id, issueLines);
+      issuedByLine = new Map(result.issued.map((l) => [`${l.productId}|${l.locationId}`, l.issued]));
+    } else {
+      // Nothing was packed for any line — nothing to issue, only to
+      // release. `issue` requires at least one line, so use `release`.
+      await this.warehouseApi.release(order.id);
+      issuedByLine = new Map();
+    }
+
+    const operations = order.items.map((item) => {
+      const fulfilledQty = issuedByLine.get(`${item.productId}|${item.reservedLocationId}`) ?? 0;
+      const ordered = Number(item.quantityOrdered);
+      const remainder = round3(ordered - fulfilledQty);
+      return { orderItemId: item.id, fulfilledQty, remainder };
+    });
+
+    const finalStatus: OrderStatus = operations.some((op) => op.remainder > 0)
+      ? 'PARTIALLY_FULFILLED'
+      : 'DISPATCHED';
+    assertValidOrderTransition(order.status, finalStatus);
+
+    await this.prisma.$transaction(async (tx) => {
+      for (const op of operations) {
+        await tx.orderItem.update({
+          where: { id: op.orderItemId },
+          data: { quantityFulfilled: op.fulfilledQty },
+        });
+      }
+      await this.applyTransition(tx, order.id, order.status, finalStatus, changedBy, note);
+    });
+
+    return this.getExisting(id);
   }
 
   /** DISPATCHED or PARTIALLY_FULFILLED -> DELIVERED. No ledger changes — stock already left at dispatch. */
@@ -391,23 +465,34 @@ export class OrdersService {
   }
 
   /**
-   * TEMPORARY (step 4 of the system split, ARCHITECTURE.md §A2 — step 5
-   * TODO): this used to look up the product in-process (via
-   * ProductsService) to snapshot its current selling price server-side
-   * and reject inactive products (rule 8: never trust client pricing).
-   * The catalogue now lives in warehouse_db, and wiring a live warehouse
-   * API call is explicitly step 5, not this step — so for now unitPrice
-   * is taken as given on OrderItemInputDto (see its own TODO) and there
-   * is NO active-status check on the product. Step 5 must restore both by
-   * calling the warehouse's `GET /api/v1/catalogue` (or a per-product
-   * lookup) here.
+   * Restores rule 8 across the split (ARCHITECTURE.md §A2 step 5): fetches
+   * each product from the warehouse catalogue (WarehouseApiClient.
+   * getProduct — throws NotFoundException if the id doesn't exist there
+   * at all) and snapshots its CURRENT name + sellingPrice onto the order
+   * line — never a client-supplied price. A product that exists but is
+   * INACTIVE is rejected with a clear error, same as when the catalogue
+   * lived in this database. sellingPrice comes back from the warehouse as
+   * a JSON string (§E) — parsed with Number() here, same as every other
+   * decimal field crossing that boundary.
    */
-  private buildLineInputs(items: OrderItemInputDto[]): LineInput[] {
-    return items.map((item) => {
-      const unitPrice = item.unitPrice;
-      const lineTotal = round2(unitPrice * item.quantity);
-      return { productId: item.productId, quantityOrdered: item.quantity, unitPrice, lineTotal };
-    });
+  private async buildLineInputs(items: OrderItemInputDto[]): Promise<LineInput[]> {
+    return Promise.all(
+      items.map(async (item) => {
+        const product = await this.warehouseApi.getProduct(item.productId);
+        if (product.status !== 'ACTIVE') {
+          throw new BadRequestException(`Product ${product.sku} is not active and cannot be ordered`);
+        }
+        const unitPrice = Number(product.sellingPrice);
+        const lineTotal = round2(unitPrice * item.quantity);
+        return {
+          productId: item.productId,
+          productName: product.name,
+          quantityOrdered: item.quantity,
+          unitPrice,
+          lineTotal,
+        };
+      }),
+    );
   }
 
   private async generateUniqueOrderNumber(): Promise<string> {

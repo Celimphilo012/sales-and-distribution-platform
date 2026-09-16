@@ -1,18 +1,13 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsNumber, IsPositive, IsUUID } from 'class-validator';
 
-// Shared by create and edit-draft.
-//
-// TEMPORARY DEVIATION (step 4 of the system split, ARCHITECTURE.md §A2):
-// unitPrice used to be snapshotted server-side from the product's current
-// selling price (rule 8: never trust client input for pricing) — that
-// required a live, in-process lookup against this app's own `products`
-// table. That table no longer exists here; the catalogue lives in
-// warehouse_db now. Rather than add a live warehouse-API lookup in this
-// step (explicitly out of scope until step 5), unitPrice is client-supplied
-// for now. Step 5 must replace this with a server-side snapshot fetched
-// from GET /api/v1/catalogue (and re-validate the product is ACTIVE there),
-// restoring rule 8.
+// Shared by create and edit-draft. unitPrice is never client-supplied (rule
+// 8) — OrdersService.buildLineInputs() fetches the product from the
+// warehouse catalogue (WarehouseApiClient.getProduct) and snapshots its
+// current sellingPrice + name onto the order line server-side. This
+// restores rule 8 across the system-split boundary: step 4 had briefly made
+// unitPrice client-supplied because the catalogue had left this app; step 5
+// closes that hole.
 export class OrderItemInputDto {
   @ApiProperty()
   @IsUUID('4')
@@ -22,14 +17,4 @@ export class OrderItemInputDto {
   @IsNumber({ maxDecimalPlaces: 3 })
   @IsPositive()
   quantity: number;
-
-  @ApiProperty({
-    example: 12.5,
-    description:
-      'TEMPORARY (step 4): client-supplied unit price, snapshotted onto the order line as-is. ' +
-      'Step 5 replaces this with a server-side snapshot from the warehouse catalogue API.',
-  })
-  @IsNumber({ maxDecimalPlaces: 2 })
-  @IsPositive()
-  unitPrice: number;
 }

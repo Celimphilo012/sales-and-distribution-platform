@@ -214,26 +214,33 @@ model Order {
 //
 // productId is a PLAIN VALUE, not a foreign key (§A2 cross-boundary rule:
 // "no foreign keys across the boundary") — the product it names lives in
-// warehouse_db, a separate database this schema cannot reference. unitPrice/
-// lineTotal are this line's price snapshot (unchanged by the split — this is
-// what lets an order display without a live warehouse lookup). There is,
-// however, no NAME snapshot on the line today (this predates the split, not
-// introduced by it) — step 5 should add one, populated from the warehouse
-// catalogue API at order-creation time, so a line still displays a product
-// name if the catalogue entry is later renamed or deactivated.
+// warehouse_db, a separate database this schema cannot reference.
+// productName/unitPrice/lineTotal are this line's catalogue snapshot,
+// fetched from the warehouse's GET /api/v1/catalogue at line-creation time
+// (step 5 — OrdersService.buildLineInputs) — never client-supplied, so an
+// order still displays correctly if the catalogue entry is later renamed,
+// repriced, or deactivated. productName is nullable only because rows
+// created before step 5 (the temporary client-priced era) never had one.
 model OrderItem {
-  id                String  @id @default(uuid())
-  orderId           String  @map("order_id")
-  productId         String  @map("product_id")
-  quantityOrdered   Decimal @map("quantity_ordered") @db.Decimal(14, 3)
-  quantityFulfilled Decimal @default(0) @map("quantity_fulfilled") @db.Decimal(14, 3)
+  id                 String  @id @default(uuid())
+  orderId            String  @map("order_id")
+  productId          String  @map("product_id")
+  productName        String? @map("product_name")
+  quantityOrdered    Decimal @map("quantity_ordered") @db.Decimal(14, 3)
+  quantityFulfilled  Decimal @default(0) @map("quantity_fulfilled") @db.Decimal(14, 3)
   // Phase 1F: intermediate fulfilment-workflow amounts. Neither is a stock
-  // effect by itself — quantityFulfilled, set at dispatch, is what will
-  // actually move stock once step 5 wires the warehouse API.
-  quantityPicked    Decimal @default(0) @map("quantity_picked") @db.Decimal(14, 3)
-  quantityPacked    Decimal @default(0) @map("quantity_packed") @db.Decimal(14, 3)
-  unitPrice         Decimal @map("unit_price") @db.Decimal(12, 2)
-  lineTotal         Decimal @map("line_total") @db.Decimal(12, 2)
+  // effect by itself — quantityFulfilled, set at dispatch from the
+  // warehouse's issue response, is what actually reflects moved stock.
+  quantityPicked     Decimal @default(0) @map("quantity_picked") @db.Decimal(14, 3)
+  quantityPacked     Decimal @default(0) @map("quantity_packed") @db.Decimal(14, 3)
+  unitPrice          Decimal @map("unit_price") @db.Decimal(12, 2)
+  lineTotal          Decimal @map("line_total") @db.Decimal(12, 2)
+  // The warehouse leaf location this line was reserved at (set by
+  // OrdersService.reserve() from the caller's allocation once the
+  // warehouse confirms the reservation). No local ledger exists to recover
+  // this from any more (§A2) — dispatch's issue() call needs it verbatim to
+  // match the reservation line it's releasing/issuing against.
+  reservedLocationId String? @map("reserved_location_id")
 
   order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
 

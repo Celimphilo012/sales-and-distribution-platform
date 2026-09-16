@@ -105,22 +105,43 @@ normal JWT login to the warehouse system; system-to-system calls use the key.
    users/customers/orders; point at distribution_platform. **DONE** (warehouse tables
    dropped; order↔stock touchpoints stubbed as 501s mapping 1:1 to the warehouse API;
    order_items.product_id is now a plain column, no cross-boundary FK).
-5. **Rewire 1E/1F across the API boundary. The real rework.** Fill the step-4 stubs by
-   calling the warehouse API (reserve→confirm→compensate). MUST also close two holes that
-   step 4 opened/exposed:
-   - **PRICING (rule 8 — currently VIOLATED):** `unitPrice` is temporarily client-supplied
-     because the catalogue left `/backend`. Step 5 MUST fetch the current price from
-     `GET /api/v1/catalogue` at order-line creation and snapshot THAT — never trust the
-     client price. This is the top-priority correctness item; it's a live hole until fixed.
-   - **NAME SNAPSHOT:** order lines don't snapshot the product name (pre-existing gap).
-     Step 5 fetches name + price from the catalogue API at line creation and stores both
-     on the line, so an order displays forever without a live lookup (§A2).
-   - reserve on APPROVED→STOCK_RESERVED → `POST /api/v1/stock/reserve`; release on cancel →
-     `POST /api/v1/stock/release`; issue on dispatch → `POST /api/v1/stock/issue`. Respect
-     the 200-with-discriminator contract (check the discriminator, not just HTTP status)
-     and idempotency-on-reference. Handle a reserve shortfall (structured short-lines) by
-     keeping the order at APPROVED, not advancing.
+5. **Rewire 1E/1F across the API boundary.** **DONE.** `/backend` gained one
+   `WarehouseApiClient` (`src/warehouse-api/`) as the sole path to `/warehouse` —
+   `WAREHOUSE_API_URL`/`WAREHOUSE_API_KEY` from env, `X-API-Key` on every call, and
+   centralised handling of the two failure kinds a caller must not conflate: a
+   network/HTTP-level failure (`ServiceUnavailableException` when unreachable,
+   `BadGatewayException` — carrying the warehouse's own reason — for any non-200), vs. a
+   normal business outcome the warehouse reports as HTTP 200 with a discriminator
+   (returned as a typed result, never thrown; callers branch on it themselves).
+   - **PRICING (rule 8) — CLOSED.** `buildLineInputs()` calls `WarehouseApiClient.
+     getProduct()` (there's no by-id read on the external catalogue API, so this fetches
+     `GET /api/v1/catalogue?includeInactive=true` and finds the id client-side) and
+     snapshots the CURRENT sellingPrice + name server-side. `unitPrice` was removed from
+     `OrderItemInputDto` entirely — the whitelist-validation pipe now flatly rejects a
+     request that includes it, so a client price can't even sneak in.
+   - **NAME SNAPSHOT — CLOSED.** `OrderItem.productName` (nullable — rows created before
+     step 5 have none, and are never backfilled) is set from the same catalogue fetch.
+   - reserve on APPROVED→STOCK_RESERVED calls `POST /api/v1/stock/reserve`; a `success:false`
+     (insufficient stock) discriminator leaves the order at APPROVED and surfaces the
+     structured short-line detail, no local write at all. On success, each allocation's
+     `locationId` is persisted onto `OrderItem.reservedLocationId` (new nullable column —
+     there's no local ledger any more to recover this from later) before advancing status.
+   - release on cancel calls `POST /api/v1/stock/release` (reference = order id) BEFORE the
+     local CANCELLED transition — idempotent, so a retry after a partial prior failure is
+     always safe.
+   - issue on dispatch calls `POST /api/v1/stock/issue` with one line per item that has a
+     packed quantity > 0 (a fully-unpacked order calls `release` instead, since `issue`
+     requires ≥1 line); `quantityFulfilled` and the final status (DISPATCHED vs
+     PARTIALLY_FULFILLED) are set ONLY from the warehouse's response, matched back to order
+     items by `(productId, locationId)`, never guessed locally.
+   - Verified end-to-end (see the step-5 session report): plumbing + bad-key auth error,
+     pricing snapshot + client-price rejection + nonexistent/inactive product rejection,
+     reserve happy path + shortfall (stock unchanged) + retry-on-already-reserved-reference
+     idempotency, release + retry-on-already-released idempotency, dispatch happy path +
+     partial (remainder released), and warehouse-down (503, order untouched) → restart →
+     retry succeeds.
 6. Rewire the frontend: catalogue screens → warehouse API; order screens → ordering API.
+   **NEXT.**
 
 **Warehouse external API contract (step 3 — the back-office consumes these):**
 - Auth: `X-API-Key` header, scoped keys (`catalogue:read`, `stock:read`, `stock:reserve`,

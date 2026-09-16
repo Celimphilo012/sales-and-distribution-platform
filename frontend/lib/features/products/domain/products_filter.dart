@@ -29,10 +29,13 @@ class ProductsFilter {
   final ProductStatus? status;
   final bool includeInactive;
 
+  /// The default (`status: null, includeInactive: false`) means "active
+  /// only" — same as what the backend defaults to when no params are sent
+  /// — not "all". Only an explicit `includeInactive: true` means "all".
   ProductStatusFilter get statusFilter {
     if (status == ProductStatus.active) return ProductStatusFilter.active;
     if (status == ProductStatus.inactive) return ProductStatusFilter.inactive;
-    return ProductStatusFilter.all;
+    return includeInactive ? ProductStatusFilter.all : ProductStatusFilter.active;
   }
 
   ProductsFilter copyWith({

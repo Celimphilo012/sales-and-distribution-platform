@@ -2,24 +2,49 @@
 
 Inventory, Sales and Distribution Management Platform.
 
-**ONE** platform · **ONE** backend/API · **ONE** central database · **TWO** front-end interfaces.
-Back Office is built first; the Consultant Portal is built second but its data model
-and APIs are designed in from the start. The central database is always the single
-source of truth. The consultant app may later cache/sync locally, but that cache is
-never a second source of truth.
+> **ARCHITECTURE CHANGE (business requirement):** The platform is being split into
+> **TWO independent systems with SEPARATE databases**, because the ordering/back-office
+> side must not share a database with the warehouse. This supersedes the original
+> "ONE central database" design below. The original single-database sections (ledger
+> model, order lifecycle, location tree, permission matrix, etc.) remain accurate as a
+> description of how each concern works **within** its system — they are not deleted,
+> because the warehouse system inherits almost all of that logic intact. See the
+> **Two-System Split** section for what lives where and the revised roadmap.
+
+**TWO systems · TWO databases · each its own backend/API and its own auth.**
+
+- **Warehouse System** (`/warehouse`, port 3100, db `warehouse_db`) — owns the physical
+  stock world AND the product catalogue: products, categories, product-images,
+  warehouses, locations (tree), inventory balances, the transaction ledger
+  (`applyTransaction`, frozen), receiving, transfers, stock counts, adjustments. Has its
+  own auth/users/roles (warehouse staff log in here). Exposes an **API-key-protected
+  external API** for other systems to read the catalogue and check/reserve/release/issue
+  stock. **Built first.**
+- **Back-Office / Ordering System** (`/backend`, port 3000, db `distribution_platform`)
+  — the existing system: its own auth/users/roles, customers, orders, order lifecycle,
+  sales batches, payments, order-side reports, dashboard. Owns NO inventory tables. Calls
+  the Warehouse API (with the shared key) whenever it needs stock. Stores product id +
+  a **snapshot** of name/price on each order line, so orders display without a live
+  warehouse lookup.
 
 ```
-                ONE PLATFORM
-                     |
-         -------------------------
-         |                       |
-    BACK OFFICE             CONSULTANT PORTAL
-      Phase 1                   Phase 2
-         |                       |
-         -------- Backend API ----
-                     |
-              Central Database
+        Warehouse Frontend                Back-Office Frontend (Flutter)
+                |                                    |
+        Warehouse System                   Back-Office / Ordering System
+        NestJS · port 3100                 NestJS · port 3000
+        db: warehouse_db                   db: distribution_platform
+        own auth · the ledger              own auth · orders/customers
+                |                                    |
+                |<---- API key (catalogue read, ----|
+                       reserve/release/issue stock)
+        TWO SEPARATE DATABASES — no shared transaction across the boundary
 ```
+
+**Key consequence of the split:** reserving/issuing stock during the order lifecycle
+(1E/1F) is no longer atomic with the order update — the two databases cannot share a
+transaction. The order side uses a reserve→confirm→compensate pattern over the API
+instead of a single DB transaction. This is the one real cost of the separation and is
+inherent to separate databases, not a design flaw.
 
 ---
 
@@ -34,8 +59,77 @@ never a second source of truth.
 | Frontend | Flutter + **Riverpod** | One codebase for web/mobile/desktop; Riverpod = compile-safe DI, low boilerplate for a large CRUD app. |
 
 Guard chain on every mutating route: `AuthGuard → PermissionGuard('key')`, plus an
-`AuditInterceptor` that records the change. The Consultant Portal is just another
-client hitting the same domain services with a `CONSULTANT` permission set.
+`AuditInterceptor` that records the change.
+
+---
+
+## A2. Two-System Split — ownership, boundary, and roadmap
+
+**Who owns what** (each table lives in exactly ONE database):
+
+| Concern | System | Database |
+|---|---|---|
+| auth, users, roles, permissions, audit | BOTH (each its own, independent) | each |
+| products, categories, product-images (the catalogue) | Warehouse | warehouse_db |
+| warehouses, locations (tree) | Warehouse | warehouse_db |
+| inventory balances, transaction ledger, applyTransaction | Warehouse | warehouse_db |
+| receiving, transfers, stock counts, adjustments | Warehouse | warehouse_db |
+| inventory/catalogue/warehouse reports | Warehouse | warehouse_db |
+| customers | Back-Office | distribution_platform |
+| orders, order items, order status history | Back-Office | distribution_platform |
+| sales batches, payments | Back-Office | distribution_platform |
+| order reports, dashboard (stitched w/ warehouse API) | Back-Office | distribution_platform |
+
+**The boundary (API-key API on the Warehouse side):** the back-office calls the
+warehouse over HTTP with a shared, scoped API key (NOT a user JWT) to: read the
+catalogue, check availability, reserve stock, release a reservation, issue/dispatch
+stock. What each key may do is configurable (scoped keys). Human warehouse staff use
+normal JWT login to the warehouse system; system-to-system calls use the key.
+
+**Cross-boundary rules:**
+- No foreign keys across the boundary. `order_items.product_id` is a plain value
+  referencing a product in warehouse_db; the back-office trusts the warehouse API and
+  handles "product missing/inactive" at call time.
+- No shared transaction. Order reservation/issue uses reserve→confirm→compensate over
+  the API (the warehouse guarantees all-or-nothing on ITS side and reports success;
+  the order side reacts and compensates on failure).
+- Order lines store a name/price snapshot so an order displays without a live lookup.
+
+**Revised roadmap (the split):**
+1. Scaffold `/warehouse` standalone (own db + own auth). **DONE.**
+2. Move warehouse-native modules into `/warehouse` on warehouse_db; verify the ledger
+   invariant in its new home. **DONE** (2a catalogue+tree, 2b ledger+ops; trigger and
+   invariant verified in warehouse_db).
+3. Build the API-key layer on `/warehouse` (scoped keys). **DONE.**
+4. Carve `/backend` down to `/ordering`: remove the moved warehouse modules; keep auth/
+   users/customers/orders; point at distribution_platform. **NEXT.** (First step that
+   modifies `/backend` — take a git checkpoint before it.)
+5. Rewire 1E/1F: orders reserve/dispatch via warehouse API calls (reserve→confirm→
+   compensate) instead of direct in-DB applyTransaction. **The real rework.**
+6. Rewire the frontend: catalogue screens → warehouse API; order screens → ordering API.
+
+**Warehouse external API contract (step 3 — the back-office consumes these):**
+- Auth: `X-API-Key` header, scoped keys (`catalogue:read`, `stock:read`, `stock:reserve`,
+  `stock:issue`). Raw key stored only as an argon2 hash — shown once at creation.
+- Endpoints under `/api/v1/*`: `GET /catalogue`, `POST /stock/availability`,
+  `POST /stock/reserve`, `POST /stock/release`, `POST /stock/issue`.
+- reserve/release/issue take a batch of lines + a `reference` (the order id), are
+  **all-or-none** and **idempotent on reference** (retry-safe).
+- **Business outcomes come back as HTTP 200 with a discriminator field**
+  (success / insufficient-stock+shortLines / alreadyReleased / alreadyIssued), NOT as
+  error status codes — a shortfall is a 200 with structured short-line detail, not a 4xx.
+  **Consumers must check the discriminator, not just the HTTP status.**
+- Ledger rows from API calls are attributed to a synthetic `system.api` user (non-login)
+  to satisfy the frozen `performed_by` FK; the audit log additionally records `api_key_id`.
+- all-or-none is delivered as an observable guarantee (pre-check + saga compensation),
+  since `applyTransaction` owns its own per-call DB transaction and can't be nested —
+  the same constraint the in-app adjustment approval already lives with.
+
+Everything in sections C–O below still describes how each concern works **within** its
+system. The ledger model, location tree, order lifecycle, and permission matrix are
+inherited by whichever system owns that concern (per the table above) — largely intact
+for the warehouse side; the 1E/1F order lifecycle is the part reworked to cross the API
+boundary in step 5.
 
 ---
 
@@ -106,6 +200,14 @@ notifications (user_id)
 ---
 
 ## E. Database Schema (core, abridged)
+
+> **API contract notes (confirmed against the real API — clients must handle these):**
+> - **Decimal fields serialize as JSON strings, not numbers** — `selling_price`,
+>   `cost_price`, `min_stock_level` come back as e.g. `"25.50"`. Flutter/JS models must
+>   parse them as strings, never assume a number type.
+> - **`GET /categories` returns a FLAT list, not a tree** (no recursive-CTE endpoint like
+>   locations' `/subtree`). A category-tree UI must build the hierarchy client-side from
+>   the flat list. Locations DO have `/locations/:id/subtree` (recursive CTE).
 
 ```sql
 -- RBAC

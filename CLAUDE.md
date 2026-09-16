@@ -3,9 +3,18 @@
 This is a modular Inventory, Sales and Distribution Management Platform.
 The full design lives in `ARCHITECTURE.md` — **read it before writing any code.**
 
-ONE platform, ONE backend/API, ONE central database, TWO front-end interfaces
-(Back Office first, Consultant Portal second). The central database is always
-the single source of truth.
+**TWO independent systems, TWO separate databases** (business requirement — the
+ordering/back-office side must not share a database with the warehouse):
+- **Warehouse System** (`/warehouse`, port 3100, db `warehouse_db`) — owns the
+  catalogue (products/categories/images), warehouses, locations, and the inventory
+  ledger; has its own auth; exposes an API-key-protected API. **Built first.**
+- **Back-Office / Ordering System** (`/backend`, port 3000, db `distribution_platform`)
+  — the existing system: own auth, customers, orders, payments. Owns NO inventory;
+  calls the Warehouse API (shared key) for stock.
+
+Each system is standalone: its own database, its own auth, no shared code, no
+cross-imports, no foreign keys across the boundary, no shared DB transaction. See
+`ARCHITECTURE.md` §A2 for what lives where and the split roadmap.
 
 ---
 
@@ -68,15 +77,18 @@ the single source of truth.
 
 ## Current phase
 
-**Backend Phase 1 (1A–1G) is COMPLETE and verified — do NOT modify it.**
-Now building the Flutter Back Office front end, in the `frontend/` folder.
+**System split in progress (see ARCHITECTURE.md §A2 roadmap).**
+Backend Phase 1 (1A–1G) is complete and verified. Front-end F1+F2 done.
+Step 1 of the split (scaffold `/warehouse` standalone) is DONE. `/backend` (the
+existing back-office) stays running untouched as the reference system.
 
-**Front-end F3 only: Products + Categories (the catalogue).** First real
-feature phase — it sets the screen PATTERN every later feature copies (list →
-filters/search → dedicated create/edit form screen → detail → soft-delete with
-confirm), wired to the real backend using the F1 shared widgets. Images are
-URL-only (no upload this phase). Do not touch `backend/`. Do not build other
-feature modules.
+**Next: Step 4 — carve `/backend` down to `/ordering`.** Remove the warehouse
+modules that now live in `/warehouse` (products, categories, product-images,
+warehouses, locations, inventory, receiving, transfers, stock-adjustments,
+stock-counts); keep auth, users, roles, customers, orders. This is the FIRST
+step that modifies `/backend` — take a git checkpoint (commit/tag) BEFORE it,
+so it can be rolled back. `/warehouse` is done through step 3 (standalone app,
+own db, ledger + trigger verified, scoped API-key external API).
 
 ---
 

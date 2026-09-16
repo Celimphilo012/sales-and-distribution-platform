@@ -102,10 +102,24 @@ normal JWT login to the warehouse system; system-to-system calls use the key.
    invariant verified in warehouse_db).
 3. Build the API-key layer on `/warehouse` (scoped keys). **DONE.**
 4. Carve `/backend` down to `/ordering`: remove the moved warehouse modules; keep auth/
-   users/customers/orders; point at distribution_platform. **NEXT.** (First step that
-   modifies `/backend` — take a git checkpoint before it.)
-5. Rewire 1E/1F: orders reserve/dispatch via warehouse API calls (reserve→confirm→
-   compensate) instead of direct in-DB applyTransaction. **The real rework.**
+   users/customers/orders; point at distribution_platform. **DONE** (warehouse tables
+   dropped; order↔stock touchpoints stubbed as 501s mapping 1:1 to the warehouse API;
+   order_items.product_id is now a plain column, no cross-boundary FK).
+5. **Rewire 1E/1F across the API boundary. The real rework.** Fill the step-4 stubs by
+   calling the warehouse API (reserve→confirm→compensate). MUST also close two holes that
+   step 4 opened/exposed:
+   - **PRICING (rule 8 — currently VIOLATED):** `unitPrice` is temporarily client-supplied
+     because the catalogue left `/backend`. Step 5 MUST fetch the current price from
+     `GET /api/v1/catalogue` at order-line creation and snapshot THAT — never trust the
+     client price. This is the top-priority correctness item; it's a live hole until fixed.
+   - **NAME SNAPSHOT:** order lines don't snapshot the product name (pre-existing gap).
+     Step 5 fetches name + price from the catalogue API at line creation and stores both
+     on the line, so an order displays forever without a live lookup (§A2).
+   - reserve on APPROVED→STOCK_RESERVED → `POST /api/v1/stock/reserve`; release on cancel →
+     `POST /api/v1/stock/release`; issue on dispatch → `POST /api/v1/stock/issue`. Respect
+     the 200-with-discriminator contract (check the discriminator, not just HTTP status)
+     and idempotency-on-reference. Handle a reserve shortfall (structured short-lines) by
+     keeping the order at APPROVED, not advancing.
 6. Rewire the frontend: catalogue screens → warehouse API; order screens → ordering API.
 
 **Warehouse external API contract (step 3 — the back-office consumes these):**

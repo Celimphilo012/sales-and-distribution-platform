@@ -82,13 +82,16 @@ Backend Phase 1 (1A–1G) is complete and verified. Front-end F1+F2 done.
 Step 1 of the split (scaffold `/warehouse` standalone) is DONE. `/backend` (the
 existing back-office) stays running untouched as the reference system.
 
-**Next: Step 4 — carve `/backend` down to `/ordering`.** Remove the warehouse
-modules that now live in `/warehouse` (products, categories, product-images,
-warehouses, locations, inventory, receiving, transfers, stock-adjustments,
-stock-counts); keep auth, users, roles, customers, orders. This is the FIRST
-step that modifies `/backend` — take a git checkpoint (commit/tag) BEFORE it,
-so it can be rolled back. `/warehouse` is done through step 3 (standalone app,
-own db, ledger + trigger verified, scoped API-key external API).
+**Next: Step 5 — rewire 1E/1F across the API boundary (the real rework).**
+Fill the step-4 stubs by calling the warehouse API: reserve on
+APPROVED→STOCK_RESERVED, release on cancel, issue on dispatch. Respect the
+200-with-discriminator contract and idempotency-on-reference.
+**Two holes step 4 opened that step 5 MUST close:** (1) `unitPrice` is
+currently CLIENT-SUPPLIED (rule 8 violated — a live hole) — fetch and snapshot
+the real price from the catalogue API instead; (2) add the product-name
+snapshot to order lines from the catalogue API. `/warehouse` (steps 1–3) is
+done and untouched. The back-office API key from step 3 gets configured into
+`/backend` here.
 
 ---
 

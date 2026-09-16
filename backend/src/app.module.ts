@@ -8,16 +8,6 @@ import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { RolesModule } from './roles/roles.module';
 import { PermissionsModule } from './permissions/permissions.module';
-import { CategoriesModule } from './categories/categories.module';
-import { ProductsModule } from './products/products.module';
-import { ProductImagesModule } from './product-images/product-images.module';
-import { WarehousesModule } from './warehouses/warehouses.module';
-import { LocationsModule } from './locations/locations.module';
-import { InventoryModule } from './inventory/inventory.module';
-import { ReceivingModule } from './receiving/receiving.module';
-import { TransfersModule } from './transfers/transfers.module';
-import { StockAdjustmentsModule } from './stock-adjustments/stock-adjustments.module';
-import { StockCountsModule } from './stock-counts/stock-counts.module';
 import { CustomersModule } from './customers/customers.module';
 import { OrdersModule } from './orders/orders.module';
 import { ReportsModule } from './reports/reports.module';
@@ -36,16 +26,6 @@ import { DashboardModule } from './dashboard/dashboard.module';
     UsersModule,
     RolesModule,
     PermissionsModule,
-    CategoriesModule,
-    ProductsModule,
-    ProductImagesModule,
-    WarehousesModule,
-    LocationsModule,
-    InventoryModule,
-    ReceivingModule,
-    TransfersModule,
-    StockAdjustmentsModule,
-    StockCountsModule,
     CustomersModule,
     OrdersModule,
     ReportsModule,

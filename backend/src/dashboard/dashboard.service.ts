@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../common/prisma/prisma.service';
 import { ReportsService } from '../reports/reports.service';
 
 function startOfToday(): Date {
@@ -18,31 +17,25 @@ function startOfThisWeek(): Date {
 }
 
 /**
- * One summary payload for manager dashboard cards. Pure aggregation of
- * the Phase 1G reports (reuses ReportsService — no parallel query logic)
- * plus a single direct count for pending adjustments. No writes, no new
- * tables.
+ * One summary payload for manager dashboard cards — order side only. Step 4
+ * of the system split (ARCHITECTURE.md §A2) removed the inventory half
+ * (lowStockCount, pendingAdjustmentsCount) — those tables live in
+ * warehouse_db now. Step 5/6 may re-stitch an inventory summary back in via
+ * the warehouse API.
  */
 @Injectable()
 export class DashboardService {
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly reportsService: ReportsService,
-  ) {}
+  constructor(private readonly reportsService: ReportsService) {}
 
   async getSummary() {
-    const [ordersOverall, lowStock, pendingAdjustmentsCount, todayOrders, thisWeekOrders] = await Promise.all([
+    const [ordersOverall, todayOrders, thisWeekOrders] = await Promise.all([
       this.reportsService.getOrdersReport(),
-      this.reportsService.getLowStock(),
-      this.prisma.stockAdjustment.count({ where: { status: 'PENDING' } }),
       this.reportsService.getOrdersReport({ from: startOfToday().toISOString() }),
       this.reportsService.getOrdersReport({ from: startOfThisWeek().toISOString() }),
     ]);
 
     return {
       ordersByStatus: ordersOverall.byStatus,
-      lowStockCount: lowStock.count,
-      pendingAdjustmentsCount,
       today: { orderCount: todayOrders.count, totalValue: todayOrders.totalValue },
       thisWeek: { orderCount: thisWeekOrders.count, totalValue: thisWeekOrders.totalValue },
     };

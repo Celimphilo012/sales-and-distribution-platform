@@ -1,0 +1,27 @@
+name: warehouse_frontend
+description: "Warehouse System — Flutter front end (standalone, talks only to /warehouse on port 3100)."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.11.4
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+  flutter_riverpod: ^3.3.2
+  go_router: ^17.5.0
+  dio: ^5.11.1
+  shared_preferences: ^2.5.5
+  flutter_secure_storage: ^11.1.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

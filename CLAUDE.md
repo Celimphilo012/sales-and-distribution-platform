@@ -99,9 +99,56 @@ rows) and `reservedLocationId` (set by `reserve()`, since there's no local
 ledger any more to recover it from — `dispatch()`'s issue call needs it
 verbatim).
 
-**Next: Step 6 — rewire the frontend.** Catalogue screens call the warehouse
-API directly; order screens call the ordering API. `/warehouse` (steps 1–3)
-and `/backend` (steps 4–5) are both done and untouched by this note.
+**Step 6 is TWO independent Flutter front ends** (the ASCII diagram in
+ARCHITECTURE.md §A2 always showed this — a "Warehouse Frontend" and a
+"Back-Office Frontend" as separate boxes): `/frontend` stays the ordering UI
+against `/backend` (3000); a NEW `/warehouse-frontend` talks only to
+`/warehouse` (3100). No shared package, no cross-imports — each is a fully
+standalone Flutter app copying the same proven `core`/`shared` foundation.
+
+Step 6a (scaffold `/warehouse-frontend`) is DONE: core (network/theme/
+responsive/error), shared widgets, real auth (login/session-restore/
+rotating-refresh/`/auth/me`), routing + the responsive app shell were copied
+from `/frontend` and re-pointed at `http://localhost:3100`. Nav uses only
+real warehouse permission keys (catalogue.view, products.manage,
+warehouse.structure.manage, inventory.view/receive/transfer/count/
+adjust.request/adjust.approve, users.manage, roles.manage, audit.view) —
+orders/customers/fulfilment/reports nav entries and permission strings were
+removed entirely, since they don't exist on this system. Every nav route is
+still a `ComingSoonView` placeholder — no warehouse feature screens yet.
+Runs on web port 8090 (added to `/warehouse`'s `CORS_ORIGINS` — the only
+warehouse-backend touch this step made). `/frontend` and both backends'
+source are untouched.
+
+Step 6b (Products + Categories, the catalogue) is DONE — the reusable
+warehouse feature-screen pattern every later feature copies: data (repository
+→ `ApiClient`) / domain (models, `ProductsFilter`) / presentation (Riverpod
+providers + screens) layering. Products: responsive list (search/category/
+status filters, no pagination — the real `ListProductsQueryDto` has none),
+a dedicated routed create/edit form (category picker from the flat list
+shown indented, image-URL add/remove/set-primary), a read-only detail screen
+with permission-gated edit/soft-delete. Categories: client-built tree (the
+API is flat, no `/subtree`) with dialog-based CRUD. Both gate create/edit/
+delete on `products.manage`, reusing the exact permission-check pattern
+`/frontend`'s F3 established (`catalogue.view` to read).
+
+**Real bug found and fixed** (in `warehouse-frontend/lib/shared/widgets/
+app_dialog.dart`, copied verbatim from `/frontend` in step 6a — `/frontend`'s
+own copy was NOT touched, since this step's scope is warehouse-frontend
+only, but the same bug almost certainly exists there too): `ConfirmDialog`'s
+Cancel/Deactivate buttons called `Navigator.of(context).pop()` using the
+CALLER's context. Under go_router's `ShellRoute` (which nests its own
+Navigator), that resolves to the shell's Navigator — not the root one
+`showDialog`'s default `useRootNavigator: true` actually pushed the dialog
+onto — so confirming a destructive action popped the current PAGE instead of
+the dialog, crashing with go_router's "popped the last page off of the
+stack" assertion. Fixed by popping with `rootNavigator: true` explicitly.
+Caught live while verifying product/category soft-delete.
+
+**Next: Step 6c+ — build the remaining warehouse feature screens**
+(warehouse structure/locations, inventory, receiving, transfers, counts,
+adjustments, users, roles, audit) in `/warehouse-frontend`, calling
+`/warehouse` directly (never through `/backend`).
 
 ---
 

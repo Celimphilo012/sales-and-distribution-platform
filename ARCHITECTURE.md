@@ -140,8 +140,54 @@ normal JWT login to the warehouse system; system-to-system calls use the key.
      idempotency, release + retry-on-already-released idempotency, dispatch happy path +
      partial (remainder released), and warehouse-down (503, order untouched) → restart →
      retry succeeds.
-6. Rewire the frontend: catalogue screens → warehouse API; order screens → ordering API.
-   **NEXT.**
+6. **TWO independent Flutter front ends** (per the §A2 diagram above — always the design, not
+   a new decision): `/frontend` (ordering, → `/backend` on 3000, unchanged) and a new
+   `/warehouse-frontend` (→ `/warehouse` on 3100). No shared package between them.
+   - **6a — scaffold `/warehouse-frontend`. DONE.** Copied `core/` (network incl. the dio
+     client + JWT/refresh interceptor + secure token storage, theme, responsive, error
+     mapping), `shared/` widgets, the real auth flow (login, session restore, rotating
+     refresh, `/auth/me`), routing (go_router, permission-gated) and the responsive app
+     shell verbatim from `/frontend`, then re-pointed the single `AppConfig.apiBaseUrl`
+     constant at `http://localhost:3100`. Nav table rebuilt with ONLY real warehouse
+     permission keys (catalogue.view, products.manage, warehouse.structure.manage,
+     inventory.view/receive/transfer/count/adjust.request/adjust.approve, users.manage,
+     roles.manage, audit.view) — no `orders.*`/`customers.*`/`reports.view` (that key
+     doesn't exist on the warehouse backend), no Orders/Fulfilment/Reports nav items.
+     Every nav route renders `ComingSoonView` — no feature screens yet. Runs on web port
+     8090; added to `/warehouse`'s `CORS_ORIGINS` (the one permitted backend touch this
+     step made). `/frontend` and both backends' source code are untouched.
+   - **6b — Products + Categories (the catalogue). DONE.** The reusable warehouse
+     feature-screen template: `data/` (repository → `ApiClient`, parses the §E decimal-
+     as-string gotcha on read, sends plain numbers on write per the real DTOs) / `domain/`
+     (models, `ProductsFilter` incl. its query-param mapping) / `presentation/` (Riverpod
+     providers the screens `watch`). Products: responsive `AppDataTable` list (search,
+     category and status filters against the real `ListProductsQueryDto` — confirmed NO
+     pagination param exists), a dedicated routed create/edit form (never a dialog — too
+     many fields) with an indented category picker built from the flat list and an
+     image-URL editor (add/remove/set-primary, backend-enforced single-primary
+     confirmed), a read-only detail screen with permission-gated edit/soft-delete behind
+     a `ConfirmDialog`. Categories: client-built tree (§E — flat API, no `/subtree`) with
+     dialog-based create/rename/reparent/activate-deactivate. Both gate mutation controls
+     on `products.manage` (`catalogue.view` to read) — verified a `catalogue.view`-only
+     WAREHOUSE-role user sees the lists but no create/edit/delete affordances, including
+     via direct URL to `/products/new`.
+   - **Real bug found and fixed during 6b verification** (in `warehouse-frontend/lib/
+     shared/widgets/app_dialog.dart`, copied verbatim from `/frontend` in 6a —
+     `/frontend`'s own copy untouched, out of this step's scope, but very likely carries
+     the same bug): `ConfirmDialog`'s action buttons popped via `Navigator.of(context)`
+     using the CALLING screen's context. Under go_router's `ShellRoute` (which nests its
+     own Navigator per branch), that resolves to the shell Navigator, not the root one
+     `showDialog`'s default `useRootNavigator: true` actually pushed the dialog onto — so
+     confirming a destructive action (e.g. "Deactivate product") popped the current PAGE
+     off go_router's stack instead of dismissing the dialog, crashing with "You have
+     popped the last page off of the stack, there are no pages left to show." Fixed with
+     `Navigator.of(context, rootNavigator: true).pop(...)`.
+   - **6c+ — NEXT.** Build the remaining warehouse feature screens (warehouse
+     structure/locations, inventory, receiving, transfers, counts, adjustments, users,
+     roles, audit) in `/warehouse-frontend`, calling `/warehouse` directly.
+   - Rewiring `/frontend`'s own catalogue-dependent screens (if any) to call the warehouse
+     API instead of `/backend` is separate follow-up work on the ordering side, not part
+     of 6a/6b/6c.
 
 **Warehouse external API contract (step 3 — the back-office consumes these):**
 - Auth: `X-API-Key` header, scoped keys (`catalogue:read`, `stock:read`, `stock:reserve`,

@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../app_shell/responsive_app_shell.dart';
 import '../core/auth/auth_provider.dart';
 import '../core/auth/auth_state.dart';
+import '../features/attribute_types/presentation/attribute_types_screen.dart';
 import '../features/auth/presentation/login_screen.dart';
 import '../features/categories/presentation/categories_screen.dart';
 import '../features/inventory/presentation/inventory_screen.dart';
@@ -14,6 +15,9 @@ import '../features/products/presentation/product_detail_screen.dart';
 import '../features/products/presentation/product_form_screen.dart';
 import '../features/products/presentation/products_list_screen.dart';
 import '../features/receiving/presentation/receiving_form_screen.dart';
+import '../features/stock_adjustments/presentation/stock_adjustments_screen.dart';
+import '../features/stock_counts/presentation/stock_count_detail_screen.dart';
+import '../features/stock_counts/presentation/stock_counts_screen.dart';
 import '../features/transfers/presentation/transfer_form_screen.dart';
 import '../features/warehouses/presentation/warehouses_list_screen.dart';
 import '../features/workstreams/presentation/workstreams_screen.dart';
@@ -38,11 +42,14 @@ const _customBuiltPaths = {
   RoutePaths.products,
   RoutePaths.workstreams,
   RoutePaths.categories,
+  RoutePaths.attributeTypes,
   RoutePaths.warehouses,
   RoutePaths.locations,
   RoutePaths.inventory,
   RoutePaths.receiving,
   RoutePaths.transfers,
+  RoutePaths.stockCounts,
+  RoutePaths.stockAdjustments,
 };
 
 /// The app's single [GoRouter], keyed off [authProvider] for the splash
@@ -53,13 +60,13 @@ const _customBuiltPaths = {
 /// inside [ResponsiveAppShell].
 ///
 /// Steps 6b (Products/Categories), 6c (Warehouses/Warehouse Structure), 6d
-/// (Inventory — read-only), and 6e-1 (Receiving/Transfers — the first
-/// stock-MOVING screens) all make real calls against the warehouse backend,
-/// each copying the same data/domain/presentation pattern. Stock Counts and
-/// Stock Adjustments are still step-6a [ComingSoonView] placeholders, built
-/// in 6e-2. Workstreams (a catalogue-organization layer — Warehouse ->
-/// Workstream -> Category -> sub-category -> Product, purely reference data,
-/// never operational) extends the 6b catalogue screens.
+/// (Inventory — read-only), 6e-1 (Receiving/Transfers), and 6e-2 (Stock
+/// Counts/Stock Adjustments — the two-step approval workflow, §F) all make
+/// real calls against the warehouse backend, each copying the same data/
+/// domain/presentation pattern; 6e-2 completes the warehouse operations.
+/// Workstreams (a catalogue-organization layer — Warehouse -> Workstream ->
+/// Category -> sub-category -> Product, purely reference data, never
+/// operational) extends the 6b catalogue screens.
 final appRouterProvider = Provider<GoRouter>((ref) {
   final refreshListenable = _AuthRefreshListenable(ref);
 
@@ -121,6 +128,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(path: RoutePaths.workstreams, builder: (context, state) => const WorkstreamsScreen()),
           GoRoute(path: RoutePaths.categories, builder: (context, state) => const CategoriesScreen()),
+          GoRoute(path: RoutePaths.attributeTypes, builder: (context, state) => const AttributeTypesScreen()),
           GoRoute(path: RoutePaths.warehouses, builder: (context, state) => const WarehousesListScreen()),
           GoRoute(
             path: RoutePaths.locations,
@@ -133,6 +141,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(path: RoutePaths.receiving, builder: (context, state) => const ReceivingFormScreen()),
           GoRoute(path: RoutePaths.transfers, builder: (context, state) => const TransferFormScreen()),
+          GoRoute(path: RoutePaths.stockCounts, builder: (context, state) => const StockCountsScreen()),
+          GoRoute(
+            path: '${RoutePaths.stockCounts}/:id',
+            builder: (context, state) => StockCountDetailScreen(countId: state.pathParameters['id']!),
+          ),
+          GoRoute(path: RoutePaths.stockAdjustments, builder: (context, state) => const StockAdjustmentsScreen()),
         ],
       ),
     ],

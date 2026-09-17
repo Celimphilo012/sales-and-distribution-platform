@@ -89,27 +89,45 @@ across the boundary (reserve/release/issue, pricing hole closed).
   6c (Warehouses + dynamic locations tree) DONE.
   6d (Inventory views — "where is this product" + "what's in this location",
   read-only) DONE; the 6c "stock in location" placeholder is now real.
-  6e-1 (Receiving + Transfers — the first stock-MOVING screens) DONE: one
-  reusable leaf-location picker (needs only `warehouse.structure.view`) shared
-  by both forms; write→read loop made visible via a live balance card plus a
-  deep link into the 6d "where is this product" view. Verified a WAREHOUSE-role
-  user (no `warehouse.structure.manage`) can load the picker and complete both
-  a receive and a transfer, decimals round-trip correctly, and the backend
-  403s a user without `inventory.receive`/`inventory.transfer`.
-- `/frontend` — the existing app, becomes the ordering front end; retrofit
-  (strip warehouse nav, rewire to `/backend`) is a LATER step.
+  6e-1 (Receiving + Transfers) DONE (backend-verified via API; leaf-location
+  picker reusable; write→read loop confirmed).
+  6e-2 (Stock Counts + Stock Adjustments) DONE — completes the warehouse
+  operations. Stock counts: start (snapshots expected_qty, read-only) → enter
+  counted qty per line → submit (variances become PENDING adjustments, count
+  itself never moves stock) → history. Stock adjustments: two-step
+  request/approve (§F) — `inventory.adjust.request` creates PENDING, only
+  `inventory.adjust.approve` moves stock (`applyTransaction`); separation of
+  duties (no self-approval) enforced backend-side and mirrored in the UI
+  (approve/reject hidden on your own pending requests). Backend-verified via
+  API with real WAREHOUSE + MANAGER users (see verification note below);
+  `flutter analyze` clean.
+  WORKSTREAMS DONE (warehouse: table + category link + catalogue-API exposure +
+  frontend Workstream→Category→sub-category nesting). Catalogue-only, not
+  operational.
+  PRODUCT ATTRIBUTES DONE (warehouse: defined-types attribute_types catalog +
+  product_attributes key-value + catalogue-API exposure + frontend attribute
+  fields). Descriptive only, NOT variants — stock still per-product.
 
-**Next: 6e-2 — Stock counts + adjustments** in `/warehouse-frontend`, the
-remaining stock-MOVING screens (`inventory.count`, `inventory.adjust.request` /
-`.approve`). Copies the 6e-1 pattern, reusing the same leaf-location picker.
-Then retrofit `/frontend` into the ordering app.
+**VISUAL-VERIFICATION DEBT (clear when Chrome works):** three frontend features
+were built and BACKEND-verified (API via curl) but never visually confirmed
+rendering, because the Chrome automation kept freezing — (1) 6e-1's
+receive/transfer confirmation cards + dark mode; (2) product-attributes form
+fields (number+unit, text) + detail display + dark mode; (3) 6e-2's stock-count
+entry table (expected/counted/variance) and the adjustments queue/history cards
+(pending vs. approved/rejected, approve/reject buttons hidden on your own
+requests) + dark mode. All are pattern-identical to proven 6b–6d widgets so
+low-risk, but do a manual click-through pass to close them before stacking more
+frontend on the shared form/table patterns.
+- `/frontend` — the existing app, becomes the ordering front end; retrofit
+  (strip warehouse nav, rewire to `/backend`) is the next step — `/warehouse-frontend`
+  is now functionally complete for warehouse operations.
 
 **API characteristic (from 6d):** `/inventory/balances` returns a flat
 `location_id` + name/code, NOT the full ancestor path. The frontend resolves the
 path client-side by walking the locations tree. Works, but it's N-lookups against
 the loaded locations data — a candidate for a future backend improvement (return
-the path, or denormalize) if inventory lists grow large. 6e references locations
-the same way.
+the path, or denormalize) if inventory lists grow large. 6e-1/6e-2 reference
+locations the same way.
 
 **KNOWN ISSUES to fix during the `/frontend` retrofit** (shared widgets copied
 into `/warehouse-frontend` had bugs fixed there; `/frontend`'s copies were left
@@ -123,10 +141,14 @@ screens that use them):
    already-scrolling ancestor. Fixed in `/warehouse-frontend` with
    `shrinkWrap: true`.
 
-**BACKEND GAP — FIXED:** warehouse warehouses/locations reads now require
-`warehouse.structure.view` (separate from `.manage`, which stays required for
-writes); WAREHOUSE role has `.view` only. Confirmed in 6e-1 that a
-`.view`-only user can load the leaf-location picker used by receiving/transfers.
+**BACKEND GAP — FIXED:** locations previously had no read/write permission
+split (all access, incl. reads, gated behind `warehouse.structure.manage`, so a
+user who should only VIEW the location tree 403'd before it loaded). Resolved:
+`warehouse.structure.view` exists in the permission catalog for reads,
+`.manage` remains for writes, and the WAREHOUSE role holds `.view` — confirmed
+in `warehouse/src/permissions/constants/permission-catalog.ts`. Receiving/
+transfer/count/adjustment staff can see locations to pick where stock goes
+without needing structure-manage power.
 
 ---
 

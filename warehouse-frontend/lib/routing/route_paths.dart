@@ -18,12 +18,14 @@ class RoutePaths {
 
   static const workstreams = '/workstreams';
   static const categories = '/categories';
+  static const attributeTypes = '/attribute-types';
   static const warehouses = '/warehouses';
   static const locations = '/locations';
   static const inventory = '/inventory';
   static const receiving = '/receiving';
   static const transfers = '/transfers';
   static const stockCounts = '/stock-counts';
+  static String stockCountDetail(String id) => '$stockCounts/$id';
   static const stockAdjustments = '/stock-adjustments';
   static const users = '/users';
   static const roles = '/roles';

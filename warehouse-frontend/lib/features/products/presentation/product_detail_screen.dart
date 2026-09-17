@@ -156,6 +156,25 @@ class _ProductDetailBody extends ConsumerWidget {
             ],
           ),
         ),
+        if (product.attributes.isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.lg),
+          AppCard(
+            title: 'Attributes',
+            subtitle: 'Descriptive metadata — not variants',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (final attribute in product.attributes)
+                  _DetailRow(
+                    label: attribute.attributeType.name,
+                    value: (attribute.attributeType.unit?.isNotEmpty ?? false)
+                        ? '${attribute.value} ${attribute.attributeType.unit}'
+                        : attribute.value,
+                  ),
+              ],
+            ),
+          ),
+        ],
       ],
     );
   }

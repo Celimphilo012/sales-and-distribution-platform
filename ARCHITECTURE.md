@@ -127,6 +127,14 @@ normal JWT login to the warehouse system; system-to-system calls use the key.
   `stock:issue`). Raw key stored only as an argon2 hash — shown once at creation.
 - Endpoints under `/api/v1/*`: `GET /catalogue`, `POST /stock/availability`,
   `POST /stock/reserve`, `POST /stock/release`, `POST /stock/issue`.
+- `GET /catalogue`'s `{ categories, products }` response now nests workstream info
+  (added, back-compatible): each category carries `workstreamId`/`workstream`, and
+  each product's embedded `category` does too. Optional `?workstreamId=` filters
+  both arrays. Each product also now carries `attributes` (added, back-compatible),
+  descriptive metadata only (colour/size/weight/...), NOT variants — stock is still
+  looked up per product, never per attribute combination. Ordering-side consumption
+  of workstream/attributes is a separate follow-on — not built in `/backend`/
+  `/frontend` yet.
 - reserve/release/issue take a batch of lines + a `reference` (the order id), are
   **all-or-none** and **idempotent on reference** (retry-safe).
 - **Business outcomes come back as HTTP 200 with a discriminator field**
@@ -191,7 +199,9 @@ Every use case maps to a permission string, not a role check.
 ```
 users ─< user_roles >─ roles ─< role_permissions >─ permissions
 
-categories ─< products ─< product_images
+warehouses ─< workstreams ─< categories ─< products ─< product_images
+                                                            │
+                                   attribute_types ─< product_attributes >─ (product_id)
                  │
 warehouses ─< locations (self-ref: parent_id → id)
                  │            │
@@ -224,6 +234,22 @@ notifications (user_id)
 > - **`GET /categories` returns a FLAT list, not a tree** (no recursive-CTE endpoint like
 >   locations' `/subtree`). A category-tree UI must build the hierarchy client-side from
 >   the flat list. Locations DO have `/locations/:id/subtree` (recursive CTE).
+> - **Workstreams (added after 6b):** `categories` has NO `warehouse_id` of its own —
+>   it is, and remains, global reference data. `workstreams` is what's actually
+>   warehouse-scoped (`warehouse_id` + unique `code` per warehouse); every category
+>   belongs to exactly one workstream, and a sub-category's workstream always matches
+>   its parent's (backend-enforced, not just a UI convention). `GET /categories` and
+>   `GET /products` both nest workstream info now (category embeds `workstream`;
+>   product's embedded `category` embeds it too) — additive, back-compatible.
+> - **Product attributes (added after workstreams):** descriptive metadata only —
+>   NOT variants. Stock stays keyed by (product_id, location_id) regardless of any
+>   attribute value; `attribute_types`/`product_attributes` are never read by
+>   inventory/ledger code. `attribute_types` is an admin-managed, extensible catalog
+>   (a new type is a row, not a migration); `product_attributes.value` is always a
+>   string on the wire (a NUMBER-dataType value is still sent as a plain JSON number
+>   on write, same "number on write, string on read" convention as `selling_price`).
+>   `GET /products` nests `attributes` (each with its full `attributeType`) — additive,
+>   back-compatible.
 
 ```sql
 -- RBAC
@@ -234,11 +260,29 @@ users(id, email UNIQUE, password_hash, full_name, status, created_at, updated_at
 user_roles(user_id, role_id, PK(user_id,role_id))
 
 -- Catalogue
-categories(id, name, parent_id NULL, is_active)       -- categories may nest
+-- Workstreams: a catalogue-ORGANIZATION layer, not operational — never read
+-- by inventory/ledger/permission code. Warehouse -> Workstream -> Category ->
+-- sub-category -> Product.
+workstreams(id, warehouse_id, name, code, description, is_active, created_at, updated_at)
+                                                       -- unique(warehouse_id, code)
+categories(id, name, parent_id NULL, workstream_id, is_active)  -- categories may nest;
+                                                       -- workstream_id required, sub-
+                                                       -- category must match parent's
 products(id, sku UNIQUE, name, description, category_id, selling_price NUMERIC(12,2),
          cost_price NUMERIC(12,2) NULL, uom, min_stock_level, status,
-         created_at, updated_at)
+         created_at, updated_at)                      -- no workstream_id of its own —
+                                                        -- implied by category_id
 product_images(id, product_id, url, sort_order, is_primary)
+
+-- Product attributes: catalogue METADATA only (colour, size, weight, brand,
+-- material, dimensions, extensible) — NOT variants; never read by
+-- inventory/ledger code, stock stays keyed by (product_id, location_id).
+attribute_types(id, name, code UNIQUE, data_type [TEXT|NUMBER], unit NULL, is_active,
+                created_at, updated_at)                -- admin-managed, extensible
+                                                        -- catalog (new type = a row)
+product_attributes(id, product_id, attribute_type_id, value, created_at, updated_at)
+                                                        -- unique(product_id, attribute_type_id)
+                                                        -- one value per type per product
 
 -- Warehouse tree
 warehouses(id, name, code UNIQUE, is_active)

@@ -1,6 +1,8 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { ProductStatus } from '@prisma/client';
+import { Type } from 'class-transformer';
 import {
+  IsArray,
   IsEnum,
   IsNumber,
   IsOptional,
@@ -9,7 +11,9 @@ import {
   IsUUID,
   Min,
   MinLength,
+  ValidateNested,
 } from 'class-validator';
+import { ProductAttributeInputDto } from './product-attribute-input.dto';
 
 export class UpdateProductDto {
   @ApiPropertyOptional({ example: 'Cola 330ml Can' })
@@ -56,4 +60,15 @@ export class UpdateProductDto {
   @IsOptional()
   @IsEnum(ProductStatus)
   status?: ProductStatus;
+
+  @ApiPropertyOptional({
+    type: [ProductAttributeInputDto],
+    description:
+      'When provided, REPLACES the product\'s full attribute set (omit this field entirely to leave attributes untouched; pass [] to clear them all).',
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ProductAttributeInputDto)
+  attributes?: ProductAttributeInputDto[];
 }

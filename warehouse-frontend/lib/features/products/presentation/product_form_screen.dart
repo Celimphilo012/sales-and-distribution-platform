@@ -13,11 +13,14 @@ import '../../../shared/widgets/app_number_field.dart';
 import '../../../shared/widgets/app_text_field.dart';
 import '../../../shared/widgets/empty_loading_error_states.dart';
 import '../../../shared/widgets/status_badge.dart';
+import '../../attribute_types/data/attribute_types_providers.dart';
+import '../../attribute_types/domain/attribute_type.dart';
 import '../../categories/data/categories_providers.dart';
 import '../../categories/domain/category_tree.dart';
 import '../../workstreams/data/workstreams_providers.dart';
 import '../data/products_providers.dart';
 import '../domain/product.dart';
+import '../domain/product_attribute.dart';
 import '../domain/product_image.dart';
 import 'products_list_providers.dart';
 import 'widgets/network_image_or_placeholder.dart';
@@ -83,7 +86,21 @@ class _ProductFormBodyState extends ConsumerState<_ProductFormBody> {
   bool _saving = false;
   String? _errorMessage;
 
+  // Lazily created per attribute type once its row first renders (the type
+  // catalog loads async) — NOT recreated on every rebuild, so typed text
+  // and cursor position survive. Descriptive metadata only (colour, size,
+  // weight, ...); this never touches inventory/stock.
+  final Map<String, TextEditingController> _attributeControllers = {};
+
   bool get _isEditing => widget.initialProduct != null;
+
+  TextEditingController _attributeControllerFor(AttributeType type) {
+    return _attributeControllers.putIfAbsent(type.id, () {
+      final productAttributes = widget.initialProduct?.attributes ?? const <ProductAttribute>[];
+      final existing = _firstOrNull(productAttributes.where((a) => a.attributeTypeId == type.id));
+      return TextEditingController(text: existing?.value ?? '');
+    });
+  }
 
   @override
   void initState() {
@@ -111,7 +128,37 @@ class _ProductFormBodyState extends ConsumerState<_ProductFormBody> {
     _costPriceController.dispose();
     _uomController.dispose();
     _minStockController.dispose();
+    for (final controller in _attributeControllers.values) {
+      controller.dispose();
+    }
     super.dispose();
+  }
+
+  /// Reads every active attribute type's controller and builds the payload
+  /// — a blank field means "no value for this attribute" (omitted, not an
+  /// empty string). A NUMBER-dataType field must parse as a number; on
+  /// failure this sets [_errorMessage] and returns `null`.
+  List<ProductAttributeInput>? _resolveAttributes() {
+    final types = ref.read(attributeTypesProvider(false)).value ?? const [];
+    final attributes = <ProductAttributeInput>[];
+
+    for (final type in types) {
+      final text = _attributeControllerFor(type).text.trim();
+      if (text.isEmpty) continue;
+
+      if (type.dataType == AttributeDataType.number) {
+        final n = double.tryParse(text);
+        if (n == null) {
+          setState(() => _errorMessage = '"${type.name}" must be a number.');
+          return null;
+        }
+        attributes.add(ProductAttributeInput(attributeTypeId: type.id, value: n));
+      } else {
+        attributes.add(ProductAttributeInput(attributeTypeId: type.id, value: text));
+      }
+    }
+
+    return attributes;
   }
 
   Future<void> _save() async {
@@ -120,6 +167,8 @@ class _ProductFormBodyState extends ConsumerState<_ProductFormBody> {
       setState(() => _errorMessage = 'Please choose a category.');
       return;
     }
+    final attributes = _resolveAttributes();
+    if (attributes == null) return;
 
     setState(() {
       _saving = true;
@@ -146,6 +195,7 @@ class _ProductFormBodyState extends ConsumerState<_ProductFormBody> {
           costPrice: costPrice,
           uom: _uomController.text.trim(),
           minStockLevel: minStock,
+          attributes: attributes,
         );
         invalidateProduct(ref, id);
         if (mounted) {
@@ -162,6 +212,7 @@ class _ProductFormBodyState extends ConsumerState<_ProductFormBody> {
           costPrice: costPrice,
           uom: _uomController.text.trim(),
           minStockLevel: minStock,
+          attributes: attributes,
         );
         ref.invalidate(productsListProvider);
         if (mounted) {
@@ -375,6 +426,11 @@ class _ProductFormBodyState extends ConsumerState<_ProductFormBody> {
             ),
           ),
         ),
+        const SizedBox(height: AppSpacing.lg),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 720),
+          child: _AttributesSection(attributeControllerFor: _attributeControllerFor),
+        ),
         if (_isEditing) ...[
           const SizedBox(height: AppSpacing.lg),
           ConstrainedBox(
@@ -383,6 +439,70 @@ class _ProductFormBodyState extends ConsumerState<_ProductFormBody> {
           ),
         ],
       ],
+    );
+  }
+}
+
+T? _firstOrNull<T>(Iterable<T> iterable) {
+  for (final item in iterable) {
+    return item;
+  }
+  return null;
+}
+
+/// Driven entirely by the attribute-TYPE catalog — a new active type shows
+/// up here automatically, no frontend change needed (the extensibility the
+/// backend model was built for). One field per active type: a number field
+/// (with its unit, if any, shown as a suffix) for NUMBER types, a text
+/// field otherwise. Descriptive metadata only — NOT variants, never touches
+/// stock/inventory.
+class _AttributesSection extends ConsumerWidget {
+  const _AttributesSection({required this.attributeControllerFor});
+
+  final TextEditingController Function(AttributeType type) attributeControllerFor;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final attributeTypesAsync = ref.watch(attributeTypesProvider(false));
+
+    return AppCard(
+      title: 'Attributes',
+      subtitle: 'Descriptive metadata (colour, size, weight, ...) — optional, not variants',
+      child: attributeTypesAsync.when(
+        loading: () => const LinearProgressIndicator(),
+        error: (error, stackTrace) => Text(
+          'Could not load attribute types',
+          style: TextStyle(color: theme.colorScheme.error),
+        ),
+        data: (attributeTypes) {
+          if (attributeTypes.isEmpty) {
+            return Text(
+              'No attribute types yet.',
+              style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            );
+          }
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (final type in attributeTypes) ...[
+                if (type.dataType == AttributeDataType.number)
+                  AppNumberField(
+                    label: (type.unit?.isNotEmpty ?? false) ? '${type.name} (${type.unit})' : type.name,
+                    controller: attributeControllerFor(type),
+                    allowDecimal: true,
+                  )
+                else
+                  AppTextField(
+                    label: (type.unit?.isNotEmpty ?? false) ? '${type.name} (${type.unit})' : type.name,
+                    controller: attributeControllerFor(type),
+                  ),
+                const SizedBox(height: AppSpacing.md),
+              ],
+            ],
+          );
+        },
+      ),
     );
   }
 }

@@ -1,4 +1,5 @@
 import '../../workstreams/domain/workstream.dart';
+import 'product_attribute.dart';
 import 'product_image.dart';
 import 'product_status.dart';
 
@@ -48,6 +49,7 @@ class Product {
     required this.createdAt,
     required this.updatedAt,
     this.images = const [],
+    this.attributes = const [],
   });
 
   final String id;
@@ -64,6 +66,7 @@ class Product {
   final DateTime createdAt;
   final DateTime updatedAt;
   final List<ProductImage> images;
+  final List<ProductAttribute> attributes;
 
   /// The image flagged `isPrimary`, falling back to the first image when
   /// none is explicitly marked (matches how the backend orders `images` by
@@ -93,6 +96,9 @@ class Product {
     updatedAt: DateTime.parse(json['updatedAt'] as String),
     images: (json['images'] as List<dynamic>? ?? const [])
         .map((e) => ProductImage.fromJson(e as Map<String, dynamic>))
+        .toList(),
+    attributes: (json['attributes'] as List<dynamic>? ?? const [])
+        .map((e) => ProductAttribute.fromJson(e as Map<String, dynamic>))
         .toList(),
   );
 }

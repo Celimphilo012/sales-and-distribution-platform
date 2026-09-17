@@ -61,6 +61,13 @@ const List<NavItem> kNavItems = [
     requiredPermissions: ['catalogue.view'],
   ),
   NavItem(
+    label: 'Attribute Types',
+    path: RoutePaths.attributeTypes,
+    icon: Icons.label_outline,
+    selectedIcon: Icons.label,
+    requiredPermissions: ['catalogue.view'],
+  ),
+  NavItem(
     label: 'Warehouses',
     path: RoutePaths.warehouses,
     icon: Icons.warehouse_outlined,

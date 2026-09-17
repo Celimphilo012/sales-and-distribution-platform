@@ -1,5 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 import {
+  IsArray,
   IsNumber,
   IsOptional,
   IsPositive,
@@ -7,7 +9,9 @@ import {
   IsUUID,
   Min,
   MinLength,
+  ValidateNested,
 } from 'class-validator';
+import { ProductAttributeInputDto } from './product-attribute-input.dto';
 
 export class CreateProductDto {
   @ApiProperty({ example: 'BEV-COLA-330' })
@@ -50,4 +54,15 @@ export class CreateProductDto {
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   minStockLevel?: number;
+
+  @ApiPropertyOptional({
+    type: [ProductAttributeInputDto],
+    description:
+      'Descriptive metadata (colour, size, weight, ...) — NOT variants, stock stays per-product. One value per attribute type.',
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ProductAttributeInputDto)
+  attributes?: ProductAttributeInputDto[];
 }

@@ -4,6 +4,7 @@ import { PrismaClient } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { PERMISSION_CATALOG, ROLE_PERMISSION_MAP } from '../src/permissions/constants/permission-catalog';
 import { API_KEY_SCOPES } from '../src/common/decorators/require-scopes.decorator';
+import { ATTRIBUTE_TYPE_CATALOG } from '../src/attribute-types/constants/attribute-type-catalog';
 
 const prisma = new PrismaClient();
 
@@ -39,6 +40,15 @@ async function main() {
     await prisma.rolePermission.createMany({
       data: permissions.map((p) => ({ roleId: role.id, permissionId: p.id })),
       skipDuplicates: true,
+    });
+  }
+
+  console.log('Seeding attribute types (Colour, Size, Weight, Brand, Material, Dimensions)...');
+  for (const attributeType of ATTRIBUTE_TYPE_CATALOG) {
+    await prisma.attributeType.upsert({
+      where: { code: attributeType.code },
+      update: { name: attributeType.name, dataType: attributeType.dataType, unit: attributeType.unit },
+      create: attributeType,
     });
   }
 

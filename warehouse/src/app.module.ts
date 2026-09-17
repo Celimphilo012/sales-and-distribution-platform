@@ -10,6 +10,7 @@ import { RolesModule } from './roles/roles.module';
 import { PermissionsModule } from './permissions/permissions.module';
 import { WorkstreamsModule } from './workstreams/workstreams.module';
 import { CategoriesModule } from './categories/categories.module';
+import { AttributeTypesModule } from './attribute-types/attribute-types.module';
 import { ProductsModule } from './products/products.module';
 import { ProductImagesModule } from './product-images/product-images.module';
 import { WarehousesModule } from './warehouses/warehouses.module';
@@ -36,6 +37,7 @@ import { ExternalApiModule } from './external-api/external-api.module';
     PermissionsModule,
     WorkstreamsModule,
     CategoriesModule,
+    AttributeTypesModule,
     ProductsModule,
     ProductImagesModule,
     WarehousesModule,

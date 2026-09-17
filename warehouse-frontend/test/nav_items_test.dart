@@ -44,6 +44,7 @@ void main() {
       'Products',
       'Workstreams',
       'Categories',
+      'Attribute Types',
       'Inventory',
       'Stock Receiving',
       'Stock Transfers',

@@ -37,4 +37,12 @@ export class ListProductsQueryDto {
   @IsOptional()
   @IsString()
   search?: string;
+
+  @ApiPropertyOptional({
+    example: 'Colour:Red',
+    description: 'Filter by an attribute value, as "<attribute type name>:<value>"',
+  })
+  @IsOptional()
+  @IsString()
+  attribute?: string;
 }

@@ -219,6 +219,7 @@ model Product {
 
   category Category       @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   images   ProductImage[]
+  attributes ProductAttribute[]
   inventoryBalances     InventoryBalance[]
   inventoryTransactions InventoryTransaction[]
   stockAdjustments      StockAdjustment[]
@@ -227,6 +228,66 @@ model Product {
 
   @@index([categoryId])
   @@map("products")
+}
+
+// -----------------------------------------------------------------------
+// Product attributes — catalogue METADATA only (colour, size, weight, brand,
+// material, dimensions, extensible for more). NOT variants: stock stays
+// keyed by (product_id, location_id) regardless of any attribute value
+// (rule 3) — this table is never read by inventory/ledger code, and
+// applyTransaction/inventory_balances are untouched.
+//
+// Defined-types model, not fixed columns: AttributeType is an admin-managed
+// catalog (like Category/Workstream) so a brand-new attribute (e.g. "Country
+// of Origin") is a ROW an admin adds, not a schema migration. Each product
+// carries at most one value per type (@@unique below) — one colour, one
+// weight, etc.
+// -----------------------------------------------------------------------
+
+enum AttributeDataType {
+  TEXT
+  NUMBER
+}
+
+// Reference data — soft-deleted via is_active (rule 10), never hard-deleted,
+// since products reference an attribute type historically.
+model AttributeType {
+  id        String            @id @default(uuid())
+  name      String
+  code      String            @unique
+  dataType  AttributeDataType @default(TEXT) @map("data_type")
+  // Display unit for NUMBER types (e.g. "kg"); also usable as a hint for a
+  // TEXT type whose values conventionally carry a unit (e.g. Dimensions ->
+  // "cm", with the value itself free text like "30x20x5"). Never enforced
+  // beyond that — it's descriptive, not a second data type.
+  unit      String?
+  isActive  Boolean           @default(true) @map("is_active")
+  createdAt DateTime          @default(now()) @map("created_at")
+  updatedAt DateTime          @updatedAt @map("updated_at")
+
+  productAttributes ProductAttribute[]
+
+  @@map("attribute_types")
+}
+
+// value is always stored as a string — the same "string" shape Decimal
+// columns already serialize as on read (selling_price etc.), so a NUMBER-type
+// value round-trips through JSON identically to a TEXT one; the frontend
+// coerces it per the attribute type's dataType.
+model ProductAttribute {
+  id              String   @id @default(uuid())
+  productId       String   @map("product_id")
+  attributeTypeId String   @map("attribute_type_id")
+  value           String
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  product       Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  attributeType AttributeType @relation(fields: [attributeTypeId], references: [id], onDelete: Restrict)
+
+  @@unique([productId, attributeTypeId])
+  @@index([attributeTypeId])
+  @@map("product_attributes")
 }
 
 // Pure media rows, not historically referenced by orders/transactions —

@@ -1,10 +1,11 @@
 import { Module } from '@nestjs/common';
 import { CategoriesModule } from '../categories/categories.module';
+import { AttributeTypesModule } from '../attribute-types/attribute-types.module';
 import { ProductsController } from './products.controller';
 import { ProductsService } from './products.service';
 
 @Module({
-  imports: [CategoriesModule],
+  imports: [CategoriesModule, AttributeTypesModule],
   controllers: [ProductsController],
   providers: [ProductsService],
   exports: [ProductsService],

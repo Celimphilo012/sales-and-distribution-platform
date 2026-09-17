@@ -1,5 +1,6 @@
 import '../../../core/network/api_client.dart';
 import '../domain/product.dart';
+import '../domain/product_attribute.dart';
 import '../domain/product_image.dart';
 import '../domain/products_filter.dart';
 
@@ -35,6 +36,7 @@ class ProductsApi {
     double? costPrice,
     required String uom,
     double? minStockLevel,
+    List<ProductAttributeInput> attributes = const [],
   }) async {
     final response = await _apiClient.guard(
       (dio) => dio.post<Map<String, dynamic>>(
@@ -48,6 +50,7 @@ class ProductsApi {
           'costPrice': ?costPrice,
           'uom': uom,
           'minStockLevel': ?minStockLevel,
+          'attributes': attributes.map((a) => a.toJson()).toList(),
         },
       ),
     );
@@ -69,6 +72,7 @@ class ProductsApi {
     double? costPrice,
     required String uom,
     required double minStockLevel,
+    List<ProductAttributeInput> attributes = const [],
   }) async {
     final response = await _apiClient.guard(
       (dio) => dio.patch<Map<String, dynamic>>(
@@ -81,6 +85,10 @@ class ProductsApi {
           'costPrice': costPrice,
           'uom': uom,
           'minStockLevel': minStockLevel,
+          // Always sent (this form always manages the full section) — an
+          // empty list deliberately clears every attribute, matching the
+          // backend's "provided = replace the full set" semantics.
+          'attributes': attributes.map((a) => a.toJson()).toList(),
         },
       ),
     );

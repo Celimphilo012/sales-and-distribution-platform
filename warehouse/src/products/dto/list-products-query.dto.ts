@@ -10,6 +10,13 @@ export class ListProductsQueryDto {
   categoryId?: string;
 
   @ApiPropertyOptional({
+    description: "Filter by workstream (via the product's category), a product has no workstream of its own",
+  })
+  @IsOptional()
+  @IsUUID('4')
+  workstreamId?: string;
+
+  @ApiPropertyOptional({
     enum: ProductStatus,
     description: 'Filter to an exact status. Overrides includeInactive.',
   })

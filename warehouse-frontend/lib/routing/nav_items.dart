@@ -47,6 +47,13 @@ const List<NavItem> kNavItems = [
     requiredPermissions: ['catalogue.view'],
   ),
   NavItem(
+    label: 'Workstreams',
+    path: RoutePaths.workstreams,
+    icon: Icons.workspaces_outlined,
+    selectedIcon: Icons.workspaces,
+    requiredPermissions: ['catalogue.view'],
+  ),
+  NavItem(
     label: 'Categories',
     path: RoutePaths.categories,
     icon: Icons.category_outlined,

@@ -17,7 +17,16 @@ export const PERMISSION_CATALOG: PermissionDefinition[] = [
 
   { key: 'catalogue.view', description: 'View product catalogue', module: 'products' },
   { key: 'products.manage', description: 'Create/update/deactivate products and categories', module: 'products' },
-  { key: 'warehouse.structure.manage', description: 'Manage warehouse/location tree', module: 'warehouses' },
+  {
+    key: 'warehouse.structure.view',
+    description: 'View warehouses and the location tree (list/get/subtree/children)',
+    module: 'warehouses',
+  },
+  {
+    key: 'warehouse.structure.manage',
+    description: 'Create/edit/move/deactivate warehouses and locations',
+    module: 'warehouses',
+  },
 
   { key: 'inventory.view', description: 'View inventory balances', module: 'inventory' },
   { key: 'inventory.receive', description: 'Receive stock', module: 'inventory' },
@@ -44,6 +53,7 @@ export const ROLE_PERMISSION_MAP: Record<string, string[]> = {
   // the approve permission in the first place).
   WAREHOUSE: [
     'catalogue.view',
+    'warehouse.structure.view',
     'inventory.view',
     'inventory.receive',
     'inventory.transfer',
@@ -53,5 +63,11 @@ export const ROLE_PERMISSION_MAP: Record<string, string[]> = {
 
   // §F: manager-equivalent — reviews/approves adjustments a WAREHOUSE user
   // requested, plus general visibility.
-  MANAGER: ['catalogue.view', 'inventory.view', 'inventory.adjust.approve', 'audit.view'],
+  MANAGER: [
+    'catalogue.view',
+    'warehouse.structure.view',
+    'inventory.view',
+    'inventory.adjust.approve',
+    'audit.view',
+  ],
 };

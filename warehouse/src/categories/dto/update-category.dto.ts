@@ -20,4 +20,12 @@ export class UpdateCategoryDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'Move this category to a different workstream. Rejected if the category has sub-categories (move them first) or if it would mismatch the (possibly also-updated) parent\'s workstream.',
+  })
+  @IsOptional()
+  @IsUUID('4')
+  workstreamId?: string;
 }

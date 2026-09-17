@@ -11,21 +11,24 @@ class CategoriesApi {
   /// endpoint like `/locations/:id/subtree`. Fetching with no `parentId`
   /// filter returns every category regardless of depth; the tree is built
   /// client-side (see `domain/category_tree.dart`).
-  Future<List<Category>> list({bool includeInactive = false}) async {
+  Future<List<Category>> list({bool includeInactive = false, String? workstreamId}) async {
     final response = await _apiClient.guard(
       (dio) => dio.get<List<dynamic>>(
         '/categories',
-        queryParameters: {if (includeInactive) 'includeInactive': true},
+        queryParameters: {
+          if (includeInactive) 'includeInactive': true,
+          'workstreamId': ?workstreamId,
+        },
       ),
     );
     return response.data!.map((e) => Category.fromJson(e as Map<String, dynamic>)).toList();
   }
 
-  Future<Category> create({required String name, String? parentId}) async {
+  Future<Category> create({required String name, required String workstreamId, String? parentId}) async {
     final response = await _apiClient.guard(
       (dio) => dio.post<Map<String, dynamic>>(
         '/categories',
-        data: {'name': name, 'parentId': ?parentId},
+        data: {'name': name, 'workstreamId': workstreamId, 'parentId': ?parentId},
       ),
     );
     return Category.fromJson(response.data!);
@@ -37,6 +40,7 @@ class CategoriesApi {
     String id, {
     String? name,
     Object? parentId = _unset,
+    String? workstreamId,
     bool? isActive,
   }) async {
     final response = await _apiClient.guard(
@@ -45,6 +49,7 @@ class CategoriesApi {
         data: {
           'name': ?name,
           if (!identical(parentId, _unset)) 'parentId': parentId,
+          'workstreamId': ?workstreamId,
           'isActive': ?isActive,
         },
       ),

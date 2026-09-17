@@ -16,6 +16,7 @@ class RoutePaths {
   static String productDetail(String id) => '$products/$id';
   static String productEdit(String id) => '$products/$id/edit';
 
+  static const workstreams = '/workstreams';
   static const categories = '/categories';
   static const warehouses = '/warehouses';
   static const locations = '/locations';

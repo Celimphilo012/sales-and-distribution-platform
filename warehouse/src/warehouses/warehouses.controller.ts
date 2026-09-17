@@ -21,10 +21,17 @@ import { CreateWarehouseDto } from './dto/create-warehouse.dto';
 import { UpdateWarehouseDto } from './dto/update-warehouse.dto';
 import { ListWarehousesQueryDto } from './dto/list-warehouses-query.dto';
 
+// Read routes (list/get) default to `warehouse.structure.view` via the
+// class-level decorator; each mutating route overrides it with
+// `warehouse.structure.manage` (RequirePermissions is resolved with
+// getAllAndOverride, so a method-level decorator replaces the class-level
+// one rather than merging with it). `.manage` implies `.view` via the seed
+// (ADMIN — the only role with `.manage` — is granted every catalog key), not
+// by stacking both keys here.
 @ApiTags('warehouses')
 @ApiBearerAuth()
 @UseGuards(AuthGuard, PermissionGuard)
-@RequirePermissions('warehouse.structure.manage')
+@RequirePermissions('warehouse.structure.view')
 @Controller('warehouses')
 export class WarehousesController {
   constructor(private readonly warehousesService: WarehousesService) {}
@@ -40,11 +47,13 @@ export class WarehousesController {
   }
 
   @Post()
+  @RequirePermissions('warehouse.structure.manage')
   create(@Body() dto: CreateWarehouseDto) {
     return this.warehousesService.create(dto);
   }
 
   @Patch(':id')
+  @RequirePermissions('warehouse.structure.manage')
   async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateWarehouseDto,
@@ -55,6 +64,7 @@ export class WarehousesController {
   }
 
   @Delete(':id')
+  @RequirePermissions('warehouse.structure.manage')
   async remove(@Param('id', ParseUUIDPipe) id: string, @Req() req: Request) {
     req.auditOldValue = await this.warehousesService.getExisting(id);
     req.auditAction = 'DEACTIVATE';

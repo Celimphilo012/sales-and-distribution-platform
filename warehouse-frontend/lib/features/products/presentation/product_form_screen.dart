@@ -15,6 +15,7 @@ import '../../../shared/widgets/empty_loading_error_states.dart';
 import '../../../shared/widgets/status_badge.dart';
 import '../../categories/data/categories_providers.dart';
 import '../../categories/domain/category_tree.dart';
+import '../../workstreams/data/workstreams_providers.dart';
 import '../data/products_providers.dart';
 import '../domain/product.dart';
 import '../domain/product_image.dart';
@@ -77,6 +78,7 @@ class _ProductFormBodyState extends ConsumerState<_ProductFormBody> {
   late final TextEditingController _costPriceController;
   late final TextEditingController _uomController;
   late final TextEditingController _minStockController;
+  String? _workstreamId;
   String? _categoryId;
   bool _saving = false;
   String? _errorMessage;
@@ -96,6 +98,7 @@ class _ProductFormBodyState extends ConsumerState<_ProductFormBody> {
     );
     _uomController = TextEditingController(text: p?.uom ?? '');
     _minStockController = TextEditingController(text: p != null ? _formatNumber(p.minStockLevel) : '0');
+    _workstreamId = p?.category?.workstreamId;
     _categoryId = p?.categoryId;
   }
 
@@ -178,7 +181,8 @@ class _ProductFormBodyState extends ConsumerState<_ProductFormBody> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final categoryTreeAsync = ref.watch(categoryTreeProvider(false));
+    final workstreamsAsync = ref.watch(workstreamsProvider(false));
+    final categoriesAsync = ref.watch(categoriesProvider(false));
 
     return ListView(
       padding: const EdgeInsets.all(AppSpacing.lg),
@@ -221,17 +225,51 @@ class _ProductFormBodyState extends ConsumerState<_ProductFormBody> {
                   const SizedBox(height: AppSpacing.md),
                   AppTextField(label: 'Description', controller: _descriptionController, maxLines: 3),
                   const SizedBox(height: AppSpacing.md),
-                  categoryTreeAsync.when(
+                  // Category picker reflects the Workstream -> Category ->
+                  // sub-category hierarchy: pick a workstream, then a
+                  // category scoped to it (same "narrow the choices" idiom
+                  // as the category-management dialog and the
+                  // leaf-location picker) — a product has no workstream of
+                  // its own, it's implied by whichever category is chosen.
+                  workstreamsAsync.when(
+                    loading: () => const LinearProgressIndicator(),
+                    error: (error, stackTrace) => Text(
+                      'Could not load workstreams',
+                      style: TextStyle(color: theme.colorScheme.error),
+                    ),
+                    data: (workstreams) => AppDropdownField<String>(
+                      label: 'Workstream',
+                      value: _workstreamId,
+                      items: [for (final w in workstreams) w.id],
+                      itemLabel: (id) => workstreams.firstWhere((w) => w.id == id).name,
+                      onChanged: (value) => setState(() {
+                        _workstreamId = value;
+                        // A category from the old workstream isn't valid
+                        // for the new one.
+                        _categoryId = null;
+                      }),
+                      validator: (v) => v == null ? 'Choose a workstream' : null,
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  categoriesAsync.when(
                     loading: () => const LinearProgressIndicator(),
                     error: (error, stackTrace) => Text(
                       'Could not load categories',
                       style: TextStyle(color: theme.colorScheme.error),
                     ),
-                    data: (tree) {
+                    data: (categories) {
+                      if (_workstreamId == null) {
+                        return Text(
+                          'Choose a workstream first',
+                          style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                        );
+                      }
+                      final tree = buildCategoryTreeForWorkstream(categories, _workstreamId!);
                       final flat = flattenCategoryTree(tree);
                       return AppDropdownField<String>(
                         label: 'Category',
-                        value: _categoryId,
+                        value: flat.any((n) => n.category.id == _categoryId) ? _categoryId : null,
                         items: [for (final node in flat) node.category.id],
                         itemLabel: (id) {
                           final node = flat.firstWhere((n) => n.category.id == id);

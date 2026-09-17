@@ -86,6 +86,13 @@ class _MobileCardList<T> extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return ListView.separated(
+      // shrinkWrap (matching AppTreeView's own list) lets this size itself
+      // to its content instead of demanding a bounded viewport height, so a
+      // caller can embed an AppDataTable inside an already-scrolling
+      // ancestor (e.g. a detail panel's outer SingleChildScrollView)
+      // without a "vertical viewport was given unbounded height" crash —
+      // while a bounded ancestor (the common case) still scrolls normally.
+      shrinkWrap: true,
       padding: const EdgeInsets.all(AppSpacing.md),
       itemCount: rows.length,
       separatorBuilder: (context, index) => const SizedBox(height: AppSpacing.sm),

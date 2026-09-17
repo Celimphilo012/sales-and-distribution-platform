@@ -13,4 +13,9 @@ export class ListCategoriesQueryDto {
   @IsOptional()
   @IsUUID('4')
   parentId?: string;
+
+  @ApiPropertyOptional({ description: 'Filter to categories belonging to this workstream' })
+  @IsOptional()
+  @IsUUID('4')
+  workstreamId?: string;
 }

@@ -77,78 +77,56 @@ cross-imports, no foreign keys across the boundary, no shared DB transaction. Se
 
 ## Current phase
 
-**System split in progress (see ARCHITECTURE.md §A2 roadmap).**
-Backend Phase 1 (1A–1G) is complete and verified. Front-end F1+F2 done.
-Step 1 of the split (scaffold `/warehouse` standalone) is DONE. `/backend` (the
-existing back-office) stays running untouched as the reference system.
+**System split (see ARCHITECTURE.md §A2 roadmap) — backend split DONE.**
+Backend Phase 1 (1A–1G) complete. Split steps 1–5 DONE: `/warehouse` is a
+standalone system (own db, ledger + trigger verified, scoped API-key external
+API), and `/backend` (ordering) is carved down and wired to the warehouse API
+across the boundary (reserve/release/issue, pricing hole closed).
 
-Step 5 — rewire 1E/1F across the API boundary — is DONE. `/backend` now has a
-single `WarehouseApiClient` (`src/warehouse-api/`) as the sole path to
-`/warehouse`, configured via `WAREHOUSE_API_URL`/`WAREHOUSE_API_KEY` in `.env`.
-`OrdersService.reserve()`/`cancel()`/`dispatch()` call the warehouse's
-`POST /api/v1/stock/{reserve,release,issue}` (reference = order id) instead of
-throwing the step-4 stubs, branching on the 200-with-discriminator contract
-(never assuming HTTP 200 = success) and distinguishing that from a
-network/auth failure (503/502, order left unchanged, safe to retry — reserve/
-release/issue are idempotent on reference). Both rule-8 holes are closed:
-`buildLineInputs()` fetches each product from the warehouse catalogue and
-snapshots name + current sellingPrice server-side; `unitPrice` is no longer
-even an accepted field on `OrderItemInputDto` (whitelist-rejected if sent).
-`OrderItem` gained `productName` (nullable — never backfilled for pre-step-5
-rows) and `reservedLocationId` (set by `reserve()`, since there's no local
-ledger any more to recover it from — `dispatch()`'s issue call needs it
-verbatim).
+**Frontend (step 6 — two separate frontends, one per system):**
+- `/warehouse-frontend` — standalone Flutter app for the warehouse (logs into
+  warehouse 3100). 6a (foundation) DONE. 6b (Products + Categories) DONE.
+  6c (Warehouses + dynamic locations tree) DONE.
+  6d (Inventory views — "where is this product" + "what's in this location",
+  read-only) DONE; the 6c "stock in location" placeholder is now real.
+  6e-1 (Receiving + Transfers — the first stock-MOVING screens) DONE: one
+  reusable leaf-location picker (needs only `warehouse.structure.view`) shared
+  by both forms; write→read loop made visible via a live balance card plus a
+  deep link into the 6d "where is this product" view. Verified a WAREHOUSE-role
+  user (no `warehouse.structure.manage`) can load the picker and complete both
+  a receive and a transfer, decimals round-trip correctly, and the backend
+  403s a user without `inventory.receive`/`inventory.transfer`.
+- `/frontend` — the existing app, becomes the ordering front end; retrofit
+  (strip warehouse nav, rewire to `/backend`) is a LATER step.
 
-**Step 6 is TWO independent Flutter front ends** (the ASCII diagram in
-ARCHITECTURE.md §A2 always showed this — a "Warehouse Frontend" and a
-"Back-Office Frontend" as separate boxes): `/frontend` stays the ordering UI
-against `/backend` (3000); a NEW `/warehouse-frontend` talks only to
-`/warehouse` (3100). No shared package, no cross-imports — each is a fully
-standalone Flutter app copying the same proven `core`/`shared` foundation.
+**Next: 6e-2 — Stock counts + adjustments** in `/warehouse-frontend`, the
+remaining stock-MOVING screens (`inventory.count`, `inventory.adjust.request` /
+`.approve`). Copies the 6e-1 pattern, reusing the same leaf-location picker.
+Then retrofit `/frontend` into the ordering app.
 
-Step 6a (scaffold `/warehouse-frontend`) is DONE: core (network/theme/
-responsive/error), shared widgets, real auth (login/session-restore/
-rotating-refresh/`/auth/me`), routing + the responsive app shell were copied
-from `/frontend` and re-pointed at `http://localhost:3100`. Nav uses only
-real warehouse permission keys (catalogue.view, products.manage,
-warehouse.structure.manage, inventory.view/receive/transfer/count/
-adjust.request/adjust.approve, users.manage, roles.manage, audit.view) —
-orders/customers/fulfilment/reports nav entries and permission strings were
-removed entirely, since they don't exist on this system. Every nav route is
-still a `ComingSoonView` placeholder — no warehouse feature screens yet.
-Runs on web port 8090 (added to `/warehouse`'s `CORS_ORIGINS` — the only
-warehouse-backend touch this step made). `/frontend` and both backends'
-source are untouched.
+**API characteristic (from 6d):** `/inventory/balances` returns a flat
+`location_id` + name/code, NOT the full ancestor path. The frontend resolves the
+path client-side by walking the locations tree. Works, but it's N-lookups against
+the loaded locations data — a candidate for a future backend improvement (return
+the path, or denormalize) if inventory lists grow large. 6e references locations
+the same way.
 
-Step 6b (Products + Categories, the catalogue) is DONE — the reusable
-warehouse feature-screen pattern every later feature copies: data (repository
-→ `ApiClient`) / domain (models, `ProductsFilter`) / presentation (Riverpod
-providers + screens) layering. Products: responsive list (search/category/
-status filters, no pagination — the real `ListProductsQueryDto` has none),
-a dedicated routed create/edit form (category picker from the flat list
-shown indented, image-URL add/remove/set-primary), a read-only detail screen
-with permission-gated edit/soft-delete. Categories: client-built tree (the
-API is flat, no `/subtree`) with dialog-based CRUD. Both gate create/edit/
-delete on `products.manage`, reusing the exact permission-check pattern
-`/frontend`'s F3 established (`catalogue.view` to read).
+**KNOWN ISSUES to fix during the `/frontend` retrofit** (shared widgets copied
+into `/warehouse-frontend` had bugs fixed there; `/frontend`'s copies were left
+untouched and almost certainly share them — patch before building `/frontend`
+screens that use them):
+1. **ConfirmDialog** — go_router/ShellRoute bug: uses the calling context's
+   nested Navigator instead of the root, so confirming a destructive action
+   crashes. Fixed in `/warehouse-frontend` with `rootNavigator: true`.
+2. **AppDataTable** — its mobile/tablet card list used a non-`shrinkWrap`
+   ListView, which crashes ("unbounded height") when embedded in an
+   already-scrolling ancestor. Fixed in `/warehouse-frontend` with
+   `shrinkWrap: true`.
 
-**Real bug found and fixed** (in `warehouse-frontend/lib/shared/widgets/
-app_dialog.dart`, copied verbatim from `/frontend` in step 6a — `/frontend`'s
-own copy was NOT touched, since this step's scope is warehouse-frontend
-only, but the same bug almost certainly exists there too): `ConfirmDialog`'s
-Cancel/Deactivate buttons called `Navigator.of(context).pop()` using the
-CALLER's context. Under go_router's `ShellRoute` (which nests its own
-Navigator), that resolves to the shell's Navigator — not the root one
-`showDialog`'s default `useRootNavigator: true` actually pushed the dialog
-onto — so confirming a destructive action popped the current PAGE instead of
-the dialog, crashing with go_router's "popped the last page off of the
-stack" assertion. Fixed by popping with `rootNavigator: true` explicitly.
-Caught live while verifying product/category soft-delete.
-
-**Next: Step 6c+ — build the remaining warehouse feature screens**
-(warehouse structure/locations, inventory, receiving, transfers, counts,
-adjustments, users, roles, audit) in `/warehouse-frontend`, calling
-`/warehouse` directly (never through `/backend`).
+**BACKEND GAP — FIXED:** warehouse warehouses/locations reads now require
+`warehouse.structure.view` (separate from `.manage`, which stays required for
+writes); WAREHOUSE role has `.view` only. Confirmed in 6e-1 that a
+`.view`-only user can load the leaf-location picker used by receiving/transfers.
 
 ---
 

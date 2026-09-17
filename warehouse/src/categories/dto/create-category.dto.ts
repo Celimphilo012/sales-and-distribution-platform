@@ -11,4 +11,11 @@ export class CreateCategoryDto {
   @IsOptional()
   @IsUUID('4')
   parentId?: string;
+
+  @ApiProperty({
+    description:
+      'Workstream this category belongs to. If parentId is set, must match the parent category\'s workstream.',
+  })
+  @IsUUID('4')
+  workstreamId: string;
 }

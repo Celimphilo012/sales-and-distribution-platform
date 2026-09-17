@@ -26,7 +26,11 @@ export class ExternalCatalogueController {
   async getCatalogue(@Query() query: ListProductsQueryDto) {
     const [products, categories] = await Promise.all([
       this.productsService.findAll(query),
-      this.categoriesService.findAll({}),
+      // Workstream info now rides along on every category (and, nested, on
+      // every product's category) automatically — see CATEGORY_INCLUDE /
+      // PRODUCT_INCLUDE. `workstreamId` here filters which categories come
+      // back, same query param the internal /categories route accepts.
+      this.categoriesService.findAll({ workstreamId: query.workstreamId }),
     ]);
     return { categories, products };
   }

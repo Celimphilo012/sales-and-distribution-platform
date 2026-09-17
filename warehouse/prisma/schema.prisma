@@ -145,18 +145,60 @@ enum ProductStatus {
 
 // Reference data — soft-deleted via is_active (rule 10), never hard-deleted,
 // since products reference a category historically.
+//
+// workstreamId: a catalogue-organization layer (Warehouse -> Workstream ->
+// Category -> sub-category -> Product), added after categories already
+// existed unscoped to any warehouse (see the Workstream model doc comment for
+// the migration/backfill this required). Every category belongs to exactly
+// ONE workstream — this is purely organizational, never read by inventory/
+// ledger code.
 model Category {
-  id       String  @id @default(uuid())
-  name     String
-  parentId String? @map("parent_id")
-  isActive Boolean @default(true) @map("is_active")
+  id           String  @id @default(uuid())
+  name         String
+  parentId     String? @map("parent_id")
+  workstreamId String  @map("workstream_id")
+  isActive     Boolean @default(true) @map("is_active")
 
-  parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: Restrict)
-  children Category[] @relation("CategoryTree")
-  products Product[]
+  parent     Category?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children   Category[] @relation("CategoryTree")
+  workstream Workstream @relation(fields: [workstreamId], references: [id], onDelete: Restrict)
+  products   Product[]
 
   @@index([parentId])
+  @@index([workstreamId])
   @@map("categories")
+}
+
+// -----------------------------------------------------------------------
+// Workstreams — a catalogue-organization layer, NOT operational (does not
+// affect inventory/stock/permissions/fulfilment). Sits between Warehouse and
+// Category: Warehouse -> Workstream -> Category -> sub-category -> Product.
+// A workstream belongs to exactly one warehouse, mirroring how Location does
+// (warehouseId + unique(warehouseId, code)).
+//
+// Added after categories already existed with NO warehouse scoping at all
+// (categories were, and remain structurally, global reference data — see the
+// Category model). The migration that introduced this column backfilled
+// every pre-existing category onto ONE default workstream (name "General",
+// code "GEN") rather than one-per-warehouse, since there was no existing
+// per-category warehouse signal to split them by. See migration
+// `add_workstreams` for the exact backfill.
+model Workstream {
+  id          String   @id @default(uuid())
+  warehouseId String   @map("warehouse_id")
+  name        String
+  code        String
+  description String?
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  warehouse  Warehouse  @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  categories Category[]
+
+  @@unique([warehouseId, code])
+  @@index([warehouseId])
+  @@map("workstreams")
 }
 
 // Reference data — soft-deleted via status (rule 10), never hard-deleted,
@@ -216,6 +258,7 @@ model Warehouse {
 
   locations   Location[]
   stockCounts StockCount[]
+  workstreams Workstream[]
 
   @@map("warehouses")
 }

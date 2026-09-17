@@ -7,7 +7,14 @@ import { UpdateProductDto } from './dto/update-product.dto';
 import { ListProductsQueryDto } from './dto/list-products-query.dto';
 
 const PRODUCT_INCLUDE = {
-  category: { select: { id: true, name: true } },
+  category: {
+    select: {
+      id: true,
+      name: true,
+      workstreamId: true,
+      workstream: { select: { id: true, name: true, code: true } },
+    },
+  },
   images: { orderBy: { sortOrder: 'asc' as const } },
 };
 
@@ -22,6 +29,9 @@ export class ProductsService {
     const where: Prisma.ProductWhereInput = {
       categoryId: query.categoryId,
       status: query.status ?? (query.includeInactive ? undefined : ProductStatus.ACTIVE),
+      // Product has no workstream_id of its own — a product's workstream is
+      // implied by its category's, so filtering goes through the relation.
+      category: query.workstreamId ? { workstreamId: query.workstreamId } : undefined,
     };
 
     if (query.search) {

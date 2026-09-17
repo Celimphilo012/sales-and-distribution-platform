@@ -24,10 +24,17 @@ import { MoveLocationDto } from './dto/move-location.dto';
 import { CreateLevelsDto } from './dto/create-levels.dto';
 import { ListLocationsQueryDto } from './dto/list-locations-query.dto';
 
+// Read routes (list/get/children/subtree) default to
+// `warehouse.structure.view` via the class-level decorator; each mutating
+// route overrides it with `warehouse.structure.manage` (RequirePermissions
+// is resolved with getAllAndOverride, so a method-level decorator replaces
+// the class-level one rather than merging with it). `.manage` implies
+// `.view` via the seed (ADMIN — the only role with `.manage` — is granted
+// every catalog key), not by stacking both keys here.
 @ApiTags('locations')
 @ApiBearerAuth()
 @UseGuards(AuthGuard, PermissionGuard)
-@RequirePermissions('warehouse.structure.manage')
+@RequirePermissions('warehouse.structure.view')
 @Controller('locations')
 export class LocationsController {
   constructor(private readonly locationsService: LocationsService) {}
@@ -53,11 +60,13 @@ export class LocationsController {
   }
 
   @Post()
+  @RequirePermissions('warehouse.structure.manage')
   create(@Body() dto: CreateLocationDto) {
     return this.locationsService.create(dto);
   }
 
   @Post(':id/children')
+  @RequirePermissions('warehouse.structure.manage')
   async addChild(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: CreateChildLocationDto,
@@ -69,6 +78,7 @@ export class LocationsController {
   }
 
   @Post(':id/levels')
+  @RequirePermissions('warehouse.structure.manage')
   async generateLevels(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: CreateLevelsDto,
@@ -79,6 +89,7 @@ export class LocationsController {
   }
 
   @Post(':id/move')
+  @RequirePermissions('warehouse.structure.manage')
   async move(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: MoveLocationDto,
@@ -90,6 +101,7 @@ export class LocationsController {
   }
 
   @Patch(':id')
+  @RequirePermissions('warehouse.structure.manage')
   async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateLocationDto,
@@ -100,6 +112,7 @@ export class LocationsController {
   }
 
   @Delete(':id')
+  @RequirePermissions('warehouse.structure.manage')
   async remove(@Param('id', ParseUUIDPipe) id: string, @Req() req: Request) {
     req.auditOldValue = await this.locationsService.getExisting(id);
     req.auditAction = 'DEACTIVATE';

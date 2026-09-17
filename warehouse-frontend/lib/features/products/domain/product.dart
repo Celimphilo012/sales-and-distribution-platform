@@ -1,16 +1,28 @@
+import '../../workstreams/domain/workstream.dart';
 import 'product_image.dart';
 import 'product_status.dart';
 
-/// The `{id, name}` the backend embeds on a product for its category —
-/// not the full `Category` (see `features/categories/domain/category.dart`).
+/// The `{id, name, workstreamId, workstream}` the backend embeds on a
+/// product for its category — not the full `Category` (see
+/// `features/categories/domain/category.dart`). A product has no
+/// workstream of its own; it's implied by its category's, carried here so
+/// screens don't need a second lookup just to show it.
 class ProductCategoryRef {
-  const ProductCategoryRef({required this.id, required this.name});
+  const ProductCategoryRef({required this.id, required this.name, required this.workstreamId, this.workstream});
 
   final String id;
   final String name;
+  final String workstreamId;
+  final WorkstreamRef? workstream;
 
-  factory ProductCategoryRef.fromJson(Map<String, dynamic> json) =>
-      ProductCategoryRef(id: json['id'] as String, name: json['name'] as String);
+  factory ProductCategoryRef.fromJson(Map<String, dynamic> json) => ProductCategoryRef(
+    id: json['id'] as String,
+    name: json['name'] as String,
+    workstreamId: json['workstreamId'] as String,
+    workstream: json['workstream'] != null
+        ? WorkstreamRef.fromJson(json['workstream'] as Map<String, dynamic>)
+        : null,
+  );
 }
 
 /// Mirrors the backend's `Product` model (`GET/POST/PATCH/DELETE /products`)

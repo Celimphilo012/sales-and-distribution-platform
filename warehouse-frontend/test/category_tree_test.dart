@@ -4,10 +4,10 @@ import 'package:warehouse_frontend/features/categories/domain/category.dart';
 import 'package:warehouse_frontend/features/categories/domain/category_tree.dart';
 
 void main() {
-  const beverages = Category(id: 'bev', name: 'Beverages', isActive: true);
-  const soda = Category(id: 'soda', name: 'Soda', parentId: 'bev', isActive: true);
-  const cola = Category(id: 'cola', name: 'Cola', parentId: 'soda', isActive: true);
-  const snacks = Category(id: 'snacks', name: 'Snacks', isActive: false);
+  const beverages = Category(id: 'bev', name: 'Beverages', workstreamId: 'ws1', isActive: true);
+  const soda = Category(id: 'soda', name: 'Soda', parentId: 'bev', workstreamId: 'ws1', isActive: true);
+  const cola = Category(id: 'cola', name: 'Cola', parentId: 'soda', workstreamId: 'ws1', isActive: true);
+  const snacks = Category(id: 'snacks', name: 'Snacks', workstreamId: 'ws2', isActive: false);
 
   final flat = [snacks, beverages, soda, cola];
 
@@ -41,5 +41,14 @@ void main() {
   test('descendantIds is empty for an unknown id', () {
     final tree = buildCategoryTree(flat);
     expect(descendantIds(tree, 'nope'), isEmpty);
+  });
+
+  test('buildCategoryTreeForWorkstream scopes to one workstream only', () {
+    final ws1Tree = buildCategoryTreeForWorkstream(flat, 'ws1');
+    expect(ws1Tree.map((n) => n.category.id), ['bev']);
+    expect(ws1Tree.first.children.single.category.id, 'soda');
+
+    final ws2Tree = buildCategoryTreeForWorkstream(flat, 'ws2');
+    expect(ws2Tree.map((n) => n.category.id), ['snacks']);
   });
 }

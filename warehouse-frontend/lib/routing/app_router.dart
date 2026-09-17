@@ -8,9 +8,15 @@ import '../core/auth/auth_provider.dart';
 import '../core/auth/auth_state.dart';
 import '../features/auth/presentation/login_screen.dart';
 import '../features/categories/presentation/categories_screen.dart';
+import '../features/inventory/presentation/inventory_screen.dart';
+import '../features/locations/presentation/warehouse_structure_screen.dart';
 import '../features/products/presentation/product_detail_screen.dart';
 import '../features/products/presentation/product_form_screen.dart';
 import '../features/products/presentation/products_list_screen.dart';
+import '../features/receiving/presentation/receiving_form_screen.dart';
+import '../features/transfers/presentation/transfer_form_screen.dart';
+import '../features/warehouses/presentation/warehouses_list_screen.dart';
+import '../features/workstreams/presentation/workstreams_screen.dart';
 import '../shared/widgets/coming_soon_view.dart';
 import 'component_gallery_screen.dart';
 import 'nav_items.dart';
@@ -28,7 +34,16 @@ class _AuthRefreshListenable extends ChangeNotifier {
 
 /// Nav-item paths whose sub-routes (list/detail/create/edit) are hand-built
 /// below instead of the generic one-`ComingSoonView`-per-item loop.
-const _customBuiltPaths = {RoutePaths.products, RoutePaths.categories};
+const _customBuiltPaths = {
+  RoutePaths.products,
+  RoutePaths.workstreams,
+  RoutePaths.categories,
+  RoutePaths.warehouses,
+  RoutePaths.locations,
+  RoutePaths.inventory,
+  RoutePaths.receiving,
+  RoutePaths.transfers,
+};
 
 /// The app's single [GoRouter], keyed off [authProvider] for the splash
 /// gate (session restore in flight), the signed-in gate, and per-route
@@ -37,10 +52,14 @@ const _customBuiltPaths = {RoutePaths.products, RoutePaths.categories};
 /// `catalogue.view` requirement). Every route below the login screen renders
 /// inside [ResponsiveAppShell].
 ///
-/// STEP 6b: Products + Categories (the catalogue) make real calls against
-/// the warehouse backend — this is the reusable screen pattern every later
-/// warehouse feature (inventory, locations, receiving, ...) copies. Every
-/// other nav route is still a step-6a [ComingSoonView] placeholder.
+/// Steps 6b (Products/Categories), 6c (Warehouses/Warehouse Structure), 6d
+/// (Inventory — read-only), and 6e-1 (Receiving/Transfers — the first
+/// stock-MOVING screens) all make real calls against the warehouse backend,
+/// each copying the same data/domain/presentation pattern. Stock Counts and
+/// Stock Adjustments are still step-6a [ComingSoonView] placeholders, built
+/// in 6e-2. Workstreams (a catalogue-organization layer — Warehouse ->
+/// Workstream -> Category -> sub-category -> Product, purely reference data,
+/// never operational) extends the 6b catalogue screens.
 final appRouterProvider = Provider<GoRouter>((ref) {
   final refreshListenable = _AuthRefreshListenable(ref);
 
@@ -100,7 +119,20 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '${RoutePaths.products}/:id/edit',
             builder: (context, state) => ProductFormScreen(productId: state.pathParameters['id']!),
           ),
+          GoRoute(path: RoutePaths.workstreams, builder: (context, state) => const WorkstreamsScreen()),
           GoRoute(path: RoutePaths.categories, builder: (context, state) => const CategoriesScreen()),
+          GoRoute(path: RoutePaths.warehouses, builder: (context, state) => const WarehousesListScreen()),
+          GoRoute(
+            path: RoutePaths.locations,
+            builder: (context, state) =>
+                WarehouseStructureScreen(initialWarehouseId: state.uri.queryParameters['warehouseId']),
+          ),
+          GoRoute(
+            path: RoutePaths.inventory,
+            builder: (context, state) => InventoryScreen(initialProductId: state.uri.queryParameters['productId']),
+          ),
+          GoRoute(path: RoutePaths.receiving, builder: (context, state) => const ReceivingFormScreen()),
+          GoRoute(path: RoutePaths.transfers, builder: (context, state) => const TransferFormScreen()),
         ],
       ),
     ],

@@ -42,6 +42,7 @@ void main() {
     expect(visible, {
       'Dashboard',
       'Products',
+      'Workstreams',
       'Categories',
       'Inventory',
       'Stock Receiving',

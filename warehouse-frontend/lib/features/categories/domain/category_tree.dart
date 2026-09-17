@@ -34,6 +34,15 @@ List<CategoryNode> buildCategoryTree(List<Category> categories) {
   return build(null, 0);
 }
 
+/// [buildCategoryTree], scoped to one workstream. Every category in a given
+/// subtree shares its root's `workstreamId` (backend-enforced — a
+/// sub-category must match its parent's workstream), so filtering the flat
+/// list down to one workstream FIRST, then building the tree from just that
+/// subset, reconstructs exactly that workstream's own tree.
+List<CategoryNode> buildCategoryTreeForWorkstream(List<Category> categories, String workstreamId) {
+  return buildCategoryTree(categories.where((c) => c.workstreamId == workstreamId).toList());
+}
+
 /// Depth-first flatten — e.g. for a "pick a category" dropdown that shows
 /// hierarchy via indentation off [CategoryNode.depth].
 List<CategoryNode> flattenCategoryTree(List<CategoryNode> nodes) {

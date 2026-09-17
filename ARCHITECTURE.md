@@ -105,89 +105,22 @@ normal JWT login to the warehouse system; system-to-system calls use the key.
    users/customers/orders; point at distribution_platform. **DONE** (warehouse tables
    dropped; order↔stock touchpoints stubbed as 501s mapping 1:1 to the warehouse API;
    order_items.product_id is now a plain column, no cross-boundary FK).
-5. **Rewire 1E/1F across the API boundary.** **DONE.** `/backend` gained one
-   `WarehouseApiClient` (`src/warehouse-api/`) as the sole path to `/warehouse` —
-   `WAREHOUSE_API_URL`/`WAREHOUSE_API_KEY` from env, `X-API-Key` on every call, and
-   centralised handling of the two failure kinds a caller must not conflate: a
-   network/HTTP-level failure (`ServiceUnavailableException` when unreachable,
-   `BadGatewayException` — carrying the warehouse's own reason — for any non-200), vs. a
-   normal business outcome the warehouse reports as HTTP 200 with a discriminator
-   (returned as a typed result, never thrown; callers branch on it themselves).
-   - **PRICING (rule 8) — CLOSED.** `buildLineInputs()` calls `WarehouseApiClient.
-     getProduct()` (there's no by-id read on the external catalogue API, so this fetches
-     `GET /api/v1/catalogue?includeInactive=true` and finds the id client-side) and
-     snapshots the CURRENT sellingPrice + name server-side. `unitPrice` was removed from
-     `OrderItemInputDto` entirely — the whitelist-validation pipe now flatly rejects a
-     request that includes it, so a client price can't even sneak in.
-   - **NAME SNAPSHOT — CLOSED.** `OrderItem.productName` (nullable — rows created before
-     step 5 have none, and are never backfilled) is set from the same catalogue fetch.
-   - reserve on APPROVED→STOCK_RESERVED calls `POST /api/v1/stock/reserve`; a `success:false`
-     (insufficient stock) discriminator leaves the order at APPROVED and surfaces the
-     structured short-line detail, no local write at all. On success, each allocation's
-     `locationId` is persisted onto `OrderItem.reservedLocationId` (new nullable column —
-     there's no local ledger any more to recover this from later) before advancing status.
-   - release on cancel calls `POST /api/v1/stock/release` (reference = order id) BEFORE the
-     local CANCELLED transition — idempotent, so a retry after a partial prior failure is
-     always safe.
-   - issue on dispatch calls `POST /api/v1/stock/issue` with one line per item that has a
-     packed quantity > 0 (a fully-unpacked order calls `release` instead, since `issue`
-     requires ≥1 line); `quantityFulfilled` and the final status (DISPATCHED vs
-     PARTIALLY_FULFILLED) are set ONLY from the warehouse's response, matched back to order
-     items by `(productId, locationId)`, never guessed locally.
-   - Verified end-to-end (see the step-5 session report): plumbing + bad-key auth error,
-     pricing snapshot + client-price rejection + nonexistent/inactive product rejection,
-     reserve happy path + shortfall (stock unchanged) + retry-on-already-reserved-reference
-     idempotency, release + retry-on-already-released idempotency, dispatch happy path +
-     partial (remainder released), and warehouse-down (503, order untouched) → restart →
-     retry succeeds.
-6. **TWO independent Flutter front ends** (per the §A2 diagram above — always the design, not
-   a new decision): `/frontend` (ordering, → `/backend` on 3000, unchanged) and a new
-   `/warehouse-frontend` (→ `/warehouse` on 3100). No shared package between them.
-   - **6a — scaffold `/warehouse-frontend`. DONE.** Copied `core/` (network incl. the dio
-     client + JWT/refresh interceptor + secure token storage, theme, responsive, error
-     mapping), `shared/` widgets, the real auth flow (login, session restore, rotating
-     refresh, `/auth/me`), routing (go_router, permission-gated) and the responsive app
-     shell verbatim from `/frontend`, then re-pointed the single `AppConfig.apiBaseUrl`
-     constant at `http://localhost:3100`. Nav table rebuilt with ONLY real warehouse
-     permission keys (catalogue.view, products.manage, warehouse.structure.manage,
-     inventory.view/receive/transfer/count/adjust.request/adjust.approve, users.manage,
-     roles.manage, audit.view) — no `orders.*`/`customers.*`/`reports.view` (that key
-     doesn't exist on the warehouse backend), no Orders/Fulfilment/Reports nav items.
-     Every nav route renders `ComingSoonView` — no feature screens yet. Runs on web port
-     8090; added to `/warehouse`'s `CORS_ORIGINS` (the one permitted backend touch this
-     step made). `/frontend` and both backends' source code are untouched.
-   - **6b — Products + Categories (the catalogue). DONE.** The reusable warehouse
-     feature-screen template: `data/` (repository → `ApiClient`, parses the §E decimal-
-     as-string gotcha on read, sends plain numbers on write per the real DTOs) / `domain/`
-     (models, `ProductsFilter` incl. its query-param mapping) / `presentation/` (Riverpod
-     providers the screens `watch`). Products: responsive `AppDataTable` list (search,
-     category and status filters against the real `ListProductsQueryDto` — confirmed NO
-     pagination param exists), a dedicated routed create/edit form (never a dialog — too
-     many fields) with an indented category picker built from the flat list and an
-     image-URL editor (add/remove/set-primary, backend-enforced single-primary
-     confirmed), a read-only detail screen with permission-gated edit/soft-delete behind
-     a `ConfirmDialog`. Categories: client-built tree (§E — flat API, no `/subtree`) with
-     dialog-based create/rename/reparent/activate-deactivate. Both gate mutation controls
-     on `products.manage` (`catalogue.view` to read) — verified a `catalogue.view`-only
-     WAREHOUSE-role user sees the lists but no create/edit/delete affordances, including
-     via direct URL to `/products/new`.
-   - **Real bug found and fixed during 6b verification** (in `warehouse-frontend/lib/
-     shared/widgets/app_dialog.dart`, copied verbatim from `/frontend` in 6a —
-     `/frontend`'s own copy untouched, out of this step's scope, but very likely carries
-     the same bug): `ConfirmDialog`'s action buttons popped via `Navigator.of(context)`
-     using the CALLING screen's context. Under go_router's `ShellRoute` (which nests its
-     own Navigator per branch), that resolves to the shell Navigator, not the root one
-     `showDialog`'s default `useRootNavigator: true` actually pushed the dialog onto — so
-     confirming a destructive action (e.g. "Deactivate product") popped the current PAGE
-     off go_router's stack instead of dismissing the dialog, crashing with "You have
-     popped the last page off of the stack, there are no pages left to show." Fixed with
-     `Navigator.of(context, rootNavigator: true).pop(...)`.
-   - **6c+ — NEXT.** Build the remaining warehouse feature screens (warehouse
-     structure/locations, inventory, receiving, transfers, counts, adjustments, users,
-     roles, audit) in `/warehouse-frontend`, calling `/warehouse` directly.
-   - Rewiring `/frontend`'s own catalogue-dependent screens (if any) to call the warehouse
-     API instead of `/backend` is separate follow-up work on the ordering side, not part
-     of 6a/6b/6c.
+5. **Rewire 1E/1F across the API boundary. The real rework.** Fill the step-4 stubs by
+   calling the warehouse API (reserve→confirm→compensate). MUST also close two holes that
+   step 4 opened/exposed:
+   - **PRICING (rule 8 — currently VIOLATED):** `unitPrice` is temporarily client-supplied
+     because the catalogue left `/backend`. Step 5 MUST fetch the current price from
+     `GET /api/v1/catalogue` at order-line creation and snapshot THAT — never trust the
+     client price. This is the top-priority correctness item; it's a live hole until fixed.
+   - **NAME SNAPSHOT:** order lines don't snapshot the product name (pre-existing gap).
+     Step 5 fetches name + price from the catalogue API at line creation and stores both
+     on the line, so an order displays forever without a live lookup (§A2).
+   - reserve on APPROVED→STOCK_RESERVED → `POST /api/v1/stock/reserve`; release on cancel →
+     `POST /api/v1/stock/release`; issue on dispatch → `POST /api/v1/stock/issue`. Respect
+     the 200-with-discriminator contract (check the discriminator, not just HTTP status)
+     and idempotency-on-reference. Handle a reserve shortfall (structured short-lines) by
+     keeping the order at APPROVED, not advancing.
+6. Rewire the frontend: catalogue screens → warehouse API; order screens → ordering API.
 
 **Warehouse external API contract (step 3 — the back-office consumes these):**
 - Auth: `X-API-Key` header, scoped keys (`catalogue:read`, `stock:read`, `stock:reserve`,
@@ -283,9 +216,11 @@ notifications (user_id)
 ## E. Database Schema (core, abridged)
 
 > **API contract notes (confirmed against the real API — clients must handle these):**
-> - **Decimal fields serialize as JSON strings, not numbers** — `selling_price`,
->   `cost_price`, `min_stock_level` come back as e.g. `"25.50"`. Flutter/JS models must
->   parse them as strings, never assume a number type.
+> - **Decimal fields: string on READ, number on WRITE (asymmetric).**
+>   `selling_price`, `cost_price`, `min_stock_level` come back as JSON strings
+>   (`"25.50"`) on GET, but the create/update DTOs expect plain numbers on
+>   POST/PATCH. Models must deserialize strings and serialize numbers. (Confirmed
+>   in 6b.)
 > - **`GET /categories` returns a FLAT list, not a tree** (no recursive-CTE endpoint like
 >   locations' `/subtree`). A category-tree UI must build the hierarchy client-side from
 >   the flat list. Locations DO have `/locations/:id/subtree` (recursive CTE).
@@ -382,6 +317,7 @@ code `if` — check `can('key')`.
 | inventory.adjust.request | ✓ | | ✓ | |
 | inventory.adjust.approve | ✓ | ✓ | | |
 | fulfilment.pick/pack/dispatch | ✓ | | ✓ | |
+| warehouse.structure.view | ✓ | ✓ | ✓ | |
 | warehouse.structure.manage | ✓ | | | |
 | users.manage / roles.manage | ✓ | | | |
 | reports.view | ✓ | ✓ | | |

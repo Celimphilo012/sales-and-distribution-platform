@@ -1,61 +1,99 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/auth/auth_provider.dart';
 import '../../../core/error/app_error.dart';
 import '../../../core/theme/app_spacing.dart';
+import '../../../routing/route_paths.dart';
+import '../../../shared/widgets/app_card.dart';
 import '../../../shared/widgets/app_dialog.dart';
 import '../../../shared/widgets/empty_loading_error_states.dart';
 import '../../../shared/widgets/status_badge.dart';
+import '../../workstreams/data/workstreams_providers.dart';
+import '../../workstreams/domain/workstream.dart';
 import '../data/categories_providers.dart';
 import '../domain/category_tree.dart';
 import 'category_form_dialog.dart';
 
-/// Category tree + CRUD. Unlike products, a dialog is enough here — the
-/// form is just name + parent — but the tree display itself is its own
-/// clear, indented component.
-class CategoriesScreen extends ConsumerWidget {
+/// Category tree, nested under workstreams: Workstream -> Category ->
+/// sub-category (the workstream layer is a catalogue-organization concept —
+/// see CLAUDE.md — every category belongs to exactly one workstream). Each
+/// workstream renders as its own section with its own tree, reusing 6b's
+/// client-side tree-building (`buildCategoryTreeForWorkstream`) since
+/// `GET /categories` is still a flat list.
+class CategoriesScreen extends ConsumerStatefulWidget {
   const CategoriesScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<CategoriesScreen> createState() => _CategoriesScreenState();
+}
+
+class _CategoriesScreenState extends ConsumerState<CategoriesScreen> {
+  bool _includeInactive = false;
+
+  @override
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final canManage = ref.watch(authProvider.select((s) => s.value?.user?.can('products.manage') ?? false));
-    final treeAsync = ref.watch(categoryTreeProvider(true));
+    final workstreamsAsync = ref.watch(workstreamsProvider(_includeInactive));
+    final categoriesAsync = ref.watch(categoriesProvider(_includeInactive));
 
     return Padding(
       padding: const EdgeInsets.all(AppSpacing.lg),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Expanded(child: Text('Categories', style: theme.textTheme.headlineSmall)),
-              if (canManage)
-                FilledButton.icon(
-                  onPressed: () => showCategoryFormDialog(context, parentId: null),
-                  icon: const Icon(Icons.add),
-                  label: const Text('New category'),
-                ),
-            ],
+          Text('Categories', style: theme.textTheme.headlineSmall),
+          const SizedBox(height: AppSpacing.md),
+          FilterChip(
+            label: const Text('Show inactive'),
+            selected: _includeInactive,
+            onSelected: (value) => setState(() => _includeInactive = value),
           ),
           const SizedBox(height: AppSpacing.lg),
           Expanded(
-            child: treeAsync.when(
-              loading: () => const LoadingStateView(message: 'Loading categories…'),
+            child: workstreamsAsync.when(
+              loading: () => const LoadingStateView(message: 'Loading workstreams…'),
               error: (error, stackTrace) => ErrorStateView(
-                message: error is AppError ? error.message : 'Could not load categories.',
-                onRetry: () => invalidateCategories(ref),
+                message: error is AppError ? error.message : 'Could not load workstreams.',
+                onRetry: () => invalidateWorkstreams(ref),
               ),
-              data: (tree) {
-                final flat = flattenCategoryTree(tree);
-                if (flat.isEmpty) {
-                  return const EmptyStateView(title: 'No categories yet', icon: Icons.category_outlined);
+              data: (workstreams) {
+                if (workstreams.isEmpty) {
+                  return EmptyStateView(
+                    title: 'No workstreams yet',
+                    message: canManage
+                        ? 'Create a workstream first — every category needs one.'
+                        : 'Ask an administrator to create a workstream first.',
+                    icon: Icons.workspaces_outlined,
+                    action: canManage
+                        ? FilledButton.icon(
+                            onPressed: () => context.go(RoutePaths.workstreams),
+                            icon: const Icon(Icons.workspaces_outlined),
+                            label: const Text('Go to Workstreams'),
+                          )
+                        : null,
+                  );
                 }
-                return Card(
-                  child: ListView(
-                    padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
-                    children: [for (final node in flat) _CategoryTile(node: node, canManage: canManage)],
+                return categoriesAsync.when(
+                  loading: () => const LoadingStateView(message: 'Loading categories…'),
+                  error: (error, stackTrace) => ErrorStateView(
+                    message: error is AppError ? error.message : 'Could not load categories.',
+                    onRetry: () => invalidateCategories(ref),
+                  ),
+                  data: (categories) => ListView(
+                    children: [
+                      for (final workstream in workstreams)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: AppSpacing.lg),
+                          child: _WorkstreamSection(
+                            workstream: workstream,
+                            tree: buildCategoryTreeForWorkstream(categories, workstream.id),
+                            canManage: canManage,
+                          ),
+                        ),
+                    ],
                   ),
                 );
               },
@@ -67,10 +105,72 @@ class CategoriesScreen extends ConsumerWidget {
   }
 }
 
+class _WorkstreamSection extends StatelessWidget {
+  const _WorkstreamSection({required this.workstream, required this.tree, required this.canManage});
+
+  final Workstream workstream;
+  final List<CategoryNode> tree;
+  final bool canManage;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final flat = flattenCategoryTree(tree);
+
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.workspaces_outlined, color: theme.colorScheme.primary),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(workstream.name, style: theme.textTheme.titleMedium),
+                    Text(
+                      workstream.code,
+                      style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                    ),
+                  ],
+                ),
+              ),
+              if (!workstream.isActive) ...[
+                const StatusBadge(label: 'Inactive', tone: StatusTone.neutral),
+                const SizedBox(width: AppSpacing.sm),
+              ],
+              if (canManage)
+                TextButton.icon(
+                  onPressed: () => showCategoryFormDialog(context, workstreamId: workstream.id),
+                  icon: const Icon(Icons.add),
+                  label: const Text('Add category'),
+                ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          if (flat.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+              child: Text(
+                'No categories in this workstream yet.',
+                style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              ),
+            )
+          else
+            for (final node in flat) _CategoryTile(node: node, workstream: workstream, canManage: canManage),
+        ],
+      ),
+    );
+  }
+}
+
 class _CategoryTile extends ConsumerWidget {
-  const _CategoryTile({required this.node, required this.canManage});
+  const _CategoryTile({required this.node, required this.workstream, required this.canManage});
 
   final CategoryNode node;
+  final Workstream workstream;
   final bool canManage;
 
   Future<void> _deactivate(BuildContext context, WidgetRef ref) async {
@@ -108,7 +208,7 @@ class _CategoryTile extends ConsumerWidget {
     final category = node.category;
 
     return Padding(
-      padding: EdgeInsets.only(left: AppSpacing.lg * node.depth, right: AppSpacing.sm, top: 4, bottom: 4),
+      padding: EdgeInsets.only(left: AppSpacing.lg * (node.depth + 1), right: AppSpacing.sm, top: 4, bottom: 4),
       child: Row(
         children: [
           Icon(
@@ -134,7 +234,11 @@ class _CategoryTile extends ConsumerWidget {
               iconSize: 18,
               tooltip: 'Add subcategory',
               icon: const Icon(Icons.add),
-              onPressed: () => showCategoryFormDialog(context, parentId: category.id),
+              onPressed: () => showCategoryFormDialog(
+                context,
+                parentId: category.id,
+                workstreamId: workstream.id,
+              ),
             ),
             IconButton(
               iconSize: 18,

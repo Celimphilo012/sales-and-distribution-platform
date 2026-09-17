@@ -14,7 +14,8 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
-    "seed": "ts-node prisma/seed.ts"
+    "seed": "ts-node prisma/seed.ts",
+    "seed:inventory-demo": "ts-node --transpile-only prisma/seed-inventory-demo.ts"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"

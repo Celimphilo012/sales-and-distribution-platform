@@ -90,12 +90,17 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
     final response = await apiClient.guard((dio) => dio.get<Map<String, dynamic>>('/auth/me'));
     final me = response.data!;
     final permissions = (me['permissions'] as List).cast<String>();
+    final roles = (me['roles'] as List<dynamic>? ?? const [])
+        .map((r) => AppUserRoleRef.fromJson(r as Map<String, dynamic>))
+        .toList();
 
     return AppUser(
       id: me['id'] as String,
       name: me['fullName'] as String,
       email: me['email'] as String,
       permissions: permissions.toSet(),
+      roles: roles,
+      status: me['status'] as String?,
     );
   }
 }

@@ -29,6 +29,7 @@ class RoutePaths {
   static const stockAdjustments = '/stock-adjustments';
   static const users = '/users';
   static const roles = '/roles';
+  static String roleDetail(String id) => '$roles/$id';
   static const audit = '/audit';
   static const settings = '/settings';
 

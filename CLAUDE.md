@@ -91,36 +91,45 @@ across the boundary (reserve/release/issue, pricing hole closed).
   read-only) DONE; the 6c "stock in location" placeholder is now real.
   6e-1 (Receiving + Transfers) DONE (backend-verified via API; leaf-location
   picker reusable; write→read loop confirmed).
-  6e-2 (Stock Counts + Stock Adjustments) DONE — completes the warehouse
-  operations. Stock counts: start (snapshots expected_qty, read-only) → enter
-  counted qty per line → submit (variances become PENDING adjustments, count
-  itself never moves stock) → history. Stock adjustments: two-step
-  request/approve (§F) — `inventory.adjust.request` creates PENDING, only
-  `inventory.adjust.approve` moves stock (`applyTransaction`); separation of
-  duties (no self-approval) enforced backend-side and mirrored in the UI
-  (approve/reject hidden on your own pending requests). Backend-verified via
-  API with real WAREHOUSE + MANAGER users (see verification note below);
-  `flutter analyze` clean.
   WORKSTREAMS DONE (warehouse: table + category link + catalogue-API exposure +
   frontend Workstream→Category→sub-category nesting). Catalogue-only, not
   operational.
   PRODUCT ATTRIBUTES DONE (warehouse: defined-types attribute_types catalog +
   product_attributes key-value + catalogue-API exposure + frontend attribute
   fields). Descriptive only, NOT variants — stock still per-product.
+  6e-2 (Stock Counts + two-step Stock Adjustments) DONE (backend-verified:
+  count→variance→PENDING adjustment→different-user approval→stock moves;
+  separation-of-duties enforced UI + backend).
+  6f (Admin screens: Users, Roles, Audit Log, Settings incl. API-key mgmt) DONE
+  (backend-verified). Users/Roles/Settings-Profile built as a REUSABLE TEMPLATE
+  for the ordering app; Settings API-key section is warehouse-only.
 
-**VISUAL-VERIFICATION DEBT (clear when Chrome works):** three frontend features
-were built and BACKEND-verified (API via curl) but never visually confirmed
-rendering, because the Chrome automation kept freezing — (1) 6e-1's
-receive/transfer confirmation cards + dark mode; (2) product-attributes form
-fields (number+unit, text) + detail display + dark mode; (3) 6e-2's stock-count
-entry table (expected/counted/variance) and the adjustments queue/history cards
-(pending vs. approved/rejected, approve/reject buttons hidden on your own
-requests) + dark mode. All are pattern-identical to proven 6b–6d widgets so
-low-risk, but do a manual click-through pass to close them before stacking more
-frontend on the shared form/table patterns.
-- `/frontend` — the existing app, becomes the ordering front end; retrofit
-  (strip warehouse nav, rewire to `/backend`) is the next step — `/warehouse-frontend`
-  is now functionally complete for warehouse operations.
+  **WAREHOUSE FRONTEND IS COMPLETE** — every nav item is a real screen, backend
+  + frontend, one whole system done front to back. Verified via real API calls
+  against the warehouse backend with distinct test users throughout (6b–6f);
+  a manual browser click-through pass has NOT been done for any phase yet —
+  Chrome automation has been unreliable in this environment, so every "DONE"
+  above is backend-verified, not visually confirmed. Do that pass when
+  convenient, on any phase.
+
+  **Two warehouse BACKEND gaps found in 6f (honestly reported, not faked — fill
+  when convenient, neither blocks anything):**
+  - No audit-log READ endpoint: the warehouse writes audit_logs (AuditInterceptor)
+    but serves none back. The Audit Log screen shows a gap notice. Fix: add
+    `GET /audit-logs` (mirror the ordering `/backend` one from 1G, which already
+    has this — confirm during the R1 retrofit).
+  - No self-service change-password: `PATCH /users/:id` is an admin reset (needs
+    users.manage, no current-password check), not "change my own password".
+    Settings shows a gap notice. Fix: add a self-service change-password endpoint
+    (current + new, verifies current). Check whether `/backend` has this either
+    during R1.
+- `/frontend` → **being retrofit into `/ordering-frontend` as of step R1** (see
+  below) — strip warehouse nav, rewire to `/backend`, bring over the reusable
+  Users/Roles/Audit/Settings-Profile template from `/warehouse-frontend`.
+
+**Next: R1 — retrofit `/frontend` into `/ordering-frontend`.** Foundation only
+(rename, the two known bug fixes, nav strip + re-point to `/backend` port 3000,
+admin-template screens); order/customer feature screens are R2+.
 
 **API characteristic (from 6d):** `/inventory/balances` returns a flat
 `location_id` + name/code, NOT the full ancestor path. The frontend resolves the
@@ -129,26 +138,21 @@ the loaded locations data — a candidate for a future backend improvement (retu
 the path, or denormalize) if inventory lists grow large. 6e-1/6e-2 reference
 locations the same way.
 
-**KNOWN ISSUES to fix during the `/frontend` retrofit** (shared widgets copied
-into `/warehouse-frontend` had bugs fixed there; `/frontend`'s copies were left
-untouched and almost certainly share them — patch before building `/frontend`
-screens that use them):
+**KNOWN ISSUES — FIXED in `/warehouse-frontend`, being patched into
+`/ordering-frontend` at R1** (both bugs were in the original `/frontend` this
+was copied from):
 1. **ConfirmDialog** — go_router/ShellRoute bug: uses the calling context's
    nested Navigator instead of the root, so confirming a destructive action
-   crashes. Fixed in `/warehouse-frontend` with `rootNavigator: true`.
+   crashes. Fix: `rootNavigator: true`.
 2. **AppDataTable** — its mobile/tablet card list used a non-`shrinkWrap`
    ListView, which crashes ("unbounded height") when embedded in an
-   already-scrolling ancestor. Fixed in `/warehouse-frontend` with
-   `shrinkWrap: true`.
+   already-scrolling ancestor. Fix: `shrinkWrap: true`.
 
 **BACKEND GAP — FIXED:** locations previously had no read/write permission
-split (all access, incl. reads, gated behind `warehouse.structure.manage`, so a
-user who should only VIEW the location tree 403'd before it loaded). Resolved:
-`warehouse.structure.view` exists in the permission catalog for reads,
-`.manage` remains for writes, and the WAREHOUSE role holds `.view` — confirmed
-in `warehouse/src/permissions/constants/permission-catalog.ts`. Receiving/
-transfer/count/adjustment staff can see locations to pick where stock goes
-without needing structure-manage power.
+split (all access, incl. reads, gated behind `warehouse.structure.manage`).
+Resolved: `warehouse.structure.view` exists for reads, `.manage` remains for
+writes, WAREHOUSE role holds `.view` — confirmed in `warehouse/src/permissions/
+constants/permission-catalog.ts`.
 
 ---
 

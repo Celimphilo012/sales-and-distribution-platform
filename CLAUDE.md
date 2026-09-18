@@ -105,54 +105,74 @@ across the boundary (reserve/release/issue, pricing hole closed).
   for the ordering app; Settings API-key section is warehouse-only.
 
   **WAREHOUSE FRONTEND IS COMPLETE** — every nav item is a real screen, backend
-  + frontend, one whole system done front to back. Verified via real API calls
-  against the warehouse backend with distinct test users throughout (6b–6f);
-  a manual browser click-through pass has NOT been done for any phase yet —
-  Chrome automation has been unreliable in this environment, so every "DONE"
-  above is backend-verified, not visually confirmed. Do that pass when
-  convenient, on any phase.
+  + frontend, one whole system done front to back. Stock/catalogue features
+  (6b–6e) confirmed via user manual browser click-through (light + dark); 6f
+  admin screens backend-verified (do a browser pass on the API-key one-time
+  reveal when convenient).
 
   **Two warehouse BACKEND gaps found in 6f (honestly reported, not faked — fill
   when convenient, neither blocks anything):**
   - No audit-log READ endpoint: the warehouse writes audit_logs (AuditInterceptor)
     but serves none back. The Audit Log screen shows a gap notice. Fix: add
-    `GET /audit-logs` (mirror the ordering `/backend` one from 1G, which already
-    has this — confirm during the R1 retrofit).
+    `GET /audit-logs` (mirror the ordering `/backend` one from 1G).
   - No self-service change-password: `PATCH /users/:id` is an admin reset (needs
     users.manage, no current-password check), not "change my own password".
     Settings shows a gap notice. Fix: add a self-service change-password endpoint
-    (current + new, verifies current). Check whether `/backend` has this either
-    during R1.
-- `/frontend` → **being retrofit into `/ordering-frontend` as of step R1** (see
-  below) — strip warehouse nav, rewire to `/backend`, bring over the reusable
-  Users/Roles/Audit/Settings-Profile template from `/warehouse-frontend`.
+    (current + new, verifies current).
+- `/frontend` — the existing app, becomes the ordering front end; retrofit
+  (strip warehouse nav, rewire to `/backend`) is a LATER step.
 
-**Next: R1 — retrofit `/frontend` into `/ordering-frontend`.** Foundation only
-(rename, the two known bug fixes, nav strip + re-point to `/backend` port 3000,
-admin-template screens); order/customer feature screens are R2+.
+**Ordering frontend retrofit (`/frontend` → `/ordering-frontend`):**
+- R1 (rename + patch the two shared-widget bugs + strip warehouse nav + port the
+  Users/Roles/Audit/Settings-Profile admin template, re-pointed at `/backend`)
+  DONE. Ordering Audit Log shows REAL data (the `/backend` /audit-logs endpoint
+  exists, unlike the warehouse). App is now `/ordering-frontend`, package
+  `ordering_frontend`, logs into the ordering system (3000).
+- **Next: R2 — Customers** (simpler feature, sets the ordering feature-screen
+  pattern), then R3 — Orders (the big cross-system one: order creation pulls the
+  catalogue from the warehouse via `/backend`'s API-key relay; lifecycle;
+  reserve/dispatch cross the boundary), then R4 — Order reports + dashboard.
+
+**OPEN DECISION (for R3) — Fulfilment nav:** `fulfilment.pick/pack/dispatch`
+permissions exist. R1 did NOT add a top-level "Fulfilment" nav item, treating
+pick/pack/dispatch as ACTIONS on an individual order (the simpler default).
+Alternative: a dedicated Fulfilment section (a queue of orders ready to
+pick/pack/dispatch) for fulfilment staff who work a queue rather than browsing
+orders. Decide in R3 based on whether fulfilment is a distinct role/workflow in
+the real operation. Default: actions-on-order; add a queue view later if needed.
+
+**Change-password gap also exists on `/backend`** (same as warehouse): PATCH
+/users/:id is an admin reset, not self-service. Fill both when convenient.
 
 **API characteristic (from 6d):** `/inventory/balances` returns a flat
 `location_id` + name/code, NOT the full ancestor path. The frontend resolves the
 path client-side by walking the locations tree. Works, but it's N-lookups against
 the loaded locations data — a candidate for a future backend improvement (return
-the path, or denormalize) if inventory lists grow large. 6e-1/6e-2 reference
-locations the same way.
+the path, or denormalize) if inventory lists grow large. 6e references locations
+the same way.
 
-**KNOWN ISSUES — FIXED in `/warehouse-frontend`, being patched into
-`/ordering-frontend` at R1** (both bugs were in the original `/frontend` this
-was copied from):
+**KNOWN ISSUES to fix during the `/frontend` retrofit** (shared widgets copied
+into `/warehouse-frontend` had bugs fixed there; `/frontend`'s copies were left
+untouched and almost certainly share them — patch before building `/frontend`
+screens that use them):
 1. **ConfirmDialog** — go_router/ShellRoute bug: uses the calling context's
    nested Navigator instead of the root, so confirming a destructive action
-   crashes. Fix: `rootNavigator: true`.
+   crashes. Fixed in `/warehouse-frontend` with `rootNavigator: true`.
 2. **AppDataTable** — its mobile/tablet card list used a non-`shrinkWrap`
    ListView, which crashes ("unbounded height") when embedded in an
-   already-scrolling ancestor. Fix: `shrinkWrap: true`.
+   already-scrolling ancestor. Fixed in `/warehouse-frontend` with
+   `shrinkWrap: true`.
 
-**BACKEND GAP — FIXED:** locations previously had no read/write permission
-split (all access, incl. reads, gated behind `warehouse.structure.manage`).
-Resolved: `warehouse.structure.view` exists for reads, `.manage` remains for
-writes, WAREHOUSE role holds `.view` — confirmed in `warehouse/src/permissions/
-constants/permission-catalog.ts`.
+**BACKEND GAP to fix (warehouse) — locations have no read/write permission
+split:** the warehouse warehouses/locations API gates ALL access (incl. reads)
+behind `warehouse.structure.manage`. So a user who should VIEW the location tree
+but not edit it cannot exist (they 403 before the tree loads). This bites in 6e:
+receiving/transfer/count staff need to SEE locations to pick where stock goes,
+but seeing them currently requires admin-level structure-manage power. FIX on the
+warehouse backend before/at 6e: add a read permission (e.g.
+`warehouse.structure.view`) for reading the tree, keep `.manage` for editing,
+grant `.view` to the WAREHOUSE role. Until fixed, only structure-managers can see
+locations.
 
 ---
 

@@ -168,7 +168,6 @@ class _ReceivingFormBodyState extends ConsumerState<_ReceivingFormBody> {
                   AppTextField(
                     label: 'Supplier',
                     controller: _supplierController,
-                    hintText: 'Acme Distributors',
                     validator: (v) => (v == null || v.trim().isEmpty) ? 'Supplier is required' : null,
                   ),
                   const SizedBox(height: AppSpacing.md),

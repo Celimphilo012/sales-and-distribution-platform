@@ -2,7 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsDateString, IsNumber, IsOptional, IsPositive, IsString, IsUUID, MinLength } from 'class-validator';
 
 export class CreateReceivingDto {
-  @ApiProperty({ example: 'Acme Distributors', description: 'Supplier name (free text — no supplier module yet)' })
+  @ApiProperty({ description: 'Supplier name (free text — no supplier module yet)' })
   @IsString()
   @MinLength(1)
   supplier: string;

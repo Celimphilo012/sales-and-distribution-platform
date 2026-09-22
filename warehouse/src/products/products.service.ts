@@ -88,6 +88,24 @@ export class ProductsService {
     return this.getExisting(id);
   }
 
+  /**
+   * Bulk existing-product lookup by SKU, active or not — used by the
+   * product-import feature to tell "update" rows (SKU already exists) from
+   * "create" rows across a whole uploaded file in one query instead of one
+   * per row. No other caller needs this shape (`findAll`'s filters don't
+   * support an arbitrary SKU list), which is why it's its own method rather
+   * than overloading `findAll`.
+   */
+  findManyBySkus(skus: string[]) {
+    if (skus.length === 0) return Promise.resolve([]);
+    return this.prisma.product.findMany({ where: { sku: { in: skus } }, include: PRODUCT_INCLUDE });
+  }
+
+  /** DB-level COUNT for the reports dashboard's catalogue summary — never fetch-and-count in JS. */
+  countActive() {
+    return this.prisma.product.count({ where: { status: ProductStatus.ACTIVE } });
+  }
+
   async create(dto: CreateProductDto) {
     await this.categoriesService.getExisting(dto.categoryId);
 

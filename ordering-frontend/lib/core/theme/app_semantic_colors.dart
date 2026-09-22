@@ -43,8 +43,11 @@ class AppSemanticColors extends ThemeExtension<AppSemanticColors> {
     warning: Color(0xFFED6C02),
     onWarning: Color(0xFFFFFFFF),
     warningContainer: Color(0xFFFFE0B2),
-    onWarningContainer: Color(0xFFE65100),
-    info: Color(0xFF0288D1),
+    onWarningContainer: Color(0xFF7A3300),
+    // Housekeeping 2a: darkened along the same hue from 0288D1 (was 2.90:1
+    // against white — a real WCAG AA fail for `onInfo` text). #016398 keeps
+    // the same blue but clears 4.5:1 with a safety margin (5.10:1).
+    info: Color(0xFF016398),
     onInfo: Color(0xFFFFFFFF),
     infoContainer: Color(0xFFB3E5FC),
     onInfoContainer: Color(0xFF01579B),
@@ -53,15 +56,15 @@ class AppSemanticColors extends ThemeExtension<AppSemanticColors> {
   static const dark = AppSemanticColors(
     success: Color(0xFF81C784),
     onSuccess: Color(0xFF1B3A1E),
-    successContainer: Color(0xFF2E7D32),
+    successContainer: Color(0xFF1B4D22),
     onSuccessContainer: Color(0xFFC8E6C9),
     warning: Color(0xFFFFB74D),
     onWarning: Color(0xFF4A2800),
-    warningContainer: Color(0xFFED6C02),
+    warningContainer: Color(0xFF5A3400),
     onWarningContainer: Color(0xFFFFE0B2),
     info: Color(0xFF4FC3F7),
     onInfo: Color(0xFF00344A),
-    infoContainer: Color(0xFF0288D1),
+    infoContainer: Color(0xFF0B4F73),
     onInfoContainer: Color(0xFFB3E5FC),
   );
 

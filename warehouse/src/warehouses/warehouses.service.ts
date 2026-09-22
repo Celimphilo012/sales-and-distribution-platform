@@ -21,6 +21,11 @@ export class WarehousesService {
     return warehouse;
   }
 
+  /** DB-level COUNT for the reports dashboard's catalogue summary. */
+  countActive() {
+    return this.prisma.warehouse.count({ where: { isActive: true } });
+  }
+
   async findOne(id: string) {
     return this.getExisting(id);
   }

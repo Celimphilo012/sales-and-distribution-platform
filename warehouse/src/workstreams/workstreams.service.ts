@@ -29,6 +29,11 @@ export class WorkstreamsService {
     return workstream;
   }
 
+  /** DB-level COUNT for the reports dashboard's catalogue summary. */
+  countActive() {
+    return this.prisma.workstream.count({ where: { isActive: true } });
+  }
+
   async findOne(id: string) {
     return this.getExisting(id);
   }

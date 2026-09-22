@@ -4,6 +4,7 @@ import {
   WarehouseAvailabilityResult,
   WarehouseCatalogue,
   WarehouseIssueResult,
+  WarehouseLocationsResult,
   WarehouseProduct,
   WarehouseReleaseResult,
   WarehouseReserveResult,
@@ -67,6 +68,16 @@ export class WarehouseApiClient {
       throw new NotFoundException(`Product ${productId} not found in the warehouse catalogue`);
     }
     return product;
+  }
+
+  /**
+   * STEP R3b: `locations:read` scope — lets a manager reserving an order's
+   * stock (`ReserveOrderDto.allocations[].locationId`) pick a real leaf
+   * location instead of the ordering frontend having no way to discover
+   * one at all.
+   */
+  getLocations(): Promise<WarehouseLocationsResult> {
+    return this.request<WarehouseLocationsResult>('GET', '/api/v1/locations');
   }
 
   checkAvailability(items: { productId: string; locationId?: string }[]): Promise<WarehouseAvailabilityResult> {

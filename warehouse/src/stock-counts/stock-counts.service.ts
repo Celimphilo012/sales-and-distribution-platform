@@ -81,6 +81,11 @@ export class StockCountsService {
     return count;
   }
 
+  /** DB-level COUNT for the reports dashboard's "open stock counts" tile. */
+  countOpen() {
+    return this.prisma.stockCount.count({ where: { status: 'OPEN' } });
+  }
+
   /**
    * Submits counted quantities, computes the difference per item, and
    * records the variance. Stock does NOT move here — a nonzero difference

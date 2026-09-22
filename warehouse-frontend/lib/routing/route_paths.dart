@@ -13,6 +13,7 @@ class RoutePaths {
   static const dashboard = '/dashboard';
   static const products = '/products';
   static const productNew = '$products/new';
+  static const productImport = '$products/import';
   static String productDetail(String id) => '$products/$id';
   static String productEdit(String id) => '$products/$id/edit';
 

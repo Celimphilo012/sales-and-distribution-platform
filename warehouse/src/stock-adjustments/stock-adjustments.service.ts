@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { AdjustmentBucket, AdjustmentDirection } from '@prisma/client';
+import { AdjustmentBucket, AdjustmentDirection, AdjustmentStatus } from '@prisma/client';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { ProductsService } from '../products/products.service';
 import { LocationsService } from '../locations/locations.service';
@@ -171,5 +171,46 @@ export class StockAdjustmentsService {
       },
       include: ADJUSTMENT_INCLUDE,
     });
+  }
+
+  /**
+   * Reports dashboard — request counts by status over the last [days]
+   * (native Prisma `groupBy`), plus the oldest PENDING requests overall
+   * (up to 15) so a manager can see what's overdue for review. `oldestPending`
+   * is deliberately NOT scoped to [days]: a backlog that's been waiting
+   * longer than the period is exactly what "overdue" needs to surface, and
+   * `totalPendingCount` (also unscoped) is the true current backlog size —
+   * both feed the dashboard's `pendingAdjustments` tile as-is, no duplicate
+   * query.
+   */
+  async getAdjustmentsSummary(days = 7) {
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+    const grouped = await this.prisma.stockAdjustment.groupBy({
+      by: ['status'],
+      where: { requestedAt: { gte: since } },
+      _count: { _all: true },
+    });
+    const byStatus = Object.fromEntries(
+      Object.values(AdjustmentStatus).map((status) => [
+        status,
+        grouped.find((g) => g.status === status)?._count._all ?? 0,
+      ]),
+    ) as Record<AdjustmentStatus, number>;
+
+    const totalPendingCount = await this.prisma.stockAdjustment.count({ where: { status: 'PENDING' } });
+
+    const oldestPendingRows = await this.prisma.stockAdjustment.findMany({
+      where: { status: 'PENDING' },
+      include: ADJUSTMENT_INCLUDE,
+      orderBy: { requestedAt: 'asc' },
+      take: 15,
+    });
+    const oldestPending = oldestPendingRows.map((a) => ({
+      ...a,
+      waitingDays: Math.floor((Date.now() - a.requestedAt.getTime()) / (24 * 60 * 60 * 1000)),
+    }));
+
+    return { periodDays: days, byStatus, totalPendingCount, oldestPending };
   }
 }

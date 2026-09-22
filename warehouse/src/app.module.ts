@@ -12,6 +12,7 @@ import { WorkstreamsModule } from './workstreams/workstreams.module';
 import { CategoriesModule } from './categories/categories.module';
 import { AttributeTypesModule } from './attribute-types/attribute-types.module';
 import { ProductsModule } from './products/products.module';
+import { ProductImportModule } from './product-import/product-import.module';
 import { ProductImagesModule } from './product-images/product-images.module';
 import { WarehousesModule } from './warehouses/warehouses.module';
 import { LocationsModule } from './locations/locations.module';
@@ -22,6 +23,8 @@ import { StockAdjustmentsModule } from './stock-adjustments/stock-adjustments.mo
 import { StockCountsModule } from './stock-counts/stock-counts.module';
 import { ApiKeysModule } from './api-keys/api-keys.module';
 import { ExternalApiModule } from './external-api/external-api.module';
+import { AuditModule } from './audit/audit.module';
+import { ReportsModule } from './reports/reports.module';
 
 @Module({
   imports: [
@@ -39,6 +42,7 @@ import { ExternalApiModule } from './external-api/external-api.module';
     CategoriesModule,
     AttributeTypesModule,
     ProductsModule,
+    ProductImportModule,
     ProductImagesModule,
     WarehousesModule,
     LocationsModule,
@@ -49,6 +53,8 @@ import { ExternalApiModule } from './external-api/external-api.module';
     StockCountsModule,
     ApiKeysModule,
     ExternalApiModule,
+    AuditModule,
+    ReportsModule,
   ],
   providers: [{ provide: APP_INTERCEPTOR, useClass: AuditInterceptor }],
 })

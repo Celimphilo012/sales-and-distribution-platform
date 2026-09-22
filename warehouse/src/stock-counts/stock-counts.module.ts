@@ -9,5 +9,6 @@ import { StockCountsService } from './stock-counts.service';
   imports: [ProductsModule, LocationsModule, StockAdjustmentsModule],
   controllers: [StockCountsController],
   providers: [StockCountsService],
+  exports: [StockCountsService],
 })
 export class StockCountsModule {}

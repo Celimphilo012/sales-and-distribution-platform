@@ -14,6 +14,7 @@ export const PERMISSION_CATALOG: PermissionDefinition[] = [
   { key: 'users.manage', description: 'Manage users', module: 'users' },
   { key: 'roles.manage', description: 'Manage roles and role permissions', module: 'roles' },
   { key: 'audit.view', description: 'View audit logs', module: 'audit' },
+  { key: 'reports.view', description: 'View reports and the summary dashboard', module: 'reports' },
 
   { key: 'catalogue.view', description: 'View product catalogue', module: 'products' },
   { key: 'products.manage', description: 'Create/update/deactivate products and categories', module: 'products' },
@@ -69,5 +70,6 @@ export const ROLE_PERMISSION_MAP: Record<string, string[]> = {
     'inventory.view',
     'inventory.adjust.approve',
     'audit.view',
+    'reports.view',
   ],
 };

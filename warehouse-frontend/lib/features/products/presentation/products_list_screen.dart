@@ -73,12 +73,19 @@ class _ProductsListScreenState extends ConsumerState<ProductsListScreen> {
           Row(
             children: [
               Expanded(child: Text('Products', style: theme.textTheme.headlineSmall)),
-              if (canManage)
+              if (canManage) ...[
+                OutlinedButton.icon(
+                  onPressed: () => context.go(RoutePaths.productImport),
+                  icon: const Icon(Icons.upload_file_outlined),
+                  label: const Text('Import products'),
+                ),
+                const SizedBox(width: AppSpacing.md),
                 FilledButton.icon(
                   onPressed: () => context.go(RoutePaths.productNew),
                   icon: const Icon(Icons.add),
                   label: const Text('New product'),
                 ),
+              ],
             ],
           ),
           const SizedBox(height: AppSpacing.lg),

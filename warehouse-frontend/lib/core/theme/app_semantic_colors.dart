@@ -36,33 +36,39 @@ class AppSemanticColors extends ThemeExtension<AppSemanticColors> {
   final Color onInfoContainer;
 
   static const light = AppSemanticColors(
-    success: Color(0xFF2E7D32),
+    success: Color(0xFF1C6B3A),
     onSuccess: Color(0xFFFFFFFF),
-    successContainer: Color(0xFFC8E6C9),
-    onSuccessContainer: Color(0xFF1B5E20),
-    warning: Color(0xFFED6C02),
+    successContainer: Color(0xFFE1EFE6),
+    onSuccessContainer: Color(0xFF14502B),
+    warning: Color(0xFF8A5A00),
     onWarning: Color(0xFFFFFFFF),
-    warningContainer: Color(0xFFFFE0B2),
-    onWarningContainer: Color(0xFFE65100),
-    info: Color(0xFF0288D1),
+    warningContainer: Color(0xFFF6EAD2),
+    onWarningContainer: Color(0xFF6B4500),
+    // Housekeeping 2a: both darkened along the same hue from 0088B0/006B8C.
+    // `info` is used as TEXT (StatusBadge's outline tag reads it straight,
+    // not through onInfoContainer) on white/paper — was 3.30:1/2.95:1, a
+    // real fail; #006486 clears 4.5:1 against both (5.47 / 4.89). The
+    // infoContainer/onInfoContainer pair was marginal at 4.29:1; #005F7F
+    // clears it at 5.12:1.
+    info: Color(0xFF006486),
     onInfo: Color(0xFFFFFFFF),
-    infoContainer: Color(0xFFB3E5FC),
-    onInfoContainer: Color(0xFF01579B),
+    infoContainer: Color(0xFFDCEEF4),
+    onInfoContainer: Color(0xFF005F7F),
   );
 
   static const dark = AppSemanticColors(
-    success: Color(0xFF81C784),
-    onSuccess: Color(0xFF1B3A1E),
-    successContainer: Color(0xFF2E7D32),
-    onSuccessContainer: Color(0xFFC8E6C9),
-    warning: Color(0xFFFFB74D),
-    onWarning: Color(0xFF4A2800),
-    warningContainer: Color(0xFFED6C02),
-    onWarningContainer: Color(0xFFFFE0B2),
-    info: Color(0xFF4FC3F7),
-    onInfo: Color(0xFF00344A),
-    infoContainer: Color(0xFF0288D1),
-    onInfoContainer: Color(0xFFB3E5FC),
+    success: Color(0xFF5CC286),
+    onSuccess: Color(0xFF0F2A1A),
+    successContainer: Color(0xFF15301F),
+    onSuccessContainer: Color(0xFF5CC286),
+    warning: Color(0xFFE0A640),
+    onWarning: Color(0xFF3A2600),
+    warningContainer: Color(0xFF3A2C10),
+    onWarningContainer: Color(0xFFE0A640),
+    info: Color(0xFF4CB8D8),
+    onInfo: Color(0xFF00303D),
+    infoContainer: Color(0xFF12333D),
+    onInfoContainer: Color(0xFF7CD0E8),
   );
 
   @override

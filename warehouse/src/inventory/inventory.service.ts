@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
 import { InventoryTransactionType, Prisma } from '@prisma/client';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { ProductsService } from '../products/products.service';
@@ -70,6 +70,48 @@ function createInputFor(
     lost: buckets.lost,
     expired: buckets.expired,
   };
+}
+
+// One MariaDB CHECK constraint per bucket (see the step2b_inventory_ledger
+// migration) — the database's own backstop against a bucket going negative,
+// on top of the DB-write guard trigger. No caller currently pre-validates
+// sufficient balance before writing (unlike the external reservation API's
+// own "available" check), so this constraint is the ONLY thing stopping an
+// over-issue/over-decrement for RECEIVE/ISSUE/TRANSFER/ADJUSTMENT/DAMAGED/
+// LOST alike — every one of them can hit this.
+const NONNEG_CONSTRAINT_BUCKETS: Record<string, InventoryBucket> = {
+  inventory_balances_on_hand_nonneg: 'onHand',
+  inventory_balances_reserved_nonneg: 'reserved',
+  inventory_balances_damaged_nonneg: 'damaged',
+  inventory_balances_lost_nonneg: 'lost',
+  inventory_balances_expired_nonneg: 'expired',
+};
+
+const BUCKET_LABELS: Record<InventoryBucket, string> = {
+  onHand: 'on-hand',
+  reserved: 'reserved',
+  damaged: 'damaged',
+  lost: 'lost',
+  expired: 'expired',
+};
+
+/**
+ * Translates the raw MariaDB/Prisma error from a `..._nonneg` CHECK
+ * constraint violation into a clean, human `ConflictException` — instead of
+ * letting the engine's connector error (constraint name, SQLSTATE, raw SQL)
+ * leak into the API response as an uncaught 500. Never returns; rethrows
+ * whatever it was given untouched if it isn't one of these constraints.
+ */
+function translateBalanceConstraintViolation(error: unknown): never {
+  const message = error instanceof Error ? error.message : String(error);
+  for (const [constraint, bucket] of Object.entries(NONNEG_CONSTRAINT_BUCKETS)) {
+    if (message.includes(constraint)) {
+      throw new ConflictException(
+        `This would take the ${BUCKET_LABELS[bucket]} quantity below zero at this location — there isn't enough stock there to do this.`,
+      );
+    }
+  }
+  throw error;
 }
 
 /**
@@ -159,28 +201,35 @@ export class InventoryService {
     productId: string,
     delta: BucketDelta,
   ) {
-    const updated = await tx.inventoryBalance.updateMany({
-      where: { productId, locationId: delta.locationId },
-      data: updateInputFor(delta.bucket, delta.delta),
-    });
-    if (updated.count > 0) return;
-
     try {
-      await tx.inventoryBalance.create({
-        data: createInputFor(productId, delta.locationId, delta.bucket, delta.delta),
+      const updated = await tx.inventoryBalance.updateMany({
+        where: { productId, locationId: delta.locationId },
+        data: updateInputFor(delta.bucket, delta.delta),
       });
-    } catch (error) {
-      // Lost a race with a concurrent first-write for the same (product,
-      // location) between the updateMany above and this create — the row
-      // exists now, so retry as an update.
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-        await tx.inventoryBalance.update({
-          where: { productId_locationId: { productId, locationId: delta.locationId } },
-          data: updateInputFor(delta.bucket, delta.delta),
+      if (updated.count > 0) return;
+
+      try {
+        await tx.inventoryBalance.create({
+          data: createInputFor(productId, delta.locationId, delta.bucket, delta.delta),
         });
-        return;
+      } catch (error) {
+        // Lost a race with a concurrent first-write for the same (product,
+        // location) between the updateMany above and this create — the row
+        // exists now, so retry as an update.
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+          await tx.inventoryBalance.update({
+            where: { productId_locationId: { productId, locationId: delta.locationId } },
+            data: updateInputFor(delta.bucket, delta.delta),
+          });
+          return;
+        }
+        throw error;
       }
-      throw error;
+    } catch (error) {
+      // Any of the three writes above (the updateMany, the create, or the
+      // P2002 retry's update) can hit a `..._nonneg` CHECK constraint —
+      // translate it into a clean error instead of leaking the raw one.
+      translateBalanceConstraintViolation(error);
     }
   }
 
@@ -224,5 +273,142 @@ export class InventoryService {
       },
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  /**
+   * Reports dashboard — every ACTIVE product whose total on-hand across
+   * ACTIVE leaf locations is below its min_stock_level, ordered worst-short
+   * first. Every `inventory_balances` row is already at a leaf by
+   * construction (`assertLeaf()` on every write via `applyTransaction`), so
+   * the only extra filter needed is the location's own `is_active`.
+   *
+   * The inner subquery aggregates on_hand PER PRODUCT in SQL (a `LEFT JOIN`
+   * so a product with zero balance rows still gets a 0, matching "SUM over
+   * an empty set is 0" — a product with no stock anywhere and a positive
+   * min level correctly counts as low stock). The comparison against
+   * min_stock_level happens in the outer query, not in application code —
+   * no full-table fetch, no summing in JS.
+   */
+  async getLowStockProducts() {
+    const rows = await this.prisma.$queryRaw<
+      { id: string; sku: string; name: string; minStockLevel: string; onHand: string }[]
+    >`
+      SELECT x.id, x.sku, x.name, x.min_stock_level AS minStockLevel, x.on_hand AS onHand
+      FROM (
+        SELECT p.id, p.sku, p.name, p.min_stock_level,
+               COALESCE(s.total_on_hand, 0) AS on_hand
+        FROM products p
+        LEFT JOIN (
+          SELECT ib.product_id, SUM(ib.on_hand) AS total_on_hand
+          FROM inventory_balances ib
+          INNER JOIN locations l ON l.id = ib.location_id AND l.is_active = 1
+          GROUP BY ib.product_id
+        ) s ON s.product_id = p.id
+        WHERE p.status = 'ACTIVE'
+      ) x
+      WHERE x.on_hand < x.min_stock_level
+      ORDER BY (x.min_stock_level - x.on_hand) DESC
+    `;
+
+    return rows.map((r) => {
+      const onHand = Number(r.onHand);
+      const minStockLevel = Number(r.minStockLevel);
+      return {
+        productId: r.id,
+        sku: r.sku,
+        name: r.name,
+        onHand,
+        minStockLevel,
+        shortfall: minStockLevel - onHand,
+      };
+    });
+  }
+
+  /**
+   * Reports dashboard — total value of on-hand stock (ACTIVE products only,
+   * cost_price required) plus the 5 highest-value products. Products with a
+   * null cost_price are excluded from the total (never treated as 0) and
+   * counted separately so the dashboard can disclose the gap honestly.
+   * Both the total and the top-5 ranking are computed in SQL.
+   */
+  async getInventoryValuation() {
+    const productBalanceCte = Prisma.sql`
+      SELECT p.id, p.sku, p.name, p.cost_price, COALESCE(s.total_on_hand, 0) AS on_hand
+      FROM products p
+      LEFT JOIN (
+        SELECT ib.product_id, SUM(ib.on_hand) AS total_on_hand
+        FROM inventory_balances ib
+        INNER JOIN locations l ON l.id = ib.location_id AND l.is_active = 1
+        GROUP BY ib.product_id
+      ) s ON s.product_id = p.id
+      WHERE p.status = 'ACTIVE' AND p.cost_price IS NOT NULL
+    `;
+
+    const [totalRow] = await this.prisma.$queryRaw<{ total: string | null }[]>`
+      SELECT SUM(x.on_hand * x.cost_price) AS total FROM (${productBalanceCte}) x
+    `;
+
+    const topRows = await this.prisma.$queryRaw<
+      { id: string; sku: string; name: string; onHand: string; costPrice: string; value: string }[]
+    >`
+      SELECT x.id, x.sku, x.name, x.on_hand AS onHand, x.cost_price AS costPrice,
+             (x.on_hand * x.cost_price) AS value
+      FROM (${productBalanceCte}) x
+      ORDER BY value DESC
+      LIMIT 5
+    `;
+
+    const excludedProductCount = await this.prisma.product.count({
+      where: { status: 'ACTIVE', costPrice: null },
+    });
+
+    return {
+      total: Number(totalRow?.total ?? 0),
+      excludedProductCount,
+      topProducts: topRows.map((r) => ({
+        productId: r.id,
+        sku: r.sku,
+        name: r.name,
+        onHand: Number(r.onHand),
+        costPrice: Number(r.costPrice),
+        value: Number(r.value),
+      })),
+    };
+  }
+
+  /**
+   * Reports dashboard — transaction counts by type over the last [days]
+   * (native Prisma `groupBy`, a DB-level aggregate), plus the most recent 15
+   * transactions overall as a "recent activity" feed. The feed is
+   * deliberately NOT scoped to [days]: a quiet week would leave it empty and
+   * defeat its purpose, unlike the period counts which measure throughput.
+   */
+  async getStockMovementSummary(days = 7) {
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+    const grouped = await this.prisma.inventoryTransaction.groupBy({
+      by: ['type'],
+      where: { createdAt: { gte: since } },
+      _count: { _all: true },
+    });
+    const byType = Object.fromEntries(
+      Object.values(InventoryTransactionType).map((type) => [
+        type,
+        grouped.find((g) => g.type === type)?._count._all ?? 0,
+      ]),
+    ) as Record<InventoryTransactionType, number>;
+
+    const recentActivity = await this.prisma.inventoryTransaction.findMany({
+      include: {
+        product: { select: { id: true, sku: true, name: true } },
+        fromLocation: { select: { id: true, name: true, code: true } },
+        toLocation: { select: { id: true, name: true, code: true } },
+        performedByUser: { select: { id: true, fullName: true, email: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 15,
+    });
+
+    return { periodDays: days, byType, recentActivity };
   }
 }

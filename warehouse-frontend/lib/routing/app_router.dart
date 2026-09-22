@@ -12,6 +12,8 @@ import '../features/auth/presentation/login_screen.dart';
 import '../features/categories/presentation/categories_screen.dart';
 import '../features/inventory/presentation/inventory_screen.dart';
 import '../features/locations/presentation/warehouse_structure_screen.dart';
+import '../features/dashboard/presentation/dashboard_screen.dart';
+import '../features/product_import/presentation/product_import_screen.dart';
 import '../features/products/presentation/product_detail_screen.dart';
 import '../features/products/presentation/product_form_screen.dart';
 import '../features/products/presentation/products_list_screen.dart';
@@ -44,6 +46,7 @@ class _AuthRefreshListenable extends ChangeNotifier {
 /// Nav-item paths whose sub-routes (list/detail/create/edit) are hand-built
 /// below instead of the generic one-`ComingSoonView`-per-item loop.
 const _customBuiltPaths = {
+  RoutePaths.dashboard,
   RoutePaths.products,
   RoutePaths.workstreams,
   RoutePaths.categories,
@@ -77,9 +80,9 @@ const _customBuiltPaths = {
 /// and Settings' Profile section are built as a clean, reusable template —
 /// the ordering app's own auth/RBAC (copied from this same backend
 /// originally) will need near-identical screens later, just re-pointed at
-/// its own API base. Audit Log is permission-gated but shows an honest
-/// backend-gap notice instead of fake data — the warehouse backend writes
-/// audit_logs rows but has no read endpoint yet. Settings' API-key section
+/// its own API base. Audit Log is permission-gated and shows real data — the
+/// warehouse backend gained a `GET /audit-logs` read endpoint to pair with
+/// the `audit_logs` rows `AuditInterceptor` already wrote. Settings' API-key section
 /// is warehouse-specific (the ordering app never issues these) and not
 /// meant to be copied. Workstreams (a catalogue-organization layer —
 /// Warehouse -> Workstream -> Category -> sub-category -> Product, purely
@@ -112,7 +115,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       final navItem = navItemForPath(path);
       if (navItem != null && navItem.requiredPermissions.isNotEmpty) {
         final allowed = auth.user?.canAny(navItem.requiredPermissions) ?? false;
-        if (!allowed) return RoutePaths.dashboard;
+        if (!allowed) {
+          // Dashboard is the default fallback below, but Dashboard itself is
+          // now `reports.view`-gated — redirecting a disallowed user FROM
+          // dashboard TO dashboard would be a same-path "redirect" go_router
+          // never resolves (it isn't null, so it keeps re-running redirect()
+          // until it hits its own too-many-redirects guard). Settings has no
+          // permission requirement at all (see nav_items.dart), so it's a
+          // safe universal landing spot for that one case.
+          return path == RoutePaths.dashboard ? RoutePaths.settings : RoutePaths.dashboard;
+        }
       }
       return null;
     },
@@ -133,8 +145,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 path: item.path,
                 builder: (context, state) => ComingSoonView(title: item.label, icon: item.icon),
               ),
+          GoRoute(path: RoutePaths.dashboard, builder: (context, state) => const DashboardScreen()),
           GoRoute(path: RoutePaths.products, builder: (context, state) => const ProductsListScreen()),
           GoRoute(path: RoutePaths.productNew, builder: (context, state) => const ProductFormScreen()),
+          GoRoute(path: RoutePaths.productImport, builder: (context, state) => const ProductImportScreen()),
           GoRoute(
             path: '${RoutePaths.products}/:id',
             builder: (context, state) => ProductDetailScreen(productId: state.pathParameters['id']!),

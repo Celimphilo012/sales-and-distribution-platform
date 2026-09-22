@@ -37,6 +37,35 @@ export interface WarehouseCatalogue {
   products: WarehouseProduct[];
 }
 
+// STEP R3b: the warehouse's `GET /api/v1/locations` (`locations:read`
+// scope) — a flat list, no ancestor chain, same limitation as the
+// warehouse's own internal `/locations` route. A consumer resolves the
+// full path client-side by walking `parentId`, same as `/warehouse-frontend`
+// already does. "Leaf" isn't a field — a consumer derives it the same way
+// too: a location no other location names as its `parentId`.
+export interface WarehouseWarehouseRef {
+  id: string;
+  name: string;
+  code: string;
+  isActive: boolean;
+}
+
+export interface WarehouseLocation {
+  id: string;
+  warehouseId: string;
+  parentId: string | null;
+  name: string;
+  code: string;
+  locationType: string;
+  description: string | null;
+  isActive: boolean;
+}
+
+export interface WarehouseLocationsResult {
+  warehouses: WarehouseWarehouseRef[];
+  locations: WarehouseLocation[];
+}
+
 export interface WarehouseAvailabilityItem {
   productId: string;
   locationId: string | null;

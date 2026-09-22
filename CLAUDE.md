@@ -110,11 +110,39 @@ across the boundary (reserve/release/issue, pricing hole closed).
   admin screens backend-verified (do a browser pass on the API-key one-time
   reveal when convenient).
 
-  **Two warehouse BACKEND gaps found in 6f (honestly reported, not faked — fill
-  when convenient, neither blocks anything):**
-  - No audit-log READ endpoint: the warehouse writes audit_logs (AuditInterceptor)
-    but serves none back. The Audit Log screen shows a gap notice. Fix: add
-    `GET /audit-logs` (mirror the ordering `/backend` one from 1G).
+  PRODUCT IMPORT DONE (warehouse: bulk product create/update from an uploaded
+  Excel/CSV file — `GET /products/import/template`, `POST /products/import/preview`
+  session-staged validation, `POST /products/import/confirm` with defensive
+  re-validation + partial success + audit logging; frontend 3-step wizard —
+  upload → preview with create/update/reject tables → result — reached from
+  the Products screen's "Import products" action). Supplements manual product
+  creation, doesn't replace it.
+
+  AUDIT LOG DONE — the gap below is closed: `GET /audit-logs` (`AuditController`/
+  `AuditService`, gated `audit.view`) now reads back the rows `AuditInterceptor`
+  always wrote. The warehouse-frontend Audit Log screen is a real filterable,
+  paginated list (ported from the ordering app's own audit screen, plus an
+  `apiKey`-attributed row case the ordering app doesn't have, since the
+  warehouse's external API is key-authenticated).
+
+  REPORTS + DASHBOARD DONE — new warehouse backend `reports` module: 4
+  `reports.view`-gated GET endpoints (`/reports/low-stock`,
+  `/reports/inventory-valuation`, `/reports/stock-movement-summary`,
+  `/reports/adjustments-summary`) plus one aggregated `/dashboard` payload for
+  the frontend homepage. Every number is a DB-level aggregate (Prisma
+  `groupBy`/`count` or a raw `$queryRaw` join — never a full-table fetch summed
+  in JS); every number cross-checked against an independently-written query
+  against the real DB and matched exactly. `reports.view` is a NEW permission
+  (added to the catalog, granted to ADMIN + MANAGER, re-seeded) — the
+  warehouse-frontend Dashboard screen (the last placeholder nav item) is real:
+  KPI tiles, low-stock + pending-adjustments preview lists that link into the
+  existing inventory/adjustments screens, a simple stock-movement bar list (no
+  new charting dependency), and a recent-activity feed. Confirmed: 403 for a
+  user without `reports.view`, the nav item itself disappears for them too, and
+  no GET in this feature writes an `audit_logs` row.
+
+  **One warehouse BACKEND gap remains from 6f (honestly reported, not faked —
+  fill when convenient, doesn't block anything):**
   - No self-service change-password: `PATCH /users/:id` is an admin reset (needs
     users.manage, no current-password check), not "change my own password".
     Settings shows a gap notice. Fix: add a self-service change-password endpoint
@@ -125,13 +153,97 @@ across the boundary (reserve/release/issue, pricing hole closed).
 **Ordering frontend retrofit (`/frontend` → `/ordering-frontend`):**
 - R1 (rename + patch the two shared-widget bugs + strip warehouse nav + port the
   Users/Roles/Audit/Settings-Profile admin template, re-pointed at `/backend`)
-  DONE. Ordering Audit Log shows REAL data (the `/backend` /audit-logs endpoint
-  exists, unlike the warehouse). App is now `/ordering-frontend`, package
-  `ordering_frontend`, logs into the ordering system (3000).
-- **Next: R2 — Customers** (simpler feature, sets the ordering feature-screen
-  pattern), then R3 — Orders (the big cross-system one: order creation pulls the
-  catalogue from the warehouse via `/backend`'s API-key relay; lifecycle;
-  reserve/dispatch cross the boundary), then R4 — Order reports + dashboard.
+  DONE.
+- R2 (Customers — CRUD, sets the ordering feature-screen pattern) DONE.
+  API notes found: write ops all gated by `customers.create` (no separate
+  edit/delete key); `customers.view` reads. **`/customers` has NO pagination** —
+  returns the full array with search + includeInactive only. Client-side status
+  filter built over the boolean. The orders endpoint likely shares this
+  no-pagination trait — watch performance/UX in R3/R4 if data grows.
+- R3a (Order creation + cross-system catalogue picker + draft management + order
+  viewing) DONE. Rule 8 verified across the boundary: prices snapshot from the
+  warehouse; client-supplied `unitPrice` hard-rejected (400). Added ONE small
+  endpoint to `/backend`: `GET /catalogue` (JWT-guarded, orders.create-gated, thin
+  relay over the existing internal WarehouseApiClient). The relayed JSON is
+  richer than `/backend`'s stale WarehouseProduct TS interface (already carries
+  workstream + attributes) — picker shows them for free.
+  **API characteristics found (shape R3b/R4):**
+  - `customerId` is IMMUTABLE after order creation (PATCH doesn't accept it).
+  - `items` is a full REPLACE on create/update, not add/remove-one-line.
+  - `/orders` has NO pagination and NO search — just status + customerId filters
+    (matches /customers).
+  - The entire lifecycle is already wired on `/backend`
+    (submit/approve/reject/reserve/cancel/pick/pack/ready/dispatch/deliver/complete
+    all exist as real endpoints) — R3b is purely a UI phase, no backend gaps.
+- R3b (Order lifecycle UI: submit → approve/reject → reserve → pick/pack/ready →
+  dispatch → deliver → complete + cancel + partial fulfilment) DONE.
+  **Full two-system flow verified end-to-end:** happy-path lifecycle through the
+  UI + cross-checked against the warehouse (reserve dropped available by 20;
+  dispatch dropped on_hand by 20 and cleared the reservation); insufficient stock
+  showed structured short-line detail with order + warehouse both unchanged;
+  partial pack (3 of 5) → PARTIALLY_FULFILLED; warehouse-down (503) handled
+  cleanly on reserve/dispatch/cancel with retries safe (idempotency confirmed).
+  Payment status stayed UNPAID throughout. 51 tests pass, flutter analyze clean.
+
+  Small `/backend` change part of R3b: registered `WarehouseLocationsModule` in
+  app.module.ts (2 lines) — the module existed but was never registered, so
+  `GET /warehouse-locations` was 404. Reserve needs per-line leaf locations and
+  the frontend can only reach `/backend`, so this was necessary.
+
+  **Backend-shape follow-ons found in R3b (log; fix when convenient):**
+  - Insufficient-stock is 409 with the shortfall flattened into MESSAGE TEXT,
+    not a structured JSON body. The UI parses text with a fallback to verbatim
+    display — fragile to any message-wording change. Fix: return
+    structured `{shortLines: [...]}` on 409.
+  - `/backend` accepts a whitespace-only reject note (the UI trims to prevent
+    it, but the backend should validate too).
+  - Partial-dispatch ledger pattern is RESERVATION → RELEASE_RESERVATION (full) →
+    ISSUE (shipped), not release-only-the-remainder as originally described in
+    backend 1F verification. Net effect is correct — flagging the discrepancy.
+
+  **Bugs fixed by R3b:** location dropdown truncation (22 locations reading
+  identical); **specific WCAG contrast fixes in `/ordering-frontend`**
+  (token-level, propagates within that app): three dark-mode containers
+  (warning/success/info, ratios 2.35–3.81) fixed to accessible pairs; one
+  light-mode warning pair improved 4.52 → 8.55 (was a marginal pass, not a fail).
+  `/warehouse-frontend` has its own palette — no port needed.
+  `/warehouse-frontend` Products table not scrolling (fixed).
+
+  **WCAG contrast fixes: DONE (2a).** All four target pairs now ≥ 4.5:1:
+  - `/ordering-frontend` info tone `0288D1` → `016398` (2.90 → 5.10:1).
+  - `/warehouse-frontend` info tone `0088B0` → `006486` (3.30 → 5.47:1 / 2.95 → 4.89:1).
+  - `/warehouse-frontend` onInfoContainer `006B8C` → `005F7F` on infoContainer (4.29 → 5.12:1).
+  Token-level in each app's `AppSemanticColors`. Dark mode untouched.
+
+- **Next: R4 — Order reports + dashboard** in `/ordering-frontend` (the final
+  ordering feature phase). Reports/dashboard endpoints already exist on
+  `/backend` from step 1G — pure UI phase.
+
+**Housekeeping status (2a COMPLETE):**
+- ~~Test-artifact cleanup across both databases~~ DONE: 21 R3b orders + 6 test
+  users deleted from ordering DB; 2 test users deleted from warehouse DB; 2 ledger-referenced
+  test users correctly DEACTIVATED (FK-blocked, rule 2). Ambiguous r3-* users
+  and 13 phase-seed-looking users KEPT and reported (review yourself).
+- ~~WCAG contrast fails~~ DONE (see above).
+- Stale dev-server processes: 2a hit real memory pressure (Windows killed 5 dev
+  servers during it). Keep only what you need running: backend 3000 + warehouse
+  3100 + one Flutter app.
+- ~~Personal browser click-through of R2/R3a/R3b~~ DONE (limited-user click-through
+  confirmed permissions hiding cleanly).
+
+**⚠ Active-data reality found during 2a — reconcile BEFORE any demo:**
+- **Body Lotion 500ml (INVDEMO-BODYLOTION-500ML) and "Inventory Demo Warehouse"
+  are BOTH INACTIVE.** The flagship "where is this product" spec-demo product is
+  currently invisible in default active-only views. It's actually in THREE
+  locations (not two as previously believed).
+- **Active workstreams are Orijins + Puer** (NOT the General/Retail/Wholesale
+  referenced in earlier doc notes — those are all inactive). Real active
+  catalogue is PC-001, PC-002, HH-002 in the active warehouse "Mbabane Central
+  Distribution" (WH-MB-01, 30 locations).
+- **Decision before demo:** reactivate the demo data, use the real active data,
+  or both. If the flagship multi-location "where is this product" story is told
+  with real active products, may need to seed a real product into a second
+  active location via RECEIVE (same discipline as PC-002 restore).
 
 **OPEN DECISION (for R3) — Fulfilment nav:** `fulfilment.pick/pack/dispatch`
 permissions exist. R1 did NOT add a top-level "Fulfilment" nav item, treating

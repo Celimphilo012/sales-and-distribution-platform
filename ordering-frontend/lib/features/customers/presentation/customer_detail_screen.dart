@@ -11,6 +11,9 @@ import '../../../shared/widgets/app_card.dart';
 import '../../../shared/widgets/app_dialog.dart';
 import '../../../shared/widgets/empty_loading_error_states.dart';
 import '../../../shared/widgets/status_badge.dart';
+import '../../orders/data/orders_providers.dart';
+import '../../orders/domain/order.dart';
+import '../../orders/presentation/order_status_tone.dart';
 import '../data/customers_providers.dart';
 import '../domain/customer.dart';
 import 'customer_form_dialog.dart';
@@ -117,7 +120,6 @@ class _CustomerDetailBodyState extends ConsumerState<_CustomerDetailBody> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final customer = widget.customer;
     final canManage = ref.watch(authProvider.select((s) => s.value?.user?.can('customers.create') ?? false));
 
@@ -170,25 +172,91 @@ class _CustomerDetailBodyState extends ConsumerState<_CustomerDetailBody> {
           ),
         ),
         const SizedBox(height: AppSpacing.md),
-        AppCard(
-          title: 'Orders',
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(Icons.info_outline, color: theme.colorScheme.primary),
-              const SizedBox(width: AppSpacing.sm),
-              Expanded(
-                child: Text(
-                  "This customer's order history isn't wired up yet — that's step R3. The "
-                  'backend already relates orders to customers; this screen will list them once '
-                  'the Orders feature exists.',
-                  style: theme.textTheme.bodyMedium,
-                ),
-              ),
-            ],
-          ),
-        ),
+        _CustomerOrdersSection(customerId: customer.id),
       ],
+    );
+  }
+}
+
+/// STEP R3a: wires up what was a placeholder in R2 — `GET /orders?
+/// customerId=` (`ListOrdersQueryDto.customerId`) now shows this customer's
+/// real order history. Row tap opens the order (no lifecycle actions here
+/// either — R3b).
+class _CustomerOrdersSection extends ConsumerWidget {
+  const _CustomerOrdersSection({required this.customerId});
+
+  final String customerId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final canViewOrders = ref.watch(
+      authProvider.select((s) => s.value?.user?.canAny(['orders.view_own', 'orders.view_team']) ?? false),
+    );
+
+    if (!canViewOrders) {
+      return AppCard(
+        title: 'Orders',
+        child: Text(
+          "You don't have permission to view orders.",
+          style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+        ),
+      );
+    }
+
+    final ordersAsync = ref.watch(customerOrdersProvider(customerId));
+
+    return AppCard(
+      title: 'Orders',
+      child: ordersAsync.when(
+        loading: () => const LoadingStateView(message: 'Loading orders…'),
+        error: (error, stackTrace) => Text(
+          error is AppError ? error.message : 'Could not load orders.',
+          style: TextStyle(color: theme.colorScheme.error),
+        ),
+        data: (orders) {
+          if (orders.isEmpty) {
+            return Text(
+              'No orders yet for this customer.',
+              style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            );
+          }
+          return Column(
+            children: [
+              for (final order in orders) ...[
+                InkWell(
+                  onTap: () => context.go(RoutePaths.orderDetail(order.id)),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(order.orderNumber, style: theme.textTheme.bodyMedium),
+                              Text(
+                                formatDateTime(order.orderDate),
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Text(order.total.toStringAsFixed(2), style: theme.textTheme.bodyMedium),
+                        const SizedBox(width: AppSpacing.md),
+                        StatusBadge(label: order.status.label, tone: orderStatusTone(order.status)),
+                      ],
+                    ),
+                  ),
+                ),
+                const Divider(),
+              ],
+            ],
+          );
+        },
+      ),
     );
   }
 }

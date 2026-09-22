@@ -15,6 +15,9 @@ class RoutePaths {
   static const customers = '/customers';
   static String customerDetail(String id) => '$customers/$id';
   static const orders = '/orders';
+  static const orderNew = '$orders/new';
+  static String orderDetail(String id) => '$orders/$id';
+  static String orderEdit(String id) => '$orders/$id/edit';
   static const users = '/users';
   static const roles = '/roles';
   static String roleDetail(String id) => '$roles/$id';

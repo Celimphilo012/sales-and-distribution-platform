@@ -374,7 +374,12 @@ class _LocationRow extends ConsumerWidget {
     final location = node.location;
     switch (action) {
       case 'add_child':
-        await showLocationFormDialog(context, warehouseId: location.warehouseId, parentId: location.id);
+        await showLocationFormDialog(
+          context,
+          warehouseId: location.warehouseId,
+          parentId: location.id,
+          parentType: location.locationType,
+        );
       case 'generate_levels':
         await showGenerateLevelsDialog(context, parent: location);
       case 'edit':

@@ -10,6 +10,8 @@ import { RolesModule } from './roles/roles.module';
 import { PermissionsModule } from './permissions/permissions.module';
 import { CustomersModule } from './customers/customers.module';
 import { OrdersModule } from './orders/orders.module';
+import { CatalogueModule } from './catalogue/catalogue.module';
+import { WarehouseLocationsModule } from './warehouse-locations/warehouse-locations.module';
 import { ReportsModule } from './reports/reports.module';
 import { AuditModule } from './audit/audit.module';
 import { DashboardModule } from './dashboard/dashboard.module';
@@ -28,6 +30,8 @@ import { DashboardModule } from './dashboard/dashboard.module';
     PermissionsModule,
     CustomersModule,
     OrdersModule,
+    CatalogueModule,
+    WarehouseLocationsModule,
     ReportsModule,
     AuditModule,
     DashboardModule,

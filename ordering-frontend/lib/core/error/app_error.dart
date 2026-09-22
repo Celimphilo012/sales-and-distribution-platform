@@ -56,3 +56,12 @@ class ServerError extends AppError {
 class UnknownError extends AppError {
   const UnknownError([super.message = 'An unexpected error occurred.']);
 }
+
+/// 503 — a dependency (for the ordering app: the WAREHOUSE) could not be
+/// reached at all. The backend guarantees nothing was attempted on the far
+/// side, so the caller can always retry safely. Deliberately its own type
+/// (not folded into [ServerError]) so the UI can show a calm "safe to
+/// retry" message instead of a generic failure.
+class ServiceUnavailableError extends AppError {
+  const ServiceUnavailableError([super.message = 'The warehouse is temporarily unavailable. This action is safe to retry.']);
+}

@@ -10,7 +10,9 @@ class AppSpacing {
   static const double xl = 32;
   static const double xxl = 48;
 
-  static const double radiusSm = 6;
-  static const double radiusMd = 10;
-  static const double radiusLg = 16;
+  // Broadsheet look: near-square corners everywhere (a hairline of softening
+  // only so edges don't alias) — hierarchy comes from rules and space.
+  static const double radiusSm = 2;
+  static const double radiusMd = 2;
+  static const double radiusLg = 2;
 }

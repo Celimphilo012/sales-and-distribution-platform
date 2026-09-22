@@ -44,6 +44,11 @@ export class CategoriesService {
     return category;
   }
 
+  /** DB-level COUNT for the reports dashboard's catalogue summary. */
+  countActive() {
+    return this.prisma.category.count({ where: { isActive: true } });
+  }
+
   async findOne(id: string) {
     const category = await this.prisma.category.findUnique({
       where: { id },

@@ -51,6 +51,8 @@ class ErrorMapper {
         return NotFoundError(message ?? const NotFoundError().message);
       case 409:
         return ConflictError(message ?? const ConflictError().message);
+      case 503:
+        return ServiceUnavailableError(message ?? const ServiceUnavailableError().message);
       default:
         if (statusCode != null && statusCode >= 500) {
           return ServerError(message ?? const ServerError().message);

@@ -7,12 +7,21 @@ import '../../../../shared/widgets/app_card.dart';
 import '../../../../shared/widgets/app_dropdown_field.dart';
 import '../../../../shared/widgets/app_number_field.dart';
 import '../../../../shared/widgets/app_text_field.dart';
+import '../../../inventory/data/inventory_providers.dart';
+import '../../../inventory/domain/inventory_balance.dart';
+import '../../../inventory/domain/product_location_stock.dart';
+import '../../../inventory/presentation/widgets/product_location_chooser.dart';
 import '../../../inventory/presentation/widgets/product_picker_field.dart';
 import '../../../locations/domain/location.dart';
 import '../../../locations/presentation/widgets/leaf_location_field.dart';
 import '../../../products/domain/product.dart';
 import '../../data/stock_adjustments_providers.dart';
 import '../../domain/stock_adjustment.dart';
+
+/// A catalogue [Product] reduced to the fields [ProductLocationChooser]
+/// needs — the same shape the balances API embeds.
+InventoryBalanceProductRef _productRefOf(Product product) =>
+    InventoryBalanceProductRef(id: product.id, sku: product.sku, name: product.name, uom: product.uom);
 
 /// REQUEST an adjustment (`inventory.adjust.request`, gated by the caller).
 /// Submitting only creates a PENDING `StockAdjustment` — moves no stock
@@ -35,6 +44,9 @@ class _AdjustmentRequestFormState extends ConsumerState<AdjustmentRequestForm> {
   final _referenceController = TextEditingController();
 
   Product? _product;
+
+  /// The location the USER chose. When null, the effective location may
+  /// still be auto-detected — see [_autoLocation].
   Location? _location;
   AdjustmentBucket _bucket = AdjustmentBucket.onHand;
   AdjustmentDirection _direction = AdjustmentDirection.increase;
@@ -49,13 +61,36 @@ class _AdjustmentRequestFormState extends ConsumerState<AdjustmentRequestForm> {
     super.dispose();
   }
 
+  /// Active leaf locations currently holding on-hand stock of [_product] —
+  /// only looked up while the user hasn't chosen a location themselves.
+  /// [listen] is true from `build` (subscribes so the UI updates) and false
+  /// from `_submit` (reads the already-loaded value without subscribing).
+  List<ProductLocationStock> _sourcesFor({required bool listen}) {
+    final product = _product;
+    if (product == null || _location != null) return const [];
+    final async = listen
+        ? ref.watch(productStockBreakdownProvider(product.id))
+        : ref.read(productStockBreakdownProvider(product.id));
+    return [
+      for (final s in async.value ?? const <ProductLocationStock>[])
+        if (s.balance.onHand > 0) s,
+    ];
+  }
+
+  /// The single location holding the product, if there's exactly one. Kept
+  /// DERIVED (not stored) so it can never go stale: change the product and
+  /// it recomputes; pick a location yourself and yours wins.
+  Location? _autoLocation(List<ProductLocationStock> sources) =>
+      sources.length == 1 && sources.first.path.isNotEmpty ? sources.first.path.last : null;
+
   Future<void> _submit() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
     if (_product == null) {
       setState(() => _errorMessage = 'Choose a product.');
       return;
     }
-    if (_location == null) {
+    final location = _location ?? _autoLocation(_sourcesFor(listen: false));
+    if (location == null) {
       setState(() => _errorMessage = 'Choose a location.');
       return;
     }
@@ -70,7 +105,7 @@ class _AdjustmentRequestFormState extends ConsumerState<AdjustmentRequestForm> {
           .read(stockAdjustmentsApiProvider)
           .create(
             productId: _product!.id,
-            locationId: _location!.id,
+            locationId: location.id,
             bucket: _bucket,
             delta: double.parse(_deltaController.text.trim()),
             direction: _direction,
@@ -102,6 +137,13 @@ class _AdjustmentRequestFormState extends ConsumerState<AdjustmentRequestForm> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final product = _product;
+
+    final sourcesAsync =
+        (product != null && _location == null) ? ref.watch(productStockBreakdownProvider(product.id)) : null;
+    final sources = _sourcesFor(listen: true);
+    final autoLocation = _autoLocation(sources);
+    final effectiveLocation = _location ?? autoLocation;
 
     return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 720),
@@ -116,14 +158,57 @@ class _AdjustmentRequestFormState extends ConsumerState<AdjustmentRequestForm> {
               ProductPickerField(
                 label: 'Product',
                 value: _product,
-                onChanged: (product) => setState(() => _product = product),
+                // A newly-picked product's own location(s) haven't been
+                // looked up yet — drop any previous manual pick so
+                // auto-detect re-evaluates fresh for it.
+                onChanged: (picked) => setState(() {
+                  _product = picked;
+                  _location = null;
+                }),
               ),
               const SizedBox(height: AppSpacing.md),
               LeafLocationField(
                 label: 'Location',
-                value: _location,
+                value: effectiveLocation,
                 onChanged: (location) => setState(() => _location = location),
               ),
+              if (_location == null && product != null) ...[
+                if (sourcesAsync?.isLoading ?? false)
+                  const Padding(
+                    padding: EdgeInsets.only(top: AppSpacing.sm),
+                    child: LinearProgressIndicator(),
+                  )
+                else if (sourcesAsync?.hasError ?? false)
+                  Padding(
+                    padding: const EdgeInsets.only(top: AppSpacing.sm),
+                    child: Text(
+                      'Could not look up where this item is currently stocked — choose the location manually.',
+                      style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.error),
+                    ),
+                  )
+                else if (autoLocation != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: AppSpacing.xs),
+                    child: Text(
+                      'Detected automatically — the only location holding ${product.name}. Change it to override.',
+                      style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.primary),
+                    ),
+                  )
+                else if (sources.length > 1)
+                  Padding(
+                    padding: const EdgeInsets.only(top: AppSpacing.sm),
+                    child: ProductLocationChooser(
+                      product: _productRefOf(product),
+                      sources: sources,
+                      promptLabel: 'Choose which location to adjust:',
+                      onPick: (location) => setState(() => _location = location),
+                    ),
+                  ),
+                // Zero sources: no message — unlike a transfer, an
+                // adjustment doesn't require pre-existing stock (e.g.
+                // recording newly-found surplus), so falling back to a
+                // silent manual pick is correct, not an error state.
+              ],
               const SizedBox(height: AppSpacing.md),
               AppDropdownField<AdjustmentBucket>(
                 label: 'Bucket',

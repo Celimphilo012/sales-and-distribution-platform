@@ -11,6 +11,9 @@ import '../features/auth/presentation/login_screen.dart';
 import '../features/customers/presentation/customer_detail_screen.dart';
 import '../features/customers/presentation/customers_screen.dart';
 import '../features/dashboard/presentation/dashboard_screen.dart';
+import '../features/orders/presentation/order_detail_screen.dart';
+import '../features/orders/presentation/order_form_screen.dart';
+import '../features/orders/presentation/orders_screen.dart';
 import '../features/roles/presentation/role_detail_screen.dart';
 import '../features/roles/presentation/roles_screen.dart';
 import '../features/settings/presentation/settings_screen.dart';
@@ -34,6 +37,7 @@ class _AuthRefreshListenable extends ChangeNotifier {
 /// below instead of the generic one-`ComingSoonView`-per-item loop.
 const _customBuiltPaths = {
   RoutePaths.customers,
+  RoutePaths.orders,
   RoutePaths.users,
   RoutePaths.roles,
   RoutePaths.audit,
@@ -50,12 +54,18 @@ const _customBuiltPaths = {
 /// STEP R1 (retrofit `/frontend` → `/ordering-frontend`): Dashboard (F2) and
 /// Users/Roles/Audit Log/Settings (brought over from the warehouse app's
 /// step 6f admin template, Audit Log now backed by `/backend`'s REAL
-/// `GET /audit-logs`) make real calls. STEP R2 adds Customers — the first
-/// ordering feature screen, the template R3 (Orders)/R4 (Reports) copy.
-/// Orders/Reports are still [ComingSoonView] placeholders. Products/
-/// Categories/Warehouses/Inventory (F3-era) were removed entirely; that
-/// catalogue now lives in `/warehouse-frontend` talking to `/warehouse`
-/// (ARCHITECTURE.md §A2).
+/// `GET /audit-logs`) make real calls. STEP R2 added Customers — the first
+/// ordering feature screen, the template this and R4 (Reports) copy. STEP
+/// R3a adds Orders: list/create/edit-draft/detail, including the novel
+/// cross-system catalogue picker (`/backend`'s new `GET /catalogue` relay
+/// over the internal `WarehouseApiClient`, JWT-guarded — the frontend never
+/// calls the warehouse directly, ARCHITECTURE.md §A2). No lifecycle actions
+/// beyond DRAFT yet (submit/approve/reserve/pick/pack/dispatch are R3b,
+/// even though the backend already supports all of them). Reports is still
+/// a [ComingSoonView] placeholder. Products/Categories/Warehouses/Inventory
+/// (F3-era) were removed entirely in R1; that catalogue's MANAGEMENT lives
+/// in `/warehouse-frontend` talking to `/warehouse` — this app only ever
+/// READS it, to build an order.
 final appRouterProvider = Provider<GoRouter>((ref) {
   final refreshListenable = _AuthRefreshListenable(ref);
 
@@ -111,6 +121,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '${RoutePaths.customers}/:id',
             builder: (context, state) => CustomerDetailScreen(customerId: state.pathParameters['id']!),
+          ),
+          GoRoute(path: RoutePaths.orders, builder: (context, state) => const OrdersScreen()),
+          GoRoute(path: RoutePaths.orderNew, builder: (context, state) => const OrderFormScreen()),
+          GoRoute(
+            path: '${RoutePaths.orders}/:id/edit',
+            builder: (context, state) => OrderFormScreen(orderId: state.pathParameters['id']!),
+          ),
+          GoRoute(
+            path: '${RoutePaths.orders}/:id',
+            builder: (context, state) => OrderDetailScreen(orderId: state.pathParameters['id']!),
           ),
           GoRoute(path: RoutePaths.users, builder: (context, state) => const UsersScreen()),
           GoRoute(path: RoutePaths.roles, builder: (context, state) => const RolesScreen()),

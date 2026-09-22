@@ -7,6 +7,7 @@ import '../../../core/error/app_error.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../routing/route_paths.dart';
 import '../../../shared/widgets/app_data_table.dart';
+import '../../../shared/widgets/app_dialog.dart';
 import '../../../shared/widgets/empty_loading_error_states.dart';
 import '../../../shared/widgets/status_badge.dart';
 import '../data/warehouses_providers.dart';
@@ -25,6 +26,37 @@ class WarehousesListScreen extends ConsumerStatefulWidget {
 
 class _WarehousesListScreenState extends ConsumerState<WarehousesListScreen> {
   bool _includeInactive = false;
+
+  // Warehouses are soft-deleted (CLAUDE.md rule 10): locations and the stock
+  // ledger reference them historically, so the only "delete" is deactivate.
+  Future<void> _deactivate(Warehouse warehouse) async {
+    final confirmed = await ConfirmDialog.show(
+      context,
+      title: 'Deactivate warehouse?',
+      message:
+          'This marks "${warehouse.name}" (${warehouse.code}) inactive and hides it from the '
+          'warehouse pickers. Its locations and stock history are kept — nothing is deleted, and '
+          'you can reactivate it later from "Show inactive".',
+      confirmLabel: 'Deactivate',
+      isDestructive: true,
+    );
+    if (!confirmed) return;
+    await _run(() => ref.read(warehousesApiProvider).deactivate(warehouse.id), 'Warehouse deactivated');
+  }
+
+  Future<void> _reactivate(Warehouse warehouse) =>
+      _run(() => ref.read(warehousesApiProvider).reactivate(warehouse.id), 'Warehouse reactivated');
+
+  Future<void> _run(Future<void> Function() action, String successMessage) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await action();
+      invalidateWarehouses(ref);
+      messenger.showSnackBar(SnackBar(content: Text(successMessage)));
+    } on AppError catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -82,10 +114,20 @@ class _WarehousesListScreenState extends ConsumerState<WarehousesListScreen> {
                   if (canManage)
                     AppDataColumn(
                       label: '',
-                      cellBuilder: (w) => IconButton(
-                        icon: const Icon(Icons.edit_outlined),
-                        tooltip: 'Edit',
-                        onPressed: () => showWarehouseFormDialog(context, warehouse: w),
+                      cellBuilder: (w) => Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.edit_outlined),
+                            tooltip: 'Edit',
+                            onPressed: () => showWarehouseFormDialog(context, warehouse: w),
+                          ),
+                          IconButton(
+                            icon: Icon(w.isActive ? Icons.block_outlined : Icons.restore_outlined),
+                            tooltip: w.isActive ? 'Deactivate' : 'Reactivate',
+                            onPressed: () => w.isActive ? _deactivate(w) : _reactivate(w),
+                          ),
+                        ],
                       ),
                     ),
                 ],

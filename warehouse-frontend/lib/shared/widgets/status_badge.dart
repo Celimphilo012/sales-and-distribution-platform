@@ -21,20 +21,25 @@ class StatusBadge extends StatelessWidget {
     final theme = Theme.of(context);
     final semantic = context.semanticColors;
 
-    final (background, foreground) = switch (tone) {
-      StatusTone.neutral => (theme.colorScheme.surfaceContainerHighest, theme.colorScheme.onSurfaceVariant),
-      StatusTone.success => (semantic.successContainer, semantic.onSuccessContainer),
-      StatusTone.warning => (semantic.warningContainer, semantic.onWarningContainer),
-      StatusTone.danger => (theme.colorScheme.errorContainer, theme.colorScheme.onErrorContainer),
-      StatusTone.info => (semantic.infoContainer, semantic.onInfoContainer),
+    // Outlined tag (Broadsheet): a 1px rule and text in the tone color on a
+    // transparent ground — status reads as a stamp, not a filled pill.
+    final foreground = switch (tone) {
+      StatusTone.neutral => theme.colorScheme.onSurfaceVariant,
+      StatusTone.success => semantic.success,
+      StatusTone.warning => semantic.warning,
+      StatusTone.danger => theme.colorScheme.error,
+      StatusTone.info => semantic.info,
     };
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: AppSpacing.xs),
-      decoration: BoxDecoration(color: background, borderRadius: BorderRadius.circular(AppSpacing.radiusLg)),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: 2),
+      decoration: BoxDecoration(
+        border: Border.all(color: foreground),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+      ),
       child: Text(
         label,
-        style: theme.textTheme.labelMedium?.copyWith(color: foreground, fontWeight: FontWeight.w600),
+        style: theme.textTheme.labelSmall?.copyWith(color: foreground, fontWeight: FontWeight.w600),
       ),
     );
   }

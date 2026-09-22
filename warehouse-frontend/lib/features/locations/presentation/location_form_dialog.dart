@@ -23,20 +23,27 @@ Future<void> showLocationFormDialog(
   Location? location,
   String? warehouseId,
   String? parentId,
+  String? parentType,
 }) {
   assert(location != null || warehouseId != null, 'Creating a location needs a warehouseId');
   return showDialog<void>(
     context: context,
-    builder: (context) => _LocationFormDialog(location: location, warehouseId: warehouseId, parentId: parentId),
+    builder: (context) =>
+        _LocationFormDialog(location: location, warehouseId: warehouseId, parentId: parentId, parentType: parentType),
   );
 }
 
 class _LocationFormDialog extends ConsumerStatefulWidget {
-  const _LocationFormDialog({this.location, this.warehouseId, this.parentId});
+  const _LocationFormDialog({this.location, this.warehouseId, this.parentId, this.parentType});
 
   final Location? location;
   final String? warehouseId;
   final String? parentId;
+
+  /// The parent location's own type, when adding a child (null for a root
+  /// location or when editing) — narrows the Type dropdown's suggestions;
+  /// see [suggestedChildLocationTypes].
+  final String? parentType;
 
   @override
   ConsumerState<_LocationFormDialog> createState() => _LocationFormDialogState();
@@ -48,6 +55,7 @@ class _LocationFormDialogState extends ConsumerState<_LocationFormDialog> {
   late final TextEditingController _codeController;
   late final TextEditingController _descriptionController;
   late final TextEditingController _customTypeController;
+  late final List<String> _typeOptions;
   late String _typeSelection;
   bool _saving = false;
   String? _error;
@@ -63,9 +71,15 @@ class _LocationFormDialogState extends ConsumerState<_LocationFormDialog> {
     _codeController = TextEditingController(text: l?.code ?? '');
     _descriptionController = TextEditingController(text: l?.description ?? '');
 
+    // Editing never narrows (there's no "parent" being added under here,
+    // and an existing location may legitimately carry a type the narrowed
+    // list for ITS OWN parent wouldn't suggest) — only a brand-new CHILD's
+    // dropdown is narrowed, by the parent's own type.
+    _typeOptions = l == null ? suggestedChildLocationTypes(widget.parentType) : kSuggestedLocationTypes;
+
     final existingType = l?.locationType;
     final isSuggested = existingType != null && kSuggestedLocationTypes.contains(existingType);
-    _typeSelection = existingType == null ? kSuggestedLocationTypes.first : (isSuggested ? existingType : _customTypeSentinel);
+    _typeSelection = existingType == null ? _typeOptions.first : (isSuggested ? existingType : _customTypeSentinel);
     _customTypeController = TextEditingController(text: isSuggested ? '' : (existingType ?? ''));
   }
 
@@ -150,9 +164,11 @@ class _LocationFormDialogState extends ConsumerState<_LocationFormDialog> {
             AppDropdownField<String>(
               label: 'Type',
               value: _typeSelection,
-              items: [...kSuggestedLocationTypes, _customTypeSentinel],
+              items: [..._typeOptions, _customTypeSentinel],
               itemLabel: (t) => t,
-              helperText: 'A label, not a structural limit — pick Custom… for anything else',
+              helperText: _typeOptions.length < kSuggestedLocationTypes.length
+                  ? 'Narrowed to likely types under a ${widget.parentType} — pick Custom… for anything else'
+                  : 'A label, not a structural limit — pick Custom… for anything else',
               onChanged: (value) => setState(() => _typeSelection = value ?? _typeSelection),
             ),
             if (_isCustomType) ...[

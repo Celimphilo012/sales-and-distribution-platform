@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../core/responsive/responsive_layout.dart';
+import '../../core/responsive/breakpoints.dart';
 import '../../core/theme/app_spacing.dart';
 import 'app_card.dart';
 import 'empty_loading_error_states.dart';
@@ -8,7 +8,11 @@ import 'empty_loading_error_states.dart';
 /// One column of an [AppDataTable]: a header label plus how to render a
 /// cell for a given row of [T].
 class AppDataColumn<T> {
-  const AppDataColumn({required this.label, required this.cellBuilder, this.numeric = false});
+  const AppDataColumn({
+    required this.label,
+    required this.cellBuilder,
+    this.numeric = false,
+  });
 
   final String label;
   final Widget Function(T row) cellBuilder;
@@ -43,15 +47,23 @@ class AppDataTable<T> extends StatelessWidget {
       return EmptyStateView(title: emptyTitle, message: emptyMessage);
     }
 
-    return ResponsiveLayout(
-      mobile: (context) => _MobileCardList(rows: rows, columns: columns, onRowTap: onRowTap),
-      desktop: (context) => _DesktopTable(rows: rows, columns: columns, onRowTap: onRowTap),
+    // Keyed off the width this widget is actually given (not the window), so
+    // it does the right thing beside a sidebar or inside a split panel.
+    return LayoutBuilder(
+      builder: (context, constraints) =>
+          constraints.maxWidth >= Breakpoints.dataTableMin
+          ? _DesktopTable(rows: rows, columns: columns, onRowTap: onRowTap)
+          : _MobileCardList(rows: rows, columns: columns, onRowTap: onRowTap),
     );
   }
 }
 
 class _DesktopTable<T> extends StatelessWidget {
-  const _DesktopTable({required this.rows, required this.columns, required this.onRowTap});
+  const _DesktopTable({
+    required this.rows,
+    required this.columns,
+    required this.onRowTap,
+  });
 
   final List<T> rows;
   final List<AppDataColumn<T>> columns;
@@ -59,24 +71,63 @@ class _DesktopTable<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: DataTable(
-        columns: [for (final column in columns) DataColumn(label: Text(column.label), numeric: column.numeric)],
-        rows: [
-          for (final row in rows)
-            DataRow(
-              onSelectChanged: onRowTap == null ? null : (_) => onRowTap!(row),
-              cells: [for (final column in columns) DataCell(column.cellBuilder(row))],
+    final scheme = Theme.of(context).colorScheme;
+
+    // A white, hairline-bordered sheet that fills the available width; the
+    // table scrolls sideways inside it only when its columns need more room.
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLowest,
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: LayoutBuilder(
+        // Vertical scroll outside, horizontal inside: a long list scrolls
+        // within the space the screen gives it (the sheet still shrinks to
+        // fit a short list, and works inside an unbounded parent).
+        builder: (context, constraints) => SingleChildScrollView(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minWidth: constraints.maxWidth),
+              child: DataTable(
+                headingRowHeight: 40,
+                dataRowMinHeight: 44,
+                columnSpacing: AppSpacing.lg,
+                showCheckboxColumn: false,
+                columns: [
+                  for (final column in columns)
+                    DataColumn(
+                      label: Text(column.label.toUpperCase()),
+                      numeric: column.numeric,
+                    ),
+                ],
+                rows: [
+                  for (final row in rows)
+                    DataRow(
+                      onSelectChanged: onRowTap == null
+                          ? null
+                          : (_) => onRowTap!(row),
+                      cells: [
+                        for (final column in columns)
+                          DataCell(column.cellBuilder(row)),
+                      ],
+                    ),
+                ],
+              ),
             ),
-        ],
+          ),
+        ),
       ),
     );
   }
 }
 
 class _MobileCardList<T> extends StatelessWidget {
-  const _MobileCardList({required this.rows, required this.columns, required this.onRowTap});
+  const _MobileCardList({
+    required this.rows,
+    required this.columns,
+    required this.onRowTap,
+  });
 
   final List<T> rows;
   final List<AppDataColumn<T>> columns;
@@ -95,7 +146,8 @@ class _MobileCardList<T> extends StatelessWidget {
       shrinkWrap: true,
       padding: const EdgeInsets.all(AppSpacing.md),
       itemCount: rows.length,
-      separatorBuilder: (context, index) => const SizedBox(height: AppSpacing.sm),
+      separatorBuilder: (context, index) =>
+          const SizedBox(height: AppSpacing.sm),
       itemBuilder: (context, index) {
         final row = rows[index];
         return InkWell(
@@ -107,7 +159,9 @@ class _MobileCardList<T> extends StatelessWidget {
               children: [
                 for (final column in columns)
                   Padding(
-                    padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs / 2),
+                    padding: const EdgeInsets.symmetric(
+                      vertical: AppSpacing.xs / 2,
+                    ),
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -120,7 +174,14 @@ class _MobileCardList<T> extends StatelessWidget {
                             ),
                           ),
                         ),
-                        Expanded(child: column.cellBuilder(row)),
+                        // Align gives the cell loose constraints so chips/tags
+                        // hug their content instead of stretching to the card.
+                        Expanded(
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: column.cellBuilder(row),
+                          ),
+                        ),
                       ],
                     ),
                   ),

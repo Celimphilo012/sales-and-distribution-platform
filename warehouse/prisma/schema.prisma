@@ -37,6 +37,7 @@ model User {
   stockAdjustmentsReviewed  StockAdjustment[] @relation("StockAdjustmentReviewedBy")
   stockCountsStarted        StockCount[]
   apiKeysCreated            ApiKey[]
+  workstreamsManaged        WorkstreamManager[]
 
   @@map("users")
 }
@@ -189,16 +190,58 @@ model Workstream {
   name        String
   code        String
   description String?
+  // Either an external link (imageUrl, rendered directly) OR an uploaded
+  // file (imagePath, a disk filename served via GET :id/image/file) — at
+  // most one is set at a time; setting one clears the other (see
+  // WorkstreamsService). Mirrors ProductImage's own url/storagePath split.
+  imageUrl    String?  @map("image_url")
+  imagePath   String?  @map("image_path")
+  // Contact metadata — who to reach for this workstream/brand line, all
+  // optional (a workstream created before this existed, or one with no
+  // dedicated contact, just leaves them blank).
+  contactName  String? @map("contact_name")
+  contactEmail String? @map("contact_email")
+  contactPhone String? @map("contact_phone")
   isActive    Boolean  @default(true) @map("is_active")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
   warehouse  Warehouse  @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
   categories Category[]
+  managers   WorkstreamManager[]
 
   @@unique([warehouseId, code])
   @@index([warehouseId])
   @@map("workstreams")
+}
+
+// -----------------------------------------------------------------------
+// Workstream-manager assignment — a user assigned here can manage that ONE
+// workstream's catalogue (categories + products), enforced backend-side in
+// CategoriesService/ProductsService (see WorkstreamManagersService.
+// assertScopedAccess): a user with ANY assignment row is scoped to only
+// their assigned workstream(s) for catalogue mutations; a user with NO
+// assignment rows is unscoped (today's global behaviour, e.g. ADMIN).
+// Deliberately data-driven, not role-name-driven (CLAUDE.md rule 1) — the
+// seeded WORKSTREAM_MANAGER role is just a convenient default permission
+// bundle (catalogue.view + products.manage); the actual scoping comes from
+// rows in this table, for whichever user/role combination holds them.
+// Scope is catalogue only (categories + products) — does NOT cover
+// inventory, warehouse structure, or workstream records themselves (that
+// stays admin-only, gated `workstreams.manage`).
+// -----------------------------------------------------------------------
+model WorkstreamManager {
+  id           String   @id @default(uuid())
+  userId       String   @map("user_id")
+  workstreamId String   @map("workstream_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workstream Workstream @relation(fields: [workstreamId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, workstreamId])
+  @@index([workstreamId])
+  @@map("workstream_managers")
 }
 
 // Reference data — soft-deleted via status (rule 10), never hard-deleted,
@@ -293,11 +336,15 @@ model ProductAttribute {
 // Pure media rows, not historically referenced by orders/transactions —
 // hard-deleted is fine here, unlike products/categories.
 model ProductImage {
-  id        String  @id @default(uuid())
-  productId String  @map("product_id")
-  url       String
-  sortOrder Int     @default(0) @map("sort_order")
-  isPrimary Boolean @default(false) @map("is_primary")
+  id          String  @id @default(uuid())
+  productId   String  @map("product_id")
+  // Either an external link (url) OR an uploaded file (storagePath, a disk
+  // filename served via GET .../images/:imageId/file) — exactly one is set
+  // (enforced in ProductImagesService, not a DB constraint).
+  url         String?
+  storagePath String? @map("storage_path")
+  sortOrder   Int     @default(0) @map("sort_order")
+  isPrimary   Boolean @default(false) @map("is_primary")
 
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
@@ -473,6 +520,12 @@ model StockAdjustment {
   reviewedBy  String?             @map("reviewed_by")
   reviewedAt  DateTime?           @map("reviewed_at")
   reviewNote  String?             @map("review_note")
+  // Optional evidence photo (e.g. for a DAMAGED/LOST correction) — just the
+  // generated filename under uploads/adjustments/, never a client-supplied
+  // path (see StockAdjustmentsController). Local disk for now; swapping to a
+  // cloud bucket later only touches the read/write of this column, not the
+  // API shape (GET .../photo stays the same either way).
+  photoPath   String?             @map("photo_path")
 
   product         Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
   location        Location @relation(fields: [locationId], references: [id], onDelete: Restrict)

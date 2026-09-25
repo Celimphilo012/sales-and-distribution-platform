@@ -6,6 +6,7 @@ import '../core/auth/app_user.dart';
 import '../core/auth/auth_provider.dart';
 import '../core/theme/app_spacing.dart';
 import '../core/theme/theme_mode_provider.dart';
+import 'sign_out_confirmation.dart';
 
 /// The dark application bar with the cyan rule beneath it (Broadsheet's
 /// "front-page furniture"). Shows the brand, a breadcrumb on wider screens
@@ -143,7 +144,7 @@ class _AccountMenu extends ConsumerWidget {
       tooltip: 'Account',
       offset: const Offset(0, ShellTopBar.height - 8),
       onSelected: (value) {
-        if (value == 'logout') ref.read(authProvider.notifier).logout();
+        if (value == 'logout') confirmAndSignOut(context, ref);
       },
       itemBuilder: (context) => [
         PopupMenuItem<String>(

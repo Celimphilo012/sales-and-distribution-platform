@@ -10,6 +10,8 @@ import 'package:warehouse_frontend/core/auth/auth_provider.dart';
 import 'package:warehouse_frontend/core/auth/auth_state.dart';
 import 'package:warehouse_frontend/core/persistence/shared_preferences_provider.dart';
 import 'package:warehouse_frontend/core/theme/app_theme.dart';
+import 'package:warehouse_frontend/features/stock_adjustments/data/stock_adjustments_providers.dart';
+import 'package:warehouse_frontend/features/stock_adjustments/domain/stock_adjustment.dart';
 import 'package:warehouse_frontend/routing/nav_items.dart';
 
 const _admin = AppUser(
@@ -155,4 +157,73 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   });
+
+  group('pending-adjustments nav badge', () {
+    // A second pump helper (rather than parameterising _pumpShell) so the
+    // common case above stays simple — this one adds one extra override.
+    Future<void> pumpWithPending(WidgetTester tester, List<StockAdjustment> pending) async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      final router = GoRouter(
+        initialLocation: '/inventory',
+        routes: [
+          ShellRoute(
+            builder: (context, state, child) => ResponsiveAppShell(currentPath: state.matchedLocation, child: child),
+            routes: [
+              for (final item in kNavItems)
+                GoRoute(path: item.path, builder: (context, state) => Center(child: Text('page:${item.path}'))),
+            ],
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            sharedPreferencesProvider.overrideWithValue(prefs),
+            authProvider.overrideWith(_FakeAdminNotifier.new),
+            stockAdjustmentsListProvider(AdjustmentStatus.pending).overrideWith((ref) async => pending),
+          ],
+          child: MaterialApp.router(theme: AppTheme.light(), routerConfig: router),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('shows a count on the Stock Adjustments row when there are pending ones', (tester) async {
+      await pumpWithPending(tester, [
+        _pendingAdjustment('a1'),
+        _pendingAdjustment('a2'),
+        _pendingAdjustment('a3'),
+      ]);
+
+      expect(find.text('3'), findsOneWidget);
+    });
+
+    testWidgets('shows nothing when there are none pending', (tester) async {
+      await pumpWithPending(tester, const []);
+
+      expect(find.text('0'), findsNothing);
+    });
+  });
 }
+
+StockAdjustment _pendingAdjustment(String id) => StockAdjustment(
+  id: id,
+  productId: 'p1',
+  locationId: 'l1',
+  bucket: AdjustmentBucket.onHand,
+  delta: 1,
+  direction: AdjustmentDirection.increase,
+  reason: 'test',
+  status: AdjustmentStatus.pending,
+  requestedBy: 'u1',
+  requestedAt: DateTime(2026, 1, 1),
+  product: const AdjustmentProductRef(id: 'p1', sku: 'SKU-1', name: 'Widget'),
+  location: const AdjustmentLocationRef(id: 'l1', name: 'Bin A', code: 'BINA'),
+  requestedByUser: const AdjustmentUserRef(id: 'u1', fullName: 'Staff', email: 'staff@example.com'),
+);

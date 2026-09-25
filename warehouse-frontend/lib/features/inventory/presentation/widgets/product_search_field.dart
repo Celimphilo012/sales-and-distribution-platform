@@ -87,9 +87,33 @@ class _ProductSearchFieldState extends ConsumerState<ProductSearchField> {
                   separatorBuilder: (context, index) => const Divider(height: 1),
                   itemBuilder: (context, index) {
                     final product = results[index];
+                    final theme = Theme.of(context);
+                    final parent = product.category?.parent?.name ?? product.category?.name;
+                    final sub = product.category?.parent != null ? product.category!.name : null;
                     return ListTile(
                       title: Text(product.name),
-                      subtitle: Text('${product.sku} · ${product.category?.name ?? 'Uncategorized'}'),
+                      subtitle: Row(
+                        children: [
+                          Flexible(child: Text('${product.sku} · ${parent ?? 'Uncategorized'}', overflow: TextOverflow.ellipsis)),
+                          if (sub != null) ...[
+                            const SizedBox(width: 4),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.secondaryContainer,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                sub,
+                                style: theme.textTheme.labelSmall?.copyWith(
+                                  color: theme.colorScheme.onSecondaryContainer,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
                       trailing: const Icon(Icons.chevron_right),
                       onTap: () => widget.onSelected(product),
                     );

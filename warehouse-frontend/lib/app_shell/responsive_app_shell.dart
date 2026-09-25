@@ -7,11 +7,14 @@ import '../core/auth/app_user.dart';
 import '../core/auth/auth_provider.dart';
 import '../core/responsive/responsive_layout.dart';
 import '../core/theme/app_spacing.dart';
+import '../features/workstreams/data/workstream_managers_providers.dart';
+import '../features/workstreams/domain/workstream_manager.dart';
 import '../routing/nav_items.dart';
 import '../routing/route_paths.dart';
 import 'nav_panel.dart';
 import 'nav_rail.dart';
 import 'shell_top_bar.dart';
+import 'sign_out_confirmation.dart';
 
 /// The permission-filtered, responsive shell every routed screen renders
 /// inside of, driven by the grouped [kNavGroups] table:
@@ -155,15 +158,19 @@ class _Sidebar extends ConsumerWidget {
   }
 }
 
-/// "SIGNED IN AS / name / role" — the sidebar's masthead, after the
-/// prototype.
-class _SignedInBlock extends StatelessWidget {
+/// "SIGNED IN AS / name / role / assigned workstream(s)" — the sidebar's
+/// masthead, after the prototype. The workstream line only shows for a
+/// SCOPED workstream manager (`GET /users/me/workstreams` returns empty for
+/// everyone else, e.g. ADMIN) — it's the visible answer to "which
+/// workstream am I limited to" for someone whose catalogue access is
+/// actually restricted.
+class _SignedInBlock extends ConsumerWidget {
   const _SignedInBlock({required this.user});
 
   final AppUser? user;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final role = _roleLine(user);
@@ -191,6 +198,60 @@ class _SignedInBlock extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: textTheme.bodySmall?.copyWith(color: scheme.primary),
             ),
+          const _WorkstreamBadgesLoader(),
+        ],
+      ),
+    );
+  }
+}
+
+/// Watches [myWorkstreamAssignmentsProvider] and renders [_WorkstreamBadges]
+/// (or nothing) — a self-contained loader so a plain `StatelessWidget` (the
+/// mobile drawer header) can drop this in without becoming a
+/// `ConsumerWidget` itself.
+class _WorkstreamBadgesLoader extends ConsumerWidget {
+  const _WorkstreamBadgesLoader();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final myWorkstreamsAsync = ref.watch(myWorkstreamAssignmentsProvider);
+    return myWorkstreamsAsync.maybeWhen(
+      data: (assignments) => assignments.isEmpty ? const SizedBox.shrink() : _WorkstreamBadges(assignments: assignments),
+      orElse: () => const SizedBox.shrink(),
+    );
+  }
+}
+
+/// Small pills naming exactly which workstream(s) a scoped manager is
+/// limited to — reused by both the desktop sidebar and the mobile drawer.
+class _WorkstreamBadges extends StatelessWidget {
+  const _WorkstreamBadges({required this.assignments});
+
+  final List<MyWorkstreamAssignment> assignments;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Wrap(
+        spacing: 4,
+        runSpacing: 4,
+        children: [
+          for (final a in assignments)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: scheme.primaryContainer,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                a.workstreamName,
+                style: textTheme.labelSmall?.copyWith(color: scheme.onPrimaryContainer, fontWeight: FontWeight.w600),
+              ),
+            ),
         ],
       ),
     );
@@ -209,7 +270,7 @@ class _SignOutButton extends ConsumerWidget {
       padding: const EdgeInsets.all(AppSpacing.sm),
       decoration: BoxDecoration(border: Border(top: BorderSide(color: scheme.outlineVariant))),
       child: OutlinedButton.icon(
-        onPressed: () => ref.read(authProvider.notifier).logout(),
+        onPressed: () => confirmAndSignOut(context, ref),
         icon: PhosphorIcon(PhosphorIconsDuotone.signOut, size: 18, color: scheme.onSurfaceVariant),
         label: Text('Sign out', style: TextStyle(color: scheme.onSurfaceVariant)),
         style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 10)),
@@ -261,6 +322,7 @@ class _NavDrawer extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: textTheme.bodySmall?.copyWith(color: scheme.onInverseSurface.withValues(alpha: 0.65)),
                 ),
+                const _WorkstreamBadgesLoader(),
               ],
             ),
           ),

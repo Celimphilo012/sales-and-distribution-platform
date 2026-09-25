@@ -3,6 +3,7 @@ import { AttributeDataType, Prisma } from '@prisma/client';
 import { ProductsService } from '../products/products.service';
 import { CategoriesService } from '../categories/categories.service';
 import { WorkstreamsService } from '../workstreams/workstreams.service';
+import { WorkstreamManagersService } from '../workstream-managers/workstream-managers.service';
 import { AttributeTypesService } from '../attribute-types/attribute-types.service';
 import { WarehousesService } from '../warehouses/warehouses.service';
 import { readSpreadsheetRows, RawImportRow } from './parsing/spreadsheet-reader';
@@ -61,6 +62,8 @@ interface ValidationContext {
   categoriesByWorkstream: Map<string, ActiveCategory[]>; // workstreamId -> its active categories
   attributeTypesByHeader: Map<string, ActiveAttributeType>;
   existingBySku: Map<string, ExistingProduct>;
+  /** null = importing user is unscoped (no restriction); otherwise the workstream IDs they're allowed to import into. */
+  scopedWorkstreamIds: Set<string> | null;
 }
 
 interface ExistingProduct {
@@ -83,6 +86,7 @@ export class ProductImportService {
     private readonly productsService: ProductsService,
     private readonly categoriesService: CategoriesService,
     private readonly workstreamsService: WorkstreamsService,
+    private readonly workstreamManagersService: WorkstreamManagersService,
     private readonly attributeTypesService: AttributeTypesService,
     private readonly warehousesService: WarehousesService,
     private readonly sessions: ProductImportSessionStore,
@@ -92,14 +96,15 @@ export class ProductImportService {
   // 1. Template
   // -----------------------------------------------------------------
 
-  async buildTemplate(): Promise<Buffer> {
+  /** [userId]'s example rows are drawn only from their assigned workstream(s) when they're scoped — same restriction as the actual import. */
+  async buildTemplate(userId: string): Promise<Buffer> {
     const attributeTypes = await this.attributeTypesService.findAll({ includeInactive: false });
     const attributeColumns: TemplateAttributeColumn[] = attributeTypes.map((a) => ({
       header: attributeHeader(a),
       dataType: a.dataType,
     }));
 
-    const examples = await this.buildExampleRows(attributeTypes);
+    const examples = await this.buildExampleRows(attributeTypes, userId);
     return buildImportTemplate(attributeColumns, examples);
   }
 
@@ -112,8 +117,14 @@ export class ProductImportService {
    */
   private async buildExampleRows(
     attributeTypes: { id: string; name: string; unit: string | null; dataType: AttributeDataType }[],
+    userId: string,
   ): Promise<TemplateExampleRow[]> {
-    const activeWorkstreams = await this.getActiveWorkstreams();
+    const scopedIds = await this.workstreamManagersService.getAssignedWorkstreamIds(userId);
+    let activeWorkstreams = await this.getActiveWorkstreams();
+    if (scopedIds.length > 0) {
+      const scoped = new Set(scopedIds);
+      activeWorkstreams = activeWorkstreams.filter((w) => scoped.has(w.id));
+    }
     const activeWorkstreamIds = new Set(activeWorkstreams.map((w) => w.id));
     const workstreamById = new Map(activeWorkstreams.map((w) => [w.id, w]));
 
@@ -175,7 +186,7 @@ export class ProductImportService {
   async preview(file: { buffer: Buffer; originalname: string }, userId: string): Promise<ImportPreviewResult> {
     const rawRows = await readSpreadsheetRows(file.buffer, file.originalname);
 
-    const context = await this.buildValidationContext(rawRows);
+    const context = await this.buildValidationContext(rawRows, userId);
     const { creates, rejected } = this.validateAndDedupe(rawRows, context);
 
     const toCreate: ImportCreateRow[] = [];
@@ -234,17 +245,20 @@ export class ProductImportService {
         continue;
       }
       try {
-        await this.productsService.create({
-          sku: row.sku,
-          name: row.name,
-          description: row.description,
-          categoryId: row.categoryId,
-          sellingPrice: row.sellingPrice,
-          costPrice: row.costPrice,
-          uom: row.uom,
-          minStockLevel: row.minStockLevel,
-          attributes: row.attributes.map((a) => ({ attributeTypeId: a.attributeTypeId, value: a.value })),
-        });
+        await this.productsService.create(
+          {
+            sku: row.sku,
+            name: row.name,
+            description: row.description,
+            categoryId: row.categoryId,
+            sellingPrice: row.sellingPrice,
+            costPrice: row.costPrice,
+            uom: row.uom,
+            minStockLevel: row.minStockLevel,
+            attributes: row.attributes.map((a) => ({ attributeTypeId: a.attributeTypeId, value: a.value })),
+          },
+          userId,
+        );
         created++;
       } catch (error) {
         failed.push({ sku: row.sku, reason: this.describeWriteError(error) });
@@ -258,20 +272,24 @@ export class ProductImportService {
         continue;
       }
       try {
-        await this.productsService.update(row.existingProductId, {
-          name: row.name,
-          description: row.description,
-          categoryId: row.categoryId,
-          sellingPrice: row.sellingPrice,
-          costPrice: row.costPrice,
-          uom: row.uom,
-          minStockLevel: row.minStockLevel,
-          // Full replace ("same as PATCH", per the task) — a blank
-          // attribute column in the import row means that attribute is
-          // CLEARED if the existing product had a value; documented on the
-          // template's Instructions sheet.
-          attributes: row.attributes.map((a) => ({ attributeTypeId: a.attributeTypeId, value: a.value })),
-        });
+        await this.productsService.update(
+          row.existingProductId,
+          {
+            name: row.name,
+            description: row.description,
+            categoryId: row.categoryId,
+            sellingPrice: row.sellingPrice,
+            costPrice: row.costPrice,
+            uom: row.uom,
+            minStockLevel: row.minStockLevel,
+            // Full replace ("same as PATCH", per the task) — a blank
+            // attribute column in the import row means that attribute is
+            // CLEARED if the existing product had a value; documented on the
+            // template's Instructions sheet.
+            attributes: row.attributes.map((a) => ({ attributeTypeId: a.attributeTypeId, value: a.value })),
+          },
+          userId,
+        );
         updated++;
       } catch (error) {
         failed.push({ sku: row.sku, reason: this.describeWriteError(error) });
@@ -347,12 +365,14 @@ export class ProductImportService {
       .map((w) => ({ id: w.id, code: w.code, name: w.name, warehouseId: w.warehouseId }));
   }
 
-  private async buildValidationContext(rows: RawImportRow[]): Promise<ValidationContext> {
-    const [activeWorkstreams, categories, attributeTypes] = await Promise.all([
+  private async buildValidationContext(rows: RawImportRow[], userId: string): Promise<ValidationContext> {
+    const [activeWorkstreams, categories, attributeTypes, scopedIds] = await Promise.all([
       this.getActiveWorkstreams(),
       this.categoriesService.findAll({ includeInactive: false }),
       this.attributeTypesService.findAll({ includeInactive: false }),
+      this.workstreamManagersService.getAssignedWorkstreamIds(userId),
     ]);
+    const scopedWorkstreamIds = scopedIds.length === 0 ? null : new Set(scopedIds);
 
     const workstreamsByCode = new Map<string, ActiveWorkstream | '__AMBIGUOUS__'>();
     for (const w of activeWorkstreams) {
@@ -399,7 +419,7 @@ export class ProductImportService {
       });
     }
 
-    return { workstreamsByCode, categoriesByWorkstream, attributeTypesByHeader, existingBySku };
+    return { workstreamsByCode, categoriesByWorkstream, attributeTypesByHeader, existingBySku, scopedWorkstreamIds };
   }
 
   /** Validates every row, then dedupes by SKU (last row for a given SKU wins) — rejected rows are never candidates for dedup, only rows that individually pass. */
@@ -473,6 +493,12 @@ export class ProductImportService {
     }
     if (workstream === '__AMBIGUOUS__') {
       return { sku, reason: `Row ${row.rowNumber}: workstream_code "${workstreamCode}" matches more than one active warehouse — ambiguous, cannot import` };
+    }
+    if (context.scopedWorkstreamIds && !context.scopedWorkstreamIds.has(workstream.id)) {
+      return {
+        sku,
+        reason: `Row ${row.rowNumber}: workstream_code "${workstreamCode}" is outside the workstream(s) you're assigned to manage`,
+      };
     }
 
     const candidateCategories = (context.categoriesByWorkstream.get(workstream.id) ?? []).filter((c) => c.name === categoryName);

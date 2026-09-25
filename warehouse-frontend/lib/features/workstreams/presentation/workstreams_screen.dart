@@ -10,13 +10,18 @@ import '../../../shared/widgets/status_badge.dart';
 import '../../warehouses/data/warehouses_providers.dart';
 import '../data/workstreams_providers.dart';
 import '../domain/workstream.dart';
+import 'widgets/workstream_image_view.dart';
 import 'workstream_form_dialog.dart';
+import 'workstream_managers_dialog.dart';
 
 /// Workstreams management — a catalogue-organization layer (Warehouse ->
 /// Workstream -> Category -> sub-category -> Product), purely reference
-/// data: create/edit/deactivate here, never anything operational. Gated the
-/// same way as Categories: visible with `catalogue.view`, manage actions
-/// need `products.manage`.
+/// data: create/edit/deactivate here, never anything operational. Visible
+/// with `catalogue.view`; editing the workstream record itself needs
+/// `workstreams.manage`; assigning who can manage its CATALOGUE (categories
+/// + products, scoped) needs `workstreams.assign` — a separate, narrower
+/// permission, since deciding who touches a workstream is more sensitive
+/// than doing the catalogue work itself.
 class WorkstreamsScreen extends ConsumerStatefulWidget {
   const WorkstreamsScreen({super.key});
 
@@ -30,7 +35,8 @@ class _WorkstreamsScreenState extends ConsumerState<WorkstreamsScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final canManage = ref.watch(authProvider.select((s) => s.value?.user?.can('products.manage') ?? false));
+    final canManage = ref.watch(authProvider.select((s) => s.value?.user?.can('workstreams.manage') ?? false));
+    final canAssign = ref.watch(authProvider.select((s) => s.value?.user?.can('workstreams.assign') ?? false));
     final workstreamsAsync = ref.watch(workstreamsProvider(_includeInactive));
     final warehousesAsync = ref.watch(warehousesProvider(true));
 
@@ -72,12 +78,29 @@ class _WorkstreamsScreenState extends ConsumerState<WorkstreamsScreen> {
                   rows: workstreams,
                   emptyTitle: 'No workstreams yet',
                   columns: [
+                    AppDataColumn(
+                      label: '',
+                      cellBuilder: (w) => ClipRRect(
+                        borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+                        child: SizedBox(
+                          width: 36,
+                          height: 36,
+                          child: w.hasImage
+                              ? WorkstreamImageView(workstream: w)
+                              : ColoredBox(
+                                  color: theme.colorScheme.surfaceContainerHighest,
+                                  child: Icon(Icons.image_outlined, size: 18, color: theme.colorScheme.onSurfaceVariant),
+                                ),
+                        ),
+                      ),
+                    ),
                     AppDataColumn(label: 'Name', cellBuilder: (w) => Text(w.name)),
                     AppDataColumn(label: 'Code', cellBuilder: (w) => Text(w.code)),
                     AppDataColumn(
                       label: 'Warehouse',
                       cellBuilder: (w) => Text(warehouseNames[w.warehouseId] ?? w.warehouseId),
                     ),
+                    AppDataColumn(label: 'Contact', cellBuilder: (w) => _ContactCell(workstream: w)),
                     AppDataColumn(
                       label: 'Status',
                       cellBuilder: (w) => StatusBadge(
@@ -85,29 +108,37 @@ class _WorkstreamsScreenState extends ConsumerState<WorkstreamsScreen> {
                         tone: w.isActive ? StatusTone.success : StatusTone.neutral,
                       ),
                     ),
-                    if (canManage)
+                    if (canManage || canAssign)
                       AppDataColumn(
                         label: '',
                         cellBuilder: (w) => Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            IconButton(
-                              icon: const Icon(Icons.edit_outlined),
-                              tooltip: 'Edit',
-                              onPressed: () => showWorkstreamFormDialog(context, workstream: w),
-                            ),
-                            if (w.isActive)
+                            if (canAssign)
                               IconButton(
-                                icon: const Icon(Icons.block),
-                                tooltip: 'Deactivate',
-                                onPressed: () => _deactivate(context, w),
-                              )
-                            else
-                              IconButton(
-                                icon: const Icon(Icons.check_circle_outline),
-                                tooltip: 'Reactivate',
-                                onPressed: () => _reactivate(context, w),
+                                icon: const Icon(Icons.people_outline),
+                                tooltip: 'Managers',
+                                onPressed: () => showWorkstreamManagersDialog(context, w),
                               ),
+                            if (canManage) ...[
+                              IconButton(
+                                icon: const Icon(Icons.edit_outlined),
+                                tooltip: 'Edit',
+                                onPressed: () => showWorkstreamFormDialog(context, workstream: w),
+                              ),
+                              if (w.isActive)
+                                IconButton(
+                                  icon: const Icon(Icons.block),
+                                  tooltip: 'Deactivate',
+                                  onPressed: () => _deactivate(context, w),
+                                )
+                              else
+                                IconButton(
+                                  icon: const Icon(Icons.check_circle_outline),
+                                  tooltip: 'Reactivate',
+                                  onPressed: () => _reactivate(context, w),
+                                ),
+                            ],
                           ],
                         ),
                       ),
@@ -137,5 +168,43 @@ class _WorkstreamsScreenState extends ConsumerState<WorkstreamsScreen> {
     } on AppError catch (e) {
       if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
     }
+  }
+}
+
+/// Compact contact-info cell — contact person's name on top (if given),
+/// email + phone combined onto ONE line below it (not two): the table's
+/// rows are height-capped for compactness, and a 3-line cell overflowed it.
+/// "—" when there's no contact info at all.
+class _ContactCell extends StatelessWidget {
+  const _ContactCell({required this.workstream});
+
+  final Workstream workstream;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    if (!workstream.hasContactInfo) {
+      return Text('—', style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant));
+    }
+
+    final emailAndPhone = [
+      ?workstream.contactEmail,
+      ?workstream.contactPhone,
+    ].join(' · ');
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (workstream.contactName != null)
+          Text(workstream.contactName!, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall),
+        if (emailAndPhone.isNotEmpty)
+          Text(
+            emailAndPhone,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+          ),
+      ],
+    );
   }
 }

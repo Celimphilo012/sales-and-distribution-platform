@@ -64,4 +64,17 @@ class UsersApi {
     final response = await _apiClient.guard((dio) => dio.delete<Map<String, dynamic>>('/users/$id'));
     return WarehouseUser.fromJson(response.data!);
   }
+
+  /// `PATCH /users/me/password` — self-service, any authenticated user;
+  /// distinct from [update]'s admin reset (`users.manage`, no current-
+  /// password check). A wrong [currentPassword] surfaces as a 401, which
+  /// `ApiClient.guard` turns into an [AppError] the caller displays inline.
+  Future<void> changeOwnPassword({required String currentPassword, required String newPassword}) async {
+    await _apiClient.guard(
+      (dio) => dio.patch<Map<String, dynamic>>(
+        '/users/me/password',
+        data: {'currentPassword': currentPassword, 'newPassword': newPassword},
+      ),
+    );
+  }
 }

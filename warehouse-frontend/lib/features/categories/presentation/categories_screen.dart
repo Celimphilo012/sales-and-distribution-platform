@@ -9,10 +9,12 @@ import '../../../routing/route_paths.dart';
 import '../../../shared/widgets/app_card.dart';
 import '../../../shared/widgets/app_dialog.dart';
 import '../../../shared/widgets/empty_loading_error_states.dart';
+import '../../../shared/widgets/stat_tile.dart';
 import '../../../shared/widgets/status_badge.dart';
 import '../../workstreams/data/workstreams_providers.dart';
 import '../../workstreams/domain/workstream.dart';
 import '../data/categories_providers.dart';
+import '../domain/category.dart';
 import '../domain/category_tree.dart';
 import 'category_form_dialog.dart';
 
@@ -22,6 +24,12 @@ import 'category_form_dialog.dart';
 /// workstream renders as its own section with its own tree, reusing 6b's
 /// client-side tree-building (`buildCategoryTreeForWorkstream`) since
 /// `GET /categories` is still a flat list.
+///
+/// Deliberately NOT a list/table/grid switcher like Products/Workstreams —
+/// this data is hierarchical (parent/sub-category), and flattening it into
+/// a table or grid would lose the nesting that's the whole point of a
+/// category browser. Still adopts the pattern's other two pieces: a stats
+/// strip and compact spacing.
 class CategoriesScreen extends ConsumerStatefulWidget {
   const CategoriesScreen({super.key});
 
@@ -40,18 +48,23 @@ class _CategoriesScreenState extends ConsumerState<CategoriesScreen> {
     final categoriesAsync = ref.watch(categoriesProvider(_includeInactive));
 
     return Padding(
-      padding: const EdgeInsets.all(AppSpacing.lg),
+      padding: const EdgeInsets.all(AppSpacing.md),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('Categories', style: theme.textTheme.headlineSmall),
-          const SizedBox(height: AppSpacing.md),
+          const SizedBox(height: AppSpacing.sm),
+          categoriesAsync.maybeWhen(
+            data: (categories) => _CategoriesStats(categories: categories, workstreamCount: workstreamsAsync.value?.length),
+            orElse: () => const SizedBox.shrink(),
+          ),
+          const SizedBox(height: AppSpacing.sm),
           FilterChip(
             label: const Text('Show inactive'),
             selected: _includeInactive,
             onSelected: (value) => setState(() => _includeInactive = value),
           ),
-          const SizedBox(height: AppSpacing.lg),
+          const SizedBox(height: AppSpacing.md),
           Expanded(
             child: workstreamsAsync.when(
               loading: () => const LoadingStateView(message: 'Loading workstreams…'),
@@ -263,6 +276,32 @@ class _CategoryTile extends ConsumerWidget {
           ],
         ],
       ),
+    );
+  }
+}
+
+class _CategoriesStats extends StatelessWidget {
+  const _CategoriesStats({required this.categories, required this.workstreamCount});
+
+  final List<Category> categories;
+  final int? workstreamCount;
+
+  @override
+  Widget build(BuildContext context) {
+    final active = categories.where((c) => c.isActive).length;
+    final inactive = categories.length - active;
+
+    return Wrap(
+      spacing: AppSpacing.sm,
+      runSpacing: AppSpacing.xs,
+      children: [
+        StatTile(label: 'categories', value: '${categories.length}', icon: Icons.category_outlined),
+        StatTile(label: 'active', value: '$active', tone: StatusTone.success, icon: Icons.check_circle_outline),
+        if (inactive > 0)
+          StatTile(label: 'inactive', value: '$inactive', tone: StatusTone.neutral, icon: Icons.block_outlined),
+        if (workstreamCount != null)
+          StatTile(label: 'workstreams', value: '$workstreamCount', icon: Icons.workspaces_outlined),
+      ],
     );
   }
 }

@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/providers.dart';
@@ -18,4 +20,11 @@ final stockAdjustmentsListProvider = FutureProvider.autoDispose.family<List<Stoc
   status,
 ) {
   return ref.watch(stockAdjustmentsApiProvider).list(status: status);
+});
+
+/// An attached photo's bytes, fetched on demand and cached per adjustment —
+/// [AdjustmentSummaryTile] only calls this for adjustments that actually
+/// have one, so the queue never fetches image bytes for every row up front.
+final adjustmentPhotoProvider = FutureProvider.autoDispose.family<Uint8List, String>((ref, adjustmentId) {
+  return ref.watch(stockAdjustmentsApiProvider).getPhotoBytes(adjustmentId);
 });

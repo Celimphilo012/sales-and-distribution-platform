@@ -169,4 +169,15 @@ void main() {
     expect(find.text('Level A (L1)'), findsOneWidget);
     expect(find.textContaining('Detected automatically'), findsOneWidget);
   });
+
+  testWidgets('the optional photo picker starts empty — no photo, no remove button', (tester) async {
+    await _pumpForm(tester, stock: const []);
+
+    expect(find.text('Photo (optional)'), findsOneWidget);
+    expect(find.widgetWithText(OutlinedButton, 'Choose photo'), findsOneWidget);
+    expect(find.text('Remove'), findsNothing);
+    // Actually invoking the native file picker isn't testable here (same
+    // limitation as the product-import screen's own file input) — this only
+    // locks in the picker's initial, no-photo state.
+  });
 }

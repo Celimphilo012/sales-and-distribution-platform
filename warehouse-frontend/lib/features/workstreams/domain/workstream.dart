@@ -12,6 +12,11 @@ class Workstream {
     required this.name,
     required this.code,
     this.description,
+    this.imageUrl,
+    this.hasImageFile = false,
+    this.contactName,
+    this.contactEmail,
+    this.contactPhone,
     required this.isActive,
   });
 
@@ -20,7 +25,26 @@ class Workstream {
   final String name;
   final String code;
   final String? description;
+
+  /// An external link, rendered directly — mutually exclusive with
+  /// [hasImageFile] (see `Workstream.imagePath` on the backend).
+  final String? imageUrl;
+
+  /// True when a file was uploaded from device storage instead — fetched via
+  /// the authenticated `GET /workstreams/:id/image/file` endpoint, not a
+  /// directly-reachable URL.
+  final bool hasImageFile;
+
+  final String? contactName;
+  final String? contactEmail;
+  final String? contactPhone;
+
   final bool isActive;
+
+  bool get hasImage => imageUrl != null || hasImageFile;
+
+  /// Whether there's any contact info at all worth showing.
+  bool get hasContactInfo => contactName != null || contactEmail != null || contactPhone != null;
 
   factory Workstream.fromJson(Map<String, dynamic> json) => Workstream(
     id: json['id'] as String,
@@ -28,6 +52,11 @@ class Workstream {
     name: json['name'] as String,
     code: json['code'] as String,
     description: json['description'] as String?,
+    imageUrl: json['imageUrl'] as String?,
+    hasImageFile: json['imagePath'] != null,
+    contactName: json['contactName'] as String?,
+    contactEmail: json['contactEmail'] as String?,
+    contactPhone: json['contactPhone'] as String?,
     isActive: boolFromJson(json['isActive']),
   );
 }

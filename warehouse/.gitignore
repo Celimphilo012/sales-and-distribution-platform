@@ -3,3 +3,7 @@ dist/
 .env
 *.log
 coverage/
+# Locally-stored uploaded files (adjustment evidence photos, etc.) — runtime
+# data, never source. See CLAUDE.md: local disk for now, a deliberate
+# placeholder for a real object store later.
+uploads/

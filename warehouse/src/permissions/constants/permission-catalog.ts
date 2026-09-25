@@ -19,6 +19,16 @@ export const PERMISSION_CATALOG: PermissionDefinition[] = [
   { key: 'catalogue.view', description: 'View product catalogue', module: 'products' },
   { key: 'products.manage', description: 'Create/update/deactivate products and categories', module: 'products' },
   {
+    key: 'workstreams.manage',
+    description: 'Create/edit/deactivate workstream records themselves (not their catalogue — see products.manage)',
+    module: 'workstreams',
+  },
+  {
+    key: 'workstreams.assign',
+    description: 'Assign or unassign the users who can manage a given workstream\'s catalogue',
+    module: 'workstreams',
+  },
+  {
     key: 'warehouse.structure.view',
     description: 'View warehouses and the location tree (list/get/subtree/children)',
     module: 'warehouses',
@@ -72,4 +82,13 @@ export const ROLE_PERMISSION_MAP: Record<string, string[]> = {
     'audit.view',
     'reports.view',
   ],
+
+  // A seeded convenience default, not a special-cased identity anywhere in
+  // code (rule 1: permissions, not roles) — the SAME permissions ADMIN
+  // already has for catalogue work, but automatically narrowed to only the
+  // workstream(s) this user is assigned to via WorkstreamManagerService's
+  // scoping check, which runs off assignment ROWS, not this role name.
+  // Assign a user this role, then assign them to a workstream (Workstreams
+  // screen → Managers) to put it into effect; the role alone does nothing.
+  WORKSTREAM_MANAGER: ['catalogue.view', 'products.manage'],
 };

@@ -65,10 +65,13 @@ class AppSemanticColors extends ThemeExtension<AppSemanticColors> {
     onWarning: Color(0xFF3A2600),
     warningContainer: Color(0xFF3A2C10),
     onWarningContainer: Color(0xFFE0A640),
-    info: Color(0xFF4CB8D8),
+    // Mirrors AppTheme's nocturne primary/primaryContainer/onPrimaryContainer
+    // exactly (deliberate, same as before) — re-verified at 4.5:1+ against
+    // the deepened surface/container tones.
+    info: Color(0xFF3FC6EA),
     onInfo: Color(0xFF00303D),
-    infoContainer: Color(0xFF12333D),
-    onInfoContainer: Color(0xFF7CD0E8),
+    infoContainer: Color(0xFF13333F),
+    onInfoContainer: Color(0xFF86D8EE),
   );
 
   @override

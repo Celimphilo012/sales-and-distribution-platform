@@ -1,3 +1,6 @@
+import 'dart:typed_data';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -53,6 +56,10 @@ class _AdjustmentRequestFormState extends ConsumerState<AdjustmentRequestForm> {
   bool _saving = false;
   String? _errorMessage;
 
+  Uint8List? _photoBytes;
+  String? _photoFileName;
+  bool _pickingPhoto = false;
+
   @override
   void dispose() {
     _deltaController.dispose();
@@ -60,6 +67,29 @@ class _AdjustmentRequestFormState extends ConsumerState<AdjustmentRequestForm> {
     _referenceController.dispose();
     super.dispose();
   }
+
+  Future<void> _pickPhoto() async {
+    setState(() => _pickingPhoto = true);
+    try {
+      final file = await FilePicker.pickFile(
+        type: FileType.custom,
+        allowedExtensions: ['jpg', 'jpeg', 'png', 'webp'],
+      );
+      if (file == null) return; // user cancelled
+      final bytes = await file.readAsBytes();
+      setState(() {
+        _photoBytes = bytes;
+        _photoFileName = file.name;
+      });
+    } finally {
+      if (mounted) setState(() => _pickingPhoto = false);
+    }
+  }
+
+  void _removePhoto() => setState(() {
+    _photoBytes = null;
+    _photoFileName = null;
+  });
 
   /// Active leaf locations currently holding on-hand stock of [_product] —
   /// only looked up while the user hasn't chosen a location themselves.
@@ -111,6 +141,8 @@ class _AdjustmentRequestFormState extends ConsumerState<AdjustmentRequestForm> {
             direction: _direction,
             reason: _reasonController.text.trim(),
             reference: _referenceController.text.trim().isEmpty ? null : _referenceController.text.trim(),
+            photoBytes: _photoBytes,
+            photoFileName: _photoFileName,
           );
 
       if (!mounted) return;
@@ -119,6 +151,8 @@ class _AdjustmentRequestFormState extends ConsumerState<AdjustmentRequestForm> {
         _location = null;
         _bucket = AdjustmentBucket.onHand;
         _direction = AdjustmentDirection.increase;
+        _photoBytes = null;
+        _photoFileName = null;
         _deltaController.clear();
         _reasonController.clear();
         _referenceController.clear();
@@ -249,6 +283,14 @@ class _AdjustmentRequestFormState extends ConsumerState<AdjustmentRequestForm> {
               ),
               const SizedBox(height: AppSpacing.md),
               AppTextField(label: 'Reference (optional)', controller: _referenceController),
+              const SizedBox(height: AppSpacing.md),
+              _PhotoPicker(
+                bytes: _photoBytes,
+                fileName: _photoFileName,
+                picking: _pickingPhoto,
+                onPick: _pickPhoto,
+                onRemove: _removePhoto,
+              ),
               if (_errorMessage != null) ...[
                 const SizedBox(height: AppSpacing.md),
                 Container(
@@ -277,6 +319,81 @@ class _AdjustmentRequestFormState extends ConsumerState<AdjustmentRequestForm> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Optional evidence photo — most useful for a DAMAGED/LOST correction, but
+/// not restricted to those buckets; a manager can open it while reviewing
+/// (see [AdjustmentSummaryTile]'s own photo display in the pending queue).
+class _PhotoPicker extends StatelessWidget {
+  const _PhotoPicker({
+    required this.bytes,
+    required this.fileName,
+    required this.picking,
+    required this.onPick,
+    required this.onRemove,
+  });
+
+  final Uint8List? bytes;
+  final String? fileName;
+  final bool picking;
+  final VoidCallback onPick;
+  final VoidCallback onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Photo (optional)', style: theme.textTheme.labelLarge),
+        const SizedBox(height: AppSpacing.xs),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (bytes != null) ...[
+              ClipRRect(
+                borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+                child: Image.memory(bytes!, width: 64, height: 64, fit: BoxFit.cover),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+            ],
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (fileName != null)
+                    Text(fileName!, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall)
+                  else
+                    Text(
+                      'Attach a photo — e.g. the damaged carton found.',
+                      style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                    ),
+                  const SizedBox(height: AppSpacing.xs),
+                  Row(
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed: picking ? null : onPick,
+                        icon: picking
+                            ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                            : const Icon(Icons.add_a_photo_outlined, size: 16),
+                        label: Text(bytes == null ? 'Choose photo' : 'Change'),
+                      ),
+                      if (bytes != null) ...[
+                        const SizedBox(width: AppSpacing.sm),
+                        TextButton(onPressed: onRemove, child: const Text('Remove')),
+                      ],
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

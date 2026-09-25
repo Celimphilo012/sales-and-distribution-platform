@@ -6,6 +6,8 @@ import '../../../core/auth/auth_provider.dart';
 import '../../../core/error/app_error.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../shared/widgets/empty_loading_error_states.dart';
+import '../../../shared/widgets/stat_tile.dart';
+import '../../../shared/widgets/status_badge.dart';
 import '../data/stock_adjustments_providers.dart';
 import '../domain/stock_adjustment.dart';
 import 'widgets/adjustment_request_form.dart';
@@ -97,12 +99,16 @@ class _StockAdjustmentsScreenState extends ConsumerState<StockAdjustmentsScreen>
     }
 
     return Padding(
-      padding: const EdgeInsets.all(AppSpacing.lg),
+      padding: const EdgeInsets.all(AppSpacing.md),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('Stock Adjustments', style: theme.textTheme.headlineSmall),
-          const SizedBox(height: AppSpacing.md),
+          const SizedBox(height: AppSpacing.sm),
+          // No list/table/grid switcher here (unlike Products) — each
+          // adjustment is a rich card (evidence photo, approve/reject
+          // actions, reviewer note), not a flat record; a table would have
+          // to either drop that inline UI or awkwardly cram it into cells.
           SegmentedButton<_AdjustmentsView>(
             segments: [
               const ButtonSegment(
@@ -193,8 +199,25 @@ class _QueueAndHistory extends ConsumerWidget {
           );
         }
 
+        final approved = visible.where((a) => a.status == AdjustmentStatus.approved).length;
+        final rejected = visible.where((a) => a.status == AdjustmentStatus.rejected).length;
+
         return ListView(
           children: [
+            Wrap(
+              spacing: AppSpacing.sm,
+              runSpacing: AppSpacing.xs,
+              children: [
+                StatTile(label: 'shown', value: '${visible.length}', icon: Icons.tune_outlined),
+                if (pending.isNotEmpty)
+                  StatTile(label: 'pending', value: '${pending.length}', tone: StatusTone.warning, icon: Icons.hourglass_empty),
+                if (approved > 0)
+                  StatTile(label: 'approved', value: '$approved', tone: StatusTone.success, icon: Icons.check_circle_outline),
+                if (rejected > 0)
+                  StatTile(label: 'rejected', value: '$rejected', tone: StatusTone.danger, icon: Icons.cancel_outlined),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.md),
             Text('Pending (${pending.length})', style: theme.textTheme.titleMedium),
             const SizedBox(height: AppSpacing.sm),
             if (pending.isEmpty)

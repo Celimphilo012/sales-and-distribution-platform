@@ -35,12 +35,12 @@ class _InventoryScreenState extends State<InventoryScreen> {
     final theme = Theme.of(context);
 
     return Padding(
-      padding: const EdgeInsets.all(AppSpacing.lg),
+      padding: const EdgeInsets.all(AppSpacing.md),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('Inventory', style: theme.textTheme.headlineSmall),
-          const SizedBox(height: AppSpacing.md),
+          const SizedBox(height: AppSpacing.sm),
           SegmentedButton<_InventoryView>(
             segments: const [
               ButtonSegment(

@@ -9,6 +9,7 @@ import { UsersModule } from './users/users.module';
 import { RolesModule } from './roles/roles.module';
 import { PermissionsModule } from './permissions/permissions.module';
 import { WorkstreamsModule } from './workstreams/workstreams.module';
+import { WorkstreamManagersModule } from './workstream-managers/workstream-managers.module';
 import { CategoriesModule } from './categories/categories.module';
 import { AttributeTypesModule } from './attribute-types/attribute-types.module';
 import { ProductsModule } from './products/products.module';
@@ -39,6 +40,7 @@ import { ReportsModule } from './reports/reports.module';
     RolesModule,
     PermissionsModule,
     WorkstreamsModule,
+    WorkstreamManagersModule,
     CategoriesModule,
     AttributeTypesModule,
     ProductsModule,

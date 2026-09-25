@@ -8,6 +8,7 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../routing/route_paths.dart';
 import '../../../shared/widgets/app_card.dart';
 import '../../../shared/widgets/app_dialog.dart';
+import '../../../shared/quantity_format.dart';
 import '../../../shared/widgets/empty_loading_error_states.dart';
 import '../../../shared/widgets/status_badge.dart';
 import '../data/products_providers.dart';
@@ -15,7 +16,8 @@ import '../domain/product.dart';
 import '../domain/product_image.dart';
 import '../domain/product_status.dart';
 import 'products_list_providers.dart';
-import 'widgets/network_image_or_placeholder.dart';
+import 'widgets/category_display.dart';
+import 'widgets/product_image_view.dart';
 
 /// Read-only product detail: images, every field, category, status — plus
 /// permission-gated edit / soft-delete actions.
@@ -135,7 +137,7 @@ class _ProductDetailBody extends ConsumerWidget {
         ],
         const SizedBox(height: AppSpacing.lg),
         if (product.images.isNotEmpty) ...[
-          _ProductImageGallery(images: product.images),
+          _ProductImageGallery(productId: product.id, images: product.images),
           const SizedBox(height: AppSpacing.lg),
         ],
         AppCard(
@@ -144,7 +146,7 @@ class _ProductDetailBody extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _DetailRow(label: 'SKU', value: product.sku),
-              _DetailRow(label: 'Category', value: product.category?.name ?? '—'),
+              _DetailRow(label: 'Category', valueWidget: CategoryDisplay(category: product.category)),
               _DetailRow(
                 label: 'Description',
                 value: (product.description?.isNotEmpty ?? false) ? product.description! : '—',
@@ -153,6 +155,11 @@ class _ProductDetailBody extends ConsumerWidget {
               _DetailRow(label: 'Cost price', value: product.costPrice?.toStringAsFixed(2) ?? '—'),
               _DetailRow(label: 'Unit of measure', value: product.uom),
               _DetailRow(label: 'Min stock level', value: product.minStockLevel.toStringAsFixed(2)),
+              _DetailRow(
+                label: 'Stock on hand (all locations)',
+                value: formatQuantity(product.totalOnHand),
+                valueColor: product.isLowStock ? Theme.of(context).colorScheme.error : null,
+              ),
             ],
           ),
         ),
@@ -181,10 +188,15 @@ class _ProductDetailBody extends ConsumerWidget {
 }
 
 class _DetailRow extends StatelessWidget {
-  const _DetailRow({required this.label, required this.value});
+  const _DetailRow({required this.label, this.value, this.valueColor, this.valueWidget}) : assert(value != null || valueWidget != null);
 
   final String label;
-  final String value;
+  final String? value;
+  final Color? valueColor;
+
+  /// Overrides the plain `Text(value)` rendering — e.g. [CategoryDisplay]'s
+  /// stacked parent/sub-category layout, which a plain string can't express.
+  final Widget? valueWidget;
 
   @override
   Widget build(BuildContext context) {
@@ -201,7 +213,9 @@ class _DetailRow extends StatelessWidget {
               style: theme.textTheme.labelMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
             ),
           ),
-          Expanded(child: Text(value)),
+          Expanded(
+            child: valueWidget ?? Text(value!, style: valueColor != null ? TextStyle(color: valueColor) : null),
+          ),
         ],
       ),
     );
@@ -209,8 +223,9 @@ class _DetailRow extends StatelessWidget {
 }
 
 class _ProductImageGallery extends StatelessWidget {
-  const _ProductImageGallery({required this.images});
+  const _ProductImageGallery({required this.productId, required this.images});
 
+  final String productId;
   final List<ProductImage> images;
 
   @override
@@ -224,7 +239,10 @@ class _ProductImageGallery extends StatelessWidget {
         children: [
           ClipRRect(
             borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-            child: AspectRatio(aspectRatio: 16 / 9, child: NetworkImageOrPlaceholder(url: primary.url)),
+            child: AspectRatio(
+              aspectRatio: 16 / 9,
+              child: ProductImageView(image: primary, productId: productId),
+            ),
           ),
           if (images.length > 1) ...[
             const SizedBox(height: AppSpacing.sm),
@@ -244,7 +262,7 @@ class _ProductImageGallery extends StatelessWidget {
                       child: Stack(
                         fit: StackFit.expand,
                         children: [
-                          NetworkImageOrPlaceholder(url: image.url),
+                          ProductImageView(image: image, productId: productId),
                           if (image.isPrimary)
                             Positioned(
                               right: 2,

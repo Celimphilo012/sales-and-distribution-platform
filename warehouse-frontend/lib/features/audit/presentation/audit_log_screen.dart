@@ -10,7 +10,11 @@ import '../../../shared/date_format.dart';
 import '../../../shared/widgets/app_data_table.dart';
 import '../../../shared/widgets/app_dialog.dart';
 import '../../../shared/widgets/app_text_field.dart';
+import '../../../shared/widgets/compact_row_list.dart';
 import '../../../shared/widgets/empty_loading_error_states.dart';
+import '../../../shared/widgets/simple_grid_view.dart';
+import '../../../shared/widgets/stat_tile.dart';
+import '../../../shared/widgets/view_mode_toggle.dart';
 import '../data/audit_logs_providers.dart';
 import '../domain/audit_log.dart';
 import '../domain/audit_log_query.dart';
@@ -38,6 +42,7 @@ class _AuditLogScreenState extends ConsumerState<AuditLogScreen> {
   late final TextEditingController _actionController;
   DateTime? _from;
   DateTime? _to;
+  ViewMode _view = ViewMode.table;
 
   @override
   void initState() {
@@ -125,15 +130,17 @@ class _AuditLogScreenState extends ConsumerState<AuditLogScreen> {
     final pageAsync = ref.watch(auditLogsPageProvider);
 
     return Padding(
-      padding: const EdgeInsets.all(AppSpacing.lg),
+      padding: const EdgeInsets.all(AppSpacing.md),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('Audit Log', style: theme.textTheme.headlineSmall),
-          const SizedBox(height: AppSpacing.lg),
+          const SizedBox(height: AppSpacing.sm),
+          pageAsync.maybeWhen(data: (page) => _AuditLogStats(page: page), orElse: () => const SizedBox.shrink()),
+          const SizedBox(height: AppSpacing.sm),
           Wrap(
-            spacing: AppSpacing.md,
-            runSpacing: AppSpacing.md,
+            spacing: AppSpacing.sm,
+            runSpacing: AppSpacing.sm,
             crossAxisAlignment: WrapCrossAlignment.end,
             children: [
               SizedBox(width: 220, child: AppTextField(label: 'User ID', controller: _userIdController)),
@@ -162,9 +169,10 @@ class _AuditLogScreenState extends ConsumerState<AuditLogScreen> {
                 label: const Text('Apply'),
               ),
               TextButton(onPressed: _clearFilters, child: const Text('Clear')),
+              ViewModeToggle(value: _view, onChanged: (mode) => setState(() => _view = mode)),
             ],
           ),
-          const SizedBox(height: AppSpacing.lg),
+          const SizedBox(height: AppSpacing.md),
           Expanded(
             child: pageAsync.when(
               loading: () => const LoadingStateView(message: 'Loading audit log…'),
@@ -176,19 +184,89 @@ class _AuditLogScreenState extends ConsumerState<AuditLogScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
-                    child: AppDataTable<AuditLog>(
-                      rows: page.data,
-                      emptyTitle: 'No audit log entries',
-                      emptyMessage: 'Try widening or clearing the filters.',
-                      onRowTap: (log) => _showDetail(context, log),
-                      columns: [
-                        AppDataColumn(label: 'When', cellBuilder: (l) => Text(formatDateTime(l.createdAt))),
-                        AppDataColumn(label: 'Who', cellBuilder: (l) => Text(l.actorLabel)),
-                        AppDataColumn(label: 'Action', cellBuilder: (l) => Text(l.action)),
-                        AppDataColumn(label: 'Entity', cellBuilder: (l) => Text(l.entity)),
-                        AppDataColumn(label: 'Entity ID', cellBuilder: (l) => Text(l.entityId ?? '—')),
-                      ],
-                    ),
+                    child: switch (_view) {
+                      ViewMode.table => AppDataTable<AuditLog>(
+                          rows: page.data,
+                          emptyTitle: 'No audit log entries',
+                          emptyMessage: 'Try widening or clearing the filters.',
+                          onRowTap: (log) => _showDetail(context, log),
+                          columns: [
+                            AppDataColumn(label: 'When', cellBuilder: (l) => Text(formatDateTime(l.createdAt))),
+                            AppDataColumn(label: 'Who', cellBuilder: (l) => Text(l.actorLabel)),
+                            AppDataColumn(label: 'Action', cellBuilder: (l) => Text(l.action)),
+                            AppDataColumn(label: 'Entity', cellBuilder: (l) => Text(l.entity)),
+                            AppDataColumn(label: 'Entity ID', cellBuilder: (l) => Text(l.entityId ?? '—')),
+                          ],
+                        ),
+                      ViewMode.list => CompactRowList<AuditLog>(
+                          items: page.data,
+                          onTap: (log) => _showDetail(context, log),
+                          emptyTitle: 'No audit log entries',
+                          emptyMessage: 'Try widening or clearing the filters.',
+                          rowBuilder: (context, l) => Row(
+                            children: [
+                              SizedBox(
+                                width: 140,
+                                child: Text(formatDateTime(l.createdAt), style: theme.textTheme.bodySmall),
+                              ),
+                              Expanded(flex: 2, child: Text(l.actorLabel, overflow: TextOverflow.ellipsis)),
+                              Expanded(child: Text(l.action, style: theme.textTheme.bodySmall)),
+                              Expanded(
+                                flex: 2,
+                                child: Text(
+                                  '${l.entity}${l.entityId != null ? ' (${l.entityId})' : ''}',
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ViewMode.grid => SimpleGridView<AuditLog>(
+                          items: page.data,
+                          onTap: (log) => _showDetail(context, log),
+                          emptyTitle: 'No audit log entries',
+                          emptyMessage: 'Try widening or clearing the filters.',
+                          maxCrossAxisExtent: 260,
+                          childAspectRatio: 1.6,
+                          contentBuilder: (context, l) => Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(Icons.history_outlined, size: 16, color: theme.colorScheme.primary),
+                                  const SizedBox(width: AppSpacing.xs),
+                                  Expanded(
+                                    child: Text(
+                                      l.action,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                '${l.entity}${l.entityId != null ? ' (${l.entityId})' : ''}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodySmall,
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                l.actorLabel,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                              ),
+                              const SizedBox(height: AppSpacing.xs),
+                              Text(formatDateTime(l.createdAt), style: theme.textTheme.bodySmall),
+                            ],
+                          ),
+                        ),
+                    },
                   ),
                   const SizedBox(height: AppSpacing.md),
                   _PaginationBar(page: page, onGoToPage: _goToPage),
@@ -263,6 +341,24 @@ class _PaginationBar extends StatelessWidget {
           icon: const Icon(Icons.chevron_right),
           onPressed: page.page < page.totalPages ? () => onGoToPage(page.page + 1) : null,
         ),
+      ],
+    );
+  }
+}
+
+class _AuditLogStats extends StatelessWidget {
+  const _AuditLogStats({required this.page});
+
+  final AuditLogPage page;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: AppSpacing.sm,
+      runSpacing: AppSpacing.xs,
+      children: [
+        StatTile(label: 'shown', value: '${page.data.length}', icon: Icons.receipt_long_outlined),
+        StatTile(label: 'total matching', value: '${page.total}', icon: Icons.filter_alt_outlined),
       ],
     );
   }

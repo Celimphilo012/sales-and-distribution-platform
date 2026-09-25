@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/products_providers.dart';
@@ -32,6 +34,14 @@ final productsListProvider = FutureProvider.autoDispose<List<Product>>((ref) {
 final productDetailProvider = FutureProvider.autoDispose.family<Product, String>((ref, id) {
   return ref.watch(productsApiProvider).getById(id);
 });
+
+/// An uploaded product image's raw bytes — mirrors the stock-adjustments
+/// feature's own `adjustmentPhotoProvider` (fetched lazily, only for images
+/// that actually have an uploaded file rather than a pasted URL).
+final productImageFileProvider = FutureProvider.autoDispose
+    .family<Uint8List, ({String productId, String imageId})>((ref, args) {
+      return ref.watch(productsApiProvider).getImageFileBytes(args.productId, args.imageId);
+    });
 
 /// Both the list and the one detail entry are stale after any mutation to
 /// that product.

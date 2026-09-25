@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -11,6 +13,7 @@ import '../../../shared/widgets/app_dialog.dart';
 import '../../../shared/widgets/app_dropdown_field.dart';
 import '../../../shared/widgets/app_number_field.dart';
 import '../../../shared/widgets/app_text_field.dart';
+import '../../../shared/widgets/device_image_picker.dart';
 import '../../../shared/widgets/empty_loading_error_states.dart';
 import '../../../shared/widgets/status_badge.dart';
 import '../../attribute_types/data/attribute_types_providers.dart';
@@ -23,7 +26,7 @@ import '../domain/product.dart';
 import '../domain/product_attribute.dart';
 import '../domain/product_image.dart';
 import 'products_list_providers.dart';
-import 'widgets/network_image_or_placeholder.dart';
+import 'widgets/product_image_view.dart';
 
 /// Create/edit form — one dedicated routed screen for both, since products
 /// have too many fields for a dialog. `productId == null` means create.
@@ -553,6 +556,23 @@ class _ProductImagesEditorState extends ConsumerState<_ProductImagesEditor> {
     }
   }
 
+  Future<void> _uploadImage(List<ProductImage> currentImages, Uint8List bytes, String fileName) async {
+    setState(() {
+      _adding = true;
+      _error = null;
+    });
+    try {
+      await ref
+          .read(productsApiProvider)
+          .addImageUpload(widget.productId, bytes: bytes, fileName: fileName, isPrimary: currentImages.isEmpty);
+      ref.invalidate(productDetailProvider(widget.productId));
+    } on AppError catch (e) {
+      setState(() => _error = e.message);
+    } finally {
+      if (mounted) setState(() => _adding = false);
+    }
+  }
+
   Future<void> _setPrimary(String imageId) async {
     try {
       await ref.read(productsApiProvider).setImagePrimary(widget.productId, imageId);
@@ -589,7 +609,7 @@ class _ProductImagesEditorState extends ConsumerState<_ProductImagesEditor> {
 
     return AppCard(
       title: 'Images',
-      subtitle: 'Paste an image URL — no file upload in this phase',
+      subtitle: 'Paste an image URL, or upload one from this device',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -601,6 +621,7 @@ class _ProductImagesEditorState extends ConsumerState<_ProductImagesEditor> {
                 for (final image in images)
                   _ImageTile(
                     image: image,
+                    productId: widget.productId,
                     onSetPrimary: image.isPrimary ? null : () => _setPrimary(image.id),
                     onRemove: () => _removeImage(image.id),
                   ),
@@ -629,6 +650,11 @@ class _ProductImagesEditorState extends ConsumerState<_ProductImagesEditor> {
                 icon: const Icon(Icons.add_link),
                 label: const Text('Add'),
               ),
+              const SizedBox(width: AppSpacing.sm),
+              DeviceImagePicker(
+                enabled: !_adding,
+                onPicked: (bytes, fileName) => _uploadImage(images, bytes, fileName),
+              ),
             ],
           ),
           if (_error != null) ...[
@@ -642,9 +668,10 @@ class _ProductImagesEditorState extends ConsumerState<_ProductImagesEditor> {
 }
 
 class _ImageTile extends StatelessWidget {
-  const _ImageTile({required this.image, required this.onSetPrimary, required this.onRemove});
+  const _ImageTile({required this.image, required this.productId, required this.onSetPrimary, required this.onRemove});
 
   final ProductImage image;
+  final String productId;
   final VoidCallback? onSetPrimary;
   final VoidCallback onRemove;
 
@@ -664,7 +691,11 @@ class _ImageTile extends StatelessWidget {
         children: [
           ClipRRect(
             borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
-            child: SizedBox(width: double.infinity, height: 90, child: NetworkImageOrPlaceholder(url: image.url)),
+            child: SizedBox(
+              width: double.infinity,
+              height: 90,
+              child: ProductImageView(image: image, productId: productId),
+            ),
           ),
           const SizedBox(height: AppSpacing.xs),
           if (image.isPrimary)

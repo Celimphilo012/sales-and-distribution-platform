@@ -1,3 +1,7 @@
+import 'dart:typed_data';
+
+import 'package:dio/dio.dart';
+
 import '../../../core/network/api_client.dart';
 import '../domain/product.dart';
 import '../domain/product_attribute.dart';
@@ -124,6 +128,40 @@ class ProductsApi {
       ),
     );
     return ProductImage.fromJson(response.data!);
+  }
+
+  /// Same as [addImage], but for a file uploaded from device storage rather
+  /// than a pasted URL — `POST /products/:id/images/upload` (multipart).
+  Future<ProductImage> addImageUpload(
+    String productId, {
+    required Uint8List bytes,
+    required String fileName,
+    bool isPrimary = false,
+    int? sortOrder,
+  }) async {
+    final response = await _apiClient.guard(
+      (dio) => dio.post<Map<String, dynamic>>(
+        '/products/$productId/images/upload',
+        data: FormData.fromMap({
+          'file': MultipartFile.fromBytes(bytes, filename: fileName),
+          'isPrimary': isPrimary.toString(),
+          'sortOrder': ?sortOrder?.toString(),
+        }),
+      ),
+    );
+    return ProductImage.fromJson(response.data!);
+  }
+
+  /// Fetches an uploaded image's raw bytes (auth attached automatically by
+  /// `ApiClient` — NOT a plain public URL `Image.network` could load).
+  Future<Uint8List> getImageFileBytes(String productId, String imageId) async {
+    final response = await _apiClient.guard(
+      (dio) => dio.get<List<int>>(
+        '/products/$productId/images/$imageId/file',
+        options: Options(responseType: ResponseType.bytes),
+      ),
+    );
+    return Uint8List.fromList(response.data!);
   }
 
   /// The backend enforces single-primary itself (unsetting every other

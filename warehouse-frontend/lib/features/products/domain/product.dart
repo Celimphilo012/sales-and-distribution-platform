@@ -3,18 +3,45 @@ import 'product_attribute.dart';
 import 'product_image.dart';
 import 'product_status.dart';
 
-/// The `{id, name, workstreamId, workstream}` the backend embeds on a
-/// product for its category — not the full `Category` (see
+/// A category's `{id, name}` only — used for [ProductCategoryRef.parent],
+/// which never needs more than that to render "Parent (Sub-category)".
+class ProductCategoryParentRef {
+  const ProductCategoryParentRef({required this.id, required this.name});
+
+  final String id;
+  final String name;
+
+  factory ProductCategoryParentRef.fromJson(Map<String, dynamic> json) =>
+      ProductCategoryParentRef(id: json['id'] as String, name: json['name'] as String);
+}
+
+/// The `{id, name, workstreamId, workstream, parent}` the backend embeds on
+/// a product for its category — not the full `Category` (see
 /// `features/categories/domain/category.dart`). A product has no
 /// workstream of its own; it's implied by its category's, carried here so
-/// screens don't need a second lookup just to show it.
+/// screens don't need a second lookup just to show it. [parent] is one
+/// level up only (the catalogue allows deeper nesting, but every display
+/// that uses this only ever shows "Parent (Sub-category)", never a full
+/// ancestor chain).
 class ProductCategoryRef {
-  const ProductCategoryRef({required this.id, required this.name, required this.workstreamId, this.workstream});
+  const ProductCategoryRef({
+    required this.id,
+    required this.name,
+    required this.workstreamId,
+    this.workstream,
+    this.parent,
+  });
 
   final String id;
   final String name;
   final String workstreamId;
   final WorkstreamRef? workstream;
+  final ProductCategoryParentRef? parent;
+
+  /// "Household" for a top-level category, or "Skincare (Face Cream)" when
+  /// this category is itself a sub-category — the products table's Category
+  /// column reads directly off this.
+  String get displayLabel => parent == null ? name : '${parent!.name} ($name)';
 
   factory ProductCategoryRef.fromJson(Map<String, dynamic> json) => ProductCategoryRef(
     id: json['id'] as String,
@@ -22,6 +49,9 @@ class ProductCategoryRef {
     workstreamId: json['workstreamId'] as String,
     workstream: json['workstream'] != null
         ? WorkstreamRef.fromJson(json['workstream'] as Map<String, dynamic>)
+        : null,
+    parent: json['parent'] != null
+        ? ProductCategoryParentRef.fromJson(json['parent'] as Map<String, dynamic>)
         : null,
   );
 }
@@ -50,6 +80,7 @@ class Product {
     required this.updatedAt,
     this.images = const [],
     this.attributes = const [],
+    this.totalOnHand = 0,
   });
 
   final String id;
@@ -67,6 +98,15 @@ class Product {
   final DateTime updatedAt;
   final List<ProductImage> images;
   final List<ProductAttribute> attributes;
+
+  /// Sum of on-hand quantity across every ACTIVE location — a single DB-level
+  /// aggregate the backend attaches to every product response (see
+  /// `ProductsService.attachTotalOnHand`), never computed client-side.
+  final double totalOnHand;
+
+  /// True once on-hand stock somewhere has dropped below [minStockLevel] —
+  /// the same "low stock" definition the reports/dashboard feature uses.
+  bool get isLowStock => totalOnHand < minStockLevel;
 
   /// The image flagged `isPrimary`, falling back to the first image when
   /// none is explicitly marked (matches how the backend orders `images` by
@@ -100,6 +140,7 @@ class Product {
     attributes: (json['attributes'] as List<dynamic>? ?? const [])
         .map((e) => ProductAttribute.fromJson(e as Map<String, dynamic>))
         .toList(),
+    totalOnHand: _num(json['totalOnHand']) ?? 0,
   );
 }
 

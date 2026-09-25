@@ -3,9 +3,26 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../core/auth/auth_provider.dart';
+import '../core/theme/app_semantic_colors.dart';
 import '../core/theme/app_spacing.dart';
+import '../features/stock_adjustments/data/stock_adjustments_providers.dart';
+import '../features/stock_adjustments/domain/stock_adjustment.dart';
 import '../routing/nav_items.dart';
+import '../routing/route_paths.dart';
 import 'nav_expansion_provider.dart';
+
+/// Nav-item paths that carry a live count badge, and how to compute it.
+/// Currently just one (Stock Adjustments, for a manager's unattended
+/// backlog) — a `Map<String, int>` keeps the door open for more without
+/// [NavPanel]'s own layout code needing to know about any of them by name.
+Map<String, int> _navBadges(WidgetRef ref) {
+  final canApprove = ref.watch(authProvider.select((s) => s.value?.user?.can('inventory.adjust.approve') ?? false));
+  if (!canApprove) return const {};
+  final pending = ref.watch(stockAdjustmentsListProvider(AdjustmentStatus.pending));
+  final count = pending.value?.length ?? 0;
+  return count > 0 ? {RoutePaths.stockAdjustments: count} : const {};
+}
 
 /// The grouped, collapsible navigation list shared by the desktop sidebar
 /// and the mobile/tablet drawer.
@@ -70,6 +87,7 @@ class _NavPanelState extends ConsumerState<NavPanel> {
     final expanded = ref.watch(navExpansionProvider);
     final activeItem = navItemMatching(widget.groups.expand((g) => g.items), widget.activePath);
     final activeGroupId = _activeGroupId;
+    final badges = _navBadges(ref);
 
     return ListView(
       padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
@@ -80,6 +98,7 @@ class _NavPanelState extends ConsumerState<NavPanel> {
               icon: group.items.first.icon,
               label: group.items.first.label,
               selected: activeItem?.path == group.items.first.path,
+              badgeCount: badges[group.items.first.path],
               onTap: () => _go(group.items.first),
             )
           else
@@ -88,6 +107,7 @@ class _NavPanelState extends ConsumerState<NavPanel> {
               expanded: expanded.contains(group.id),
               holdsActiveRoute: activeGroupId == group.id,
               activePath: activeItem?.path,
+              badges: badges,
               onToggle: () => ref.read(navExpansionProvider.notifier).toggle(group.id),
               onSelect: _go,
             ),
@@ -102,6 +122,7 @@ class _NavGroupTile extends StatelessWidget {
     required this.expanded,
     required this.holdsActiveRoute,
     required this.activePath,
+    required this.badges,
     required this.onToggle,
     required this.onSelect,
   });
@@ -110,6 +131,7 @@ class _NavGroupTile extends StatelessWidget {
   final bool expanded;
   final bool holdsActiveRoute;
   final String? activePath;
+  final Map<String, int> badges;
   final VoidCallback onToggle;
   final ValueChanged<NavItem> onSelect;
 
@@ -120,6 +142,10 @@ class _NavGroupTile extends StatelessWidget {
     // A collapsed group that hides the current page keeps a cyan cue so the
     // user always knows where they are.
     final cue = holdsActiveRoute && !expanded;
+    // While collapsed, a badged item's count still needs to surface
+    // somewhere — sum onto the group header itself so it's never silently
+    // hidden behind a closed group.
+    final groupBadgeTotal = group.items.fold(0, (sum, item) => sum + (badges[item.path] ?? 0));
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -153,6 +179,10 @@ class _NavGroupTile extends StatelessWidget {
                       ),
                     ),
                   ),
+                  if (!expanded && groupBadgeTotal > 0) ...[
+                    _NavBadge(count: groupBadgeTotal),
+                    const SizedBox(width: AppSpacing.xs),
+                  ],
                   AnimatedRotation(
                     turns: expanded ? 0.5 : 0,
                     duration: const Duration(milliseconds: 160),
@@ -177,6 +207,7 @@ class _NavGroupTile extends StatelessWidget {
                         label: item.label,
                         selected: activePath == item.path,
                         indent: true,
+                        badgeCount: badges[item.path],
                         onTap: () => onSelect(item),
                       ),
                     const SizedBox(height: AppSpacing.xs),
@@ -196,6 +227,7 @@ class _NavRow extends StatelessWidget {
     required this.selected,
     required this.onTap,
     this.indent = false,
+    this.badgeCount,
   });
 
   final IconData icon;
@@ -203,6 +235,9 @@ class _NavRow extends StatelessWidget {
   final bool selected;
   final bool indent;
   final VoidCallback onTap;
+
+  /// A live count (e.g. unattended pending adjustments) — null/0 shows nothing.
+  final int? badgeCount;
 
   @override
   Widget build(BuildContext context) {
@@ -212,7 +247,7 @@ class _NavRow extends StatelessWidget {
     return Semantics(
       button: true,
       selected: selected,
-      label: label,
+      label: badgeCount != null && badgeCount! > 0 ? '$label, $badgeCount pending' : label,
       child: InkWell(
         onTap: onTap,
         child: Container(
@@ -243,9 +278,35 @@ class _NavRow extends StatelessWidget {
                   ),
                 ),
               ),
+              if (badgeCount != null && badgeCount! > 0) _NavBadge(count: badgeCount!),
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// A small count pill for a nav row/group — warning tone (matches the
+/// dashboard's own "pending adjustments" tile) since every current use is an
+/// unattended backlog someone needs to act on, not a neutral tally.
+class _NavBadge extends StatelessWidget {
+  const _NavBadge({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final semantic = context.semanticColors;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      constraints: const BoxConstraints(minWidth: 20),
+      decoration: BoxDecoration(color: semantic.warning, borderRadius: BorderRadius.circular(AppSpacing.radiusSm)),
+      child: Text(
+        count > 99 ? '99+' : '$count',
+        textAlign: TextAlign.center,
+        style: theme.textTheme.labelSmall?.copyWith(color: semantic.onWarning, fontWeight: FontWeight.w700),
       ),
     );
   }

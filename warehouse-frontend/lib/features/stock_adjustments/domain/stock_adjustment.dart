@@ -139,6 +139,7 @@ class StockAdjustment {
     this.reviewedBy,
     this.reviewedAt,
     this.reviewNote,
+    this.photoPath,
     required this.product,
     required this.location,
     required this.requestedByUser,
@@ -159,6 +160,14 @@ class StockAdjustment {
   final String? reviewedBy;
   final DateTime? reviewedAt;
   final String? reviewNote;
+
+  /// Non-null only when a photo was attached (`GET .../:id/photo` serves it
+  /// — this field itself is never a URL, just a presence flag mirrored from
+  /// the backend's `photoPath` column, which is an internal filename the
+  /// frontend has no business constructing a path from).
+  final String? photoPath;
+  bool get hasPhoto => photoPath != null;
+
   final AdjustmentProductRef product;
   final AdjustmentLocationRef location;
   final AdjustmentUserRef requestedByUser;
@@ -179,6 +188,7 @@ class StockAdjustment {
     reviewedBy: json['reviewedBy'] as String?,
     reviewedAt: json['reviewedAt'] == null ? null : DateTime.parse(json['reviewedAt'] as String),
     reviewNote: json['reviewNote'] as String?,
+    photoPath: json['photoPath'] as String?,
     product: AdjustmentProductRef.fromJson(json['product'] as Map<String, dynamic>),
     location: AdjustmentLocationRef.fromJson(json['location'] as Map<String, dynamic>),
     requestedByUser: AdjustmentUserRef.fromJson(json['requestedByUser'] as Map<String, dynamic>),

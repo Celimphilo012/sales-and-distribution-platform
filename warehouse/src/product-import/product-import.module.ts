@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ProductsModule } from '../products/products.module';
 import { CategoriesModule } from '../categories/categories.module';
 import { WorkstreamsModule } from '../workstreams/workstreams.module';
+import { WorkstreamManagersModule } from '../workstream-managers/workstream-managers.module';
 import { AttributeTypesModule } from '../attribute-types/attribute-types.module';
 import { WarehousesModule } from '../warehouses/warehouses.module';
 import { ProductImportController } from './product-import.controller';
@@ -14,7 +15,7 @@ import { ProductImportSessionStore } from './product-import-session.store';
   // alone wouldn't hand us WarehousesService, since CategoriesModule ->
   // WorkstreamsModule -> WarehousesModule is a chain of PRIVATE imports,
   // each module only exporting its own service).
-  imports: [ProductsModule, CategoriesModule, WorkstreamsModule, AttributeTypesModule, WarehousesModule],
+  imports: [ProductsModule, CategoriesModule, WorkstreamsModule, WorkstreamManagersModule, AttributeTypesModule, WarehousesModule],
   controllers: [ProductImportController],
   providers: [ProductImportService, ProductImportSessionStore],
 })

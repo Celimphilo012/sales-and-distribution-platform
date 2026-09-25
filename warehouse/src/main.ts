@@ -32,6 +32,14 @@ async function bootstrap() {
   );
   app.useGlobalFilters(new AllExceptionsFilter());
 
+  // When the app is mounted under a sub-path (cPanel/Passenger serves it at
+  // e.g. https://host/api and passes the FULL path through), set API_BASE_PATH
+  // to that segment. Unset locally, so nothing changes in dev.
+  const basePath = process.env.API_BASE_PATH?.trim().replace(/^\/+|\/+$/g, '');
+  if (basePath) {
+    app.setGlobalPrefix(basePath);
+  }
+
   const swaggerConfig = new DocumentBuilder()
     .setTitle('Warehouse System API')
     .setDescription(

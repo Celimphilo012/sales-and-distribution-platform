@@ -3,6 +3,7 @@ import { AttributeType, Prisma, ProductStatus } from '@prisma/client';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { CategoriesService } from '../categories/categories.service';
 import { AttributeTypesService } from '../attribute-types/attribute-types.service';
+import { WorkstreamManagersService } from '../workstream-managers/workstream-managers.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { ListProductsQueryDto } from './dto/list-products-query.dto';
@@ -15,6 +16,11 @@ const PRODUCT_INCLUDE = {
       name: true,
       workstreamId: true,
       workstream: { select: { id: true, name: true, code: true } },
+      // One level up only — the catalogue's own nesting rule allows
+      // arbitrarily deep categories, but the frontend's "Parent (Sub)"
+      // display (products table) only ever needs the immediate parent, not
+      // the full ancestor chain.
+      parent: { select: { id: true, name: true } },
     },
   },
   images: { orderBy: { sortOrder: 'asc' as const } },
@@ -38,15 +44,18 @@ export class ProductsService {
     private readonly prisma: PrismaService,
     private readonly categoriesService: CategoriesService,
     private readonly attributeTypesService: AttributeTypesService,
+    private readonly workstreamManagersService: WorkstreamManagersService,
   ) {}
 
-  findAll(query: ListProductsQueryDto) {
+  /** [viewerId], when given, narrows the result to only products whose category is in a workstream that viewer is assigned to. */
+  async findAll(query: ListProductsQueryDto, viewerId?: string) {
+    const workstreamId = await this.effectiveWorkstreamIdFilter(query.workstreamId, viewerId);
     const where: Prisma.ProductWhereInput = {
       categoryId: query.categoryId,
       status: query.status ?? (query.includeInactive ? undefined : ProductStatus.ACTIVE),
       // Product has no workstream_id of its own — a product's workstream is
       // implied by its category's, so filtering goes through the relation.
-      category: query.workstreamId ? { workstreamId: query.workstreamId } : undefined,
+      category: workstreamId ? { workstreamId } : undefined,
     };
 
     if (query.search) {
@@ -68,11 +77,12 @@ export class ProductsService {
       }
     }
 
-    return this.prisma.product.findMany({
+    const products = await this.prisma.product.findMany({
       where,
       include: PRODUCT_INCLUDE,
       orderBy: { name: 'asc' },
     });
+    return this.attachTotalOnHand(products);
   }
 
   async getExisting(id: string) {
@@ -81,11 +91,51 @@ export class ProductsService {
       include: PRODUCT_INCLUDE,
     });
     if (!product) throw new NotFoundException(`Product ${id} not found`);
+    const [withTotal] = await this.attachTotalOnHand([product]);
+    return withTotal;
+  }
+
+  /**
+   * Sum of on_hand across every ACTIVE location, batched for a whole result
+   * set in ONE groupBy — never N+1, never a full-table fetch summed in JS.
+   * Read directly off `inventory_balances` (never written here — rule 2 is
+   * about writes; reading another module's table for a display aggregate is
+   * the same pattern stock-adjustments/stock-counts/warehouses already use,
+   * and avoids a circular module import: InventoryModule already imports
+   * ProductsModule, so ProductsModule can't import InventoryModule back).
+   */
+  private async attachTotalOnHand<T extends { id: string }>(
+    products: T[],
+  ): Promise<(T & { totalOnHand: number })[]> {
+    if (products.length === 0) return [];
+
+    const totals = await this.prisma.inventoryBalance.groupBy({
+      by: ['productId'],
+      where: { productId: { in: products.map((p) => p.id) }, location: { isActive: true } },
+      _sum: { onHand: true },
+    });
+    const totalByProductId = new Map(totals.map((t) => [t.productId, Number(t._sum.onHand ?? 0)]));
+
+    return products.map((p) => ({ ...p, totalOnHand: totalByProductId.get(p.id) ?? 0 }));
+  }
+
+  /** [viewerId], when given, 403s if that viewer is scoped and this product's category's workstream isn't one of theirs. */
+  async findOne(id: string, viewerId?: string) {
+    const product = await this.getExisting(id);
+    if (viewerId) await this.workstreamManagersService.assertScopedAccess(viewerId, product.category!.workstreamId);
     return product;
   }
 
-  async findOne(id: string) {
-    return this.getExisting(id);
+  /** Same intersection logic as CategoriesService's own private helper — see its doc comment. Duplicated rather than shared since there's no natural common module for these two services to both depend on without adding one just for this. */
+  private async effectiveWorkstreamIdFilter(
+    explicit: string | undefined,
+    viewerId: string | undefined,
+  ): Promise<string | { in: string[] } | undefined> {
+    if (!viewerId) return explicit;
+    const assignedIds = await this.workstreamManagersService.getAssignedWorkstreamIds(viewerId);
+    if (assignedIds.length === 0) return explicit;
+    if (!explicit) return { in: assignedIds };
+    return assignedIds.includes(explicit) ? explicit : { in: [] };
   }
 
   /**
@@ -106,8 +156,9 @@ export class ProductsService {
     return this.prisma.product.count({ where: { status: ProductStatus.ACTIVE } });
   }
 
-  async create(dto: CreateProductDto) {
-    await this.categoriesService.getExisting(dto.categoryId);
+  async create(dto: CreateProductDto, actingUserId: string) {
+    const category = await this.categoriesService.getExisting(dto.categoryId);
+    await this.workstreamManagersService.assertScopedAccess(actingUserId, category.workstreamId);
 
     const existingSku = await this.prisma.product.findUnique({ where: { sku: dto.sku } });
     if (existingSku) throw new ConflictException('A product with this SKU already exists');
@@ -134,15 +185,20 @@ export class ProductsService {
         });
       }
 
-      return tx.product.findUniqueOrThrow({ where: { id: product.id }, include: PRODUCT_INCLUDE });
-    });
+      return product.id;
+    }).then((productId) => this.getExisting(productId));
   }
 
-  async update(id: string, dto: UpdateProductDto) {
-    await this.getExisting(id);
+  async update(id: string, dto: UpdateProductDto, actingUserId: string) {
+    const existing = await this.getExisting(id);
+    // Scoped to the product's CURRENT workstream (via its category) always
+    // — moving it to a new category (below) additionally requires scope
+    // over the DESTINATION category's workstream too.
+    await this.workstreamManagersService.assertScopedAccess(actingUserId, existing.category!.workstreamId);
 
     if (dto.categoryId) {
-      await this.categoriesService.getExisting(dto.categoryId);
+      const newCategory = await this.categoriesService.getExisting(dto.categoryId);
+      await this.workstreamManagersService.assertScopedAccess(actingUserId, newCategory.workstreamId);
     }
 
     const attributes = await this.resolveAttributes(dto.attributes);
@@ -175,19 +231,20 @@ export class ProductsService {
         }
       }
 
-      return tx.product.findUniqueOrThrow({ where: { id }, include: PRODUCT_INCLUDE });
-    });
+      return id;
+    }).then((productId) => this.getExisting(productId));
   }
 
-  async remove(id: string) {
-    await this.getExisting(id);
+  async remove(id: string, actingUserId: string) {
+    const existing = await this.getExisting(id);
+    await this.workstreamManagersService.assertScopedAccess(actingUserId, existing.category!.workstreamId);
     // Reference data is soft-deleted (rule 10) — orders/inventory
     // transactions keep a valid historical product reference.
-    return this.prisma.product.update({
+    await this.prisma.product.update({
       where: { id },
       data: { status: ProductStatus.INACTIVE },
-      include: PRODUCT_INCLUDE,
     });
+    return this.getExisting(id);
   }
 
   /**

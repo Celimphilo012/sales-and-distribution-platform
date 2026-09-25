@@ -8,15 +8,20 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../routing/route_paths.dart';
 import '../../../shared/widgets/app_data_table.dart';
 import '../../../shared/widgets/app_dialog.dart';
+import '../../../shared/widgets/compact_row_list.dart';
 import '../../../shared/widgets/empty_loading_error_states.dart';
+import '../../../shared/widgets/simple_grid_view.dart';
+import '../../../shared/widgets/stat_tile.dart';
 import '../../../shared/widgets/status_badge.dart';
+import '../../../shared/widgets/view_mode_toggle.dart';
 import '../data/warehouses_providers.dart';
 import '../domain/warehouse.dart';
 import 'warehouse_form_dialog.dart';
 
 /// Warehouses list — search-free (there's rarely more than a handful) plus
 /// an active/inactive toggle, a permission-gated "New warehouse" dialog, and
-/// a row tap that opens that warehouse's structure view.
+/// a row tap that opens that warehouse's structure view. List/table/grid +
+/// stats + compact, matching the Products prototype.
 class WarehousesListScreen extends ConsumerStatefulWidget {
   const WarehousesListScreen({super.key});
 
@@ -26,6 +31,7 @@ class WarehousesListScreen extends ConsumerStatefulWidget {
 
 class _WarehousesListScreenState extends ConsumerState<WarehousesListScreen> {
   bool _includeInactive = false;
+  ViewMode _view = ViewMode.table;
 
   // Warehouses are soft-deleted (CLAUDE.md rule 10): locations and the stock
   // ledger reference them historically, so the only "delete" is deactivate.
@@ -58,6 +64,8 @@ class _WarehousesListScreenState extends ConsumerState<WarehousesListScreen> {
     }
   }
 
+  void _open(Warehouse warehouse) => context.go('${RoutePaths.locations}?warehouseId=${warehouse.id}');
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -67,7 +75,7 @@ class _WarehousesListScreenState extends ConsumerState<WarehousesListScreen> {
     final warehousesAsync = ref.watch(warehousesProvider(_includeInactive));
 
     return Padding(
-      padding: const EdgeInsets.all(AppSpacing.lg),
+      padding: const EdgeInsets.all(AppSpacing.md),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -82,13 +90,24 @@ class _WarehousesListScreenState extends ConsumerState<WarehousesListScreen> {
                 ),
             ],
           ),
-          const SizedBox(height: AppSpacing.md),
-          FilterChip(
-            label: const Text('Show inactive'),
-            selected: _includeInactive,
-            onSelected: (value) => setState(() => _includeInactive = value),
+          const SizedBox(height: AppSpacing.sm),
+          warehousesAsync.maybeWhen(
+            data: (warehouses) => _WarehousesStats(warehouses: warehouses),
+            orElse: () => const SizedBox.shrink(),
           ),
-          const SizedBox(height: AppSpacing.lg),
+          const SizedBox(height: AppSpacing.sm),
+          Row(
+            children: [
+              FilterChip(
+                label: const Text('Show inactive'),
+                selected: _includeInactive,
+                onSelected: (value) => setState(() => _includeInactive = value),
+              ),
+              const Spacer(),
+              ViewModeToggle(value: _view, onChanged: (mode) => setState(() => _view = mode)),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.sm),
           Expanded(
             child: warehousesAsync.when(
               loading: () => const LoadingStateView(message: 'Loading warehouses…'),
@@ -96,46 +115,141 @@ class _WarehousesListScreenState extends ConsumerState<WarehousesListScreen> {
                 message: error is AppError ? error.message : 'Could not load warehouses.',
                 onRetry: () => ref.invalidate(warehousesProvider(_includeInactive)),
               ),
-              data: (warehouses) => AppDataTable<Warehouse>(
-                rows: warehouses,
-                emptyTitle: 'No warehouses yet',
-                onRowTap: (warehouse) =>
-                    context.go('${RoutePaths.locations}?warehouseId=${warehouse.id}'),
-                columns: [
-                  AppDataColumn(label: 'Name', cellBuilder: (w) => Text(w.name)),
-                  AppDataColumn(label: 'Code', cellBuilder: (w) => Text(w.code)),
-                  AppDataColumn(
-                    label: 'Status',
-                    cellBuilder: (w) => StatusBadge(
-                      label: w.isActive ? 'Active' : 'Inactive',
-                      tone: w.isActive ? StatusTone.success : StatusTone.neutral,
+              data: (warehouses) => switch (_view) {
+                ViewMode.table => _WarehousesTable(warehouses: warehouses, canManage: canManage, onOpen: _open, onEdit: (w) => showWarehouseFormDialog(context, warehouse: w), onToggleActive: (w) => w.isActive ? _deactivate(w) : _reactivate(w)),
+                ViewMode.list => CompactRowList<Warehouse>(
+                    items: warehouses,
+                    onTap: _open,
+                    emptyTitle: 'No warehouses yet',
+                    rowBuilder: (context, w) => Row(
+                      children: [
+                        Expanded(flex: 2, child: Text(w.name, style: theme.textTheme.bodyMedium)),
+                        Expanded(
+                          child: Text(
+                            w.code,
+                            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                          ),
+                        ),
+                        StatusBadge(
+                          label: w.isActive ? 'Active' : 'Inactive',
+                          tone: w.isActive ? StatusTone.success : StatusTone.neutral,
+                        ),
+                      ],
                     ),
                   ),
-                  if (canManage)
-                    AppDataColumn(
-                      label: '',
-                      cellBuilder: (w) => Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.edit_outlined),
-                            tooltip: 'Edit',
-                            onPressed: () => showWarehouseFormDialog(context, warehouse: w),
-                          ),
-                          IconButton(
-                            icon: Icon(w.isActive ? Icons.block_outlined : Icons.restore_outlined),
-                            tooltip: w.isActive ? 'Deactivate' : 'Reactivate',
-                            onPressed: () => w.isActive ? _deactivate(w) : _reactivate(w),
-                          ),
-                        ],
-                      ),
+                ViewMode.grid => SimpleGridView<Warehouse>(
+                    items: warehouses,
+                    onTap: _open,
+                    emptyTitle: 'No warehouses yet',
+                    maxCrossAxisExtent: 240,
+                    childAspectRatio: 2.2,
+                    contentBuilder: (context, w) => Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(Icons.warehouse_outlined, size: 18, color: theme.colorScheme.primary),
+                            const SizedBox(width: AppSpacing.xs),
+                            Expanded(
+                              child: Text(
+                                w.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 2),
+                        Text(w.code, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+                        const SizedBox(height: AppSpacing.xs),
+                        StatusBadge(
+                          label: w.isActive ? 'Active' : 'Inactive',
+                          tone: w.isActive ? StatusTone.success : StatusTone.neutral,
+                        ),
+                      ],
                     ),
-                ],
-              ),
+                  ),
+              },
             ),
           ),
         ],
       ),
+    );
+  }
+}
+
+class _WarehousesStats extends StatelessWidget {
+  const _WarehousesStats({required this.warehouses});
+
+  final List<Warehouse> warehouses;
+
+  @override
+  Widget build(BuildContext context) {
+    final active = warehouses.where((w) => w.isActive).length;
+    final inactive = warehouses.length - active;
+
+    return Wrap(
+      spacing: AppSpacing.sm,
+      runSpacing: AppSpacing.xs,
+      children: [
+        StatTile(label: 'shown', value: '${warehouses.length}', icon: Icons.warehouse_outlined),
+        StatTile(label: 'active', value: '$active', tone: StatusTone.success, icon: Icons.check_circle_outline),
+        if (inactive > 0)
+          StatTile(label: 'inactive', value: '$inactive', tone: StatusTone.neutral, icon: Icons.block_outlined),
+      ],
+    );
+  }
+}
+
+class _WarehousesTable extends StatelessWidget {
+  const _WarehousesTable({
+    required this.warehouses,
+    required this.canManage,
+    required this.onOpen,
+    required this.onEdit,
+    required this.onToggleActive,
+  });
+
+  final List<Warehouse> warehouses;
+  final bool canManage;
+  final void Function(Warehouse) onOpen;
+  final void Function(Warehouse) onEdit;
+  final void Function(Warehouse) onToggleActive;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppDataTable<Warehouse>(
+      rows: warehouses,
+      emptyTitle: 'No warehouses yet',
+      onRowTap: onOpen,
+      columns: [
+        AppDataColumn(label: 'Name', cellBuilder: (w) => Text(w.name)),
+        AppDataColumn(label: 'Code', cellBuilder: (w) => Text(w.code)),
+        AppDataColumn(
+          label: 'Status',
+          cellBuilder: (w) => StatusBadge(
+            label: w.isActive ? 'Active' : 'Inactive',
+            tone: w.isActive ? StatusTone.success : StatusTone.neutral,
+          ),
+        ),
+        if (canManage)
+          AppDataColumn(
+            label: '',
+            cellBuilder: (w) => Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(icon: const Icon(Icons.edit_outlined), tooltip: 'Edit', onPressed: () => onEdit(w)),
+                IconButton(
+                  icon: Icon(w.isActive ? Icons.block_outlined : Icons.restore_outlined),
+                  tooltip: w.isActive ? 'Deactivate' : 'Reactivate',
+                  onPressed: () => onToggleActive(w),
+                ),
+              ],
+            ),
+          ),
+      ],
     );
   }
 }

@@ -90,9 +90,10 @@ class _DesktopTable<T> extends StatelessWidget {
             child: ConstrainedBox(
               constraints: BoxConstraints(minWidth: constraints.maxWidth),
               child: DataTable(
-                headingRowHeight: 40,
-                dataRowMinHeight: 44,
-                columnSpacing: AppSpacing.lg,
+                headingRowHeight: 34,
+                dataRowMinHeight: 36,
+                dataRowMaxHeight: 44,
+                columnSpacing: AppSpacing.md,
                 showCheckboxColumn: false,
                 columns: [
                   for (final column in columns)

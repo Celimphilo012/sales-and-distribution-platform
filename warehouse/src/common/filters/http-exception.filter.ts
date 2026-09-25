@@ -7,6 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
+import { MulterError } from 'multer';
 
 interface StructuredError {
   statusCode: number;
@@ -44,6 +45,19 @@ export class AllExceptionsFilter implements ExceptionFilter {
         message = (asObject.message as string | string[]) ?? exception.message;
         error = (asObject.error as string) ?? exception.name;
       }
+    } else if (exception instanceof MulterError) {
+      // Not an HttpException (multer throws its own error class from inside
+      // an interceptor, before the route handler runs) — without this it
+      // falls through to the generic 500 branch below, same class of bug as
+      // the ledger's raw CHECK-constraint leak (see InventoryService).
+      // Every upload in this app (product import, adjustment photos) goes
+      // through this one filter, so this fixes both at once.
+      status = HttpStatus.BAD_REQUEST;
+      error = 'Bad Request';
+      message =
+        exception.code === 'LIMIT_FILE_SIZE'
+          ? 'File is too large.'
+          : `Upload rejected: ${exception.message}`;
     } else if (exception instanceof Error) {
       this.logger.error(exception.message, exception.stack);
       message = exception.message;

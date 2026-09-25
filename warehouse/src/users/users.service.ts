@@ -1,8 +1,9 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import * as argon2 from 'argon2';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 
 const USER_SELECT = {
   id: true,
@@ -84,6 +85,25 @@ export class UsersService {
     });
 
     return this.present(user);
+  }
+
+  /**
+   * Self-service change-password — distinct from `update()`'s admin reset
+   * (`users.manage`, no current-password check): this is any authenticated
+   * user changing their OWN password, gated only by proving they know the
+   * current one. Needs `passwordHash`, which `USER_SELECT` deliberately
+   * omits from every other read, so this fetches the raw row itself.
+   */
+  async changeOwnPassword(userId: string, dto: ChangePasswordDto) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException(`User ${userId} not found`);
+
+    const valid = await argon2.verify(user.passwordHash, dto.currentPassword);
+    if (!valid) throw new UnauthorizedException('Current password is incorrect');
+
+    const passwordHash = await argon2.hash(dto.newPassword);
+    await this.prisma.user.update({ where: { id: userId }, data: { passwordHash } });
+    return { success: true };
   }
 
   async remove(id: string) {

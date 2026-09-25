@@ -6,21 +6,26 @@ import '../../core/theme/app_spacing.dart';
 /// dialogs wrap their content in this instead of building [AlertDialog]
 /// from scratch each time, so dialog sizing/padding stays consistent.
 class AppDialog extends StatelessWidget {
-  const AppDialog({super.key, required this.title, required this.content, this.actions = const []});
+  const AppDialog({super.key, required this.title, required this.content, this.actions = const [], this.maxWidth = 480});
 
   final String title;
   final Widget content;
   final List<Widget> actions;
+
+  /// Most dialogs are simple forms and fit the default 480; a content-heavy
+  /// one (a product's full detail, say) can ask for more room.
+  final double maxWidth;
 
   static Future<T?> show<T>(
     BuildContext context, {
     required String title,
     required Widget content,
     List<Widget> actions = const [],
+    double maxWidth = 480,
   }) {
     return showDialog<T>(
       context: context,
-      builder: (context) => AppDialog(title: title, content: content, actions: actions),
+      builder: (context) => AppDialog(title: title, content: content, actions: actions, maxWidth: maxWidth),
     );
   }
 
@@ -28,7 +33,14 @@ class AppDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     return AlertDialog(
       title: Text(title),
-      content: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 480), child: content),
+      // `scrollable: true` wraps title+content in a SingleChildScrollView —
+      // without it, AlertDialog's content area has no height limit of its
+      // own and no scrolling, so a dialog with enough fields (or a small
+      // viewport, e.g. a laptop screen with a tall form) silently overflows
+      // instead of scrolling. This is shared chrome every dialog in the app
+      // goes through, so the fix applies everywhere at once.
+      scrollable: true,
+      content: ConstrainedBox(constraints: BoxConstraints(maxWidth: maxWidth), child: content),
       actionsPadding: const EdgeInsets.fromLTRB(AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.md),
       actions: actions,
     );

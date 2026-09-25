@@ -34,6 +34,8 @@ export interface CreateAdjustmentRequestInput {
   reason: string;
   reference?: string;
   requestedBy: string;
+  /** Just the stored filename under uploads/adjustments/ — see adjustment-photo-storage.ts. */
+  photoPath?: string;
 }
 
 const ADJUSTMENT_INCLUDE = {
@@ -67,6 +69,7 @@ export class StockAdjustmentsService {
         reason: input.reason,
         reference: input.reference,
         requestedBy: input.requestedBy,
+        photoPath: input.photoPath,
         // status defaults to PENDING — this call NEVER touches
         // inventory_balances or inventory_transactions.
       },

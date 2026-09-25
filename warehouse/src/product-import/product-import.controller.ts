@@ -20,8 +20,8 @@ export class ProductImportController {
 
   @Get('template')
   @RequirePermissions('products.manage')
-  async downloadTemplate(@Res() res: Response) {
-    const buffer = await this.productImportService.buildTemplate();
+  async downloadTemplate(@Res() res: Response, @Req() req: Request) {
+    const buffer = await this.productImportService.buildTemplate(req.user!.id);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', 'attachment; filename="product-import-template.xlsx"');
     res.send(buffer);

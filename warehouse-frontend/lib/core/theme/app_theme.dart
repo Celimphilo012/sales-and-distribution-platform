@@ -59,33 +59,44 @@ class AppTheme {
     scrim: Color(0xFF000000),
   );
 
+  // "Nocturne" — deepened from the original dark scheme (surface 0x17191A ->
+  // 0x0D1013, genuinely near-black rather than dark grey) with richer,
+  // slightly more saturated accent colors so they read as glowing against
+  // the deeper ground. Every text/icon-on-background pair here was checked
+  // against WCAG AA (relative-luminance contrast ratio, the same method
+  // used for the info-tone fixes) before landing — darkening a surface
+  // while keeping light foreground colors unchanged can only raise the
+  // ratio, never lower it, but the container pairs (onPrimaryContainer on
+  // primaryContainer, etc.) needed an explicit re-check since both sides
+  // moved. All pairs clear 4.5:1 (text) / 3:1 (large text/icons) with
+  // margin to spare.
   static const _darkScheme = ColorScheme(
     brightness: Brightness.dark,
-    primary: Color(0xFF4CB8D8),
+    primary: Color(0xFF3FC6EA),
     onPrimary: Color(0xFF00303D),
-    primaryContainer: Color(0xFF12333D),
-    onPrimaryContainer: Color(0xFF7CD0E8),
-    secondary: Color(0xFFFF5FA2),
+    primaryContainer: Color(0xFF13333F),
+    onPrimaryContainer: Color(0xFF86D8EE),
+    secondary: Color(0xFFFF6BAE),
     onSecondary: Color(0xFF4A0026),
-    secondaryContainer: Color(0xFF4A1C33),
-    onSecondaryContainer: Color(0xFFFFB3D2),
+    secondaryContainer: Color(0xFF431A2E),
+    onSecondaryContainer: Color(0xFFFFC2DE),
     error: Color(0xFFF2756B),
     onError: Color(0xFF3F0906),
     errorContainer: Color(0xFF4A1F1B),
     onErrorContainer: Color(0xFFF7B3AD),
-    surface: Color(0xFF17191A),
-    onSurface: Color(0xFFE8E6E4),
-    onSurfaceVariant: Color(0xFFA9A5A1),
+    surface: Color(0xFF0D1013),
+    onSurface: Color(0xFFE9E7E5),
+    onSurfaceVariant: Color(0xFFA6A29E),
     surfaceTint: Colors.transparent,
-    surfaceContainerLowest: Color(0xFF1F2223),
-    surfaceContainerLow: Color(0xFF1F2223),
-    surfaceContainer: Color(0xFF282C2D),
-    surfaceContainerHigh: Color(0xFF282C2D),
-    surfaceContainerHighest: Color(0xFF33383A),
-    outline: Color(0xFF4B5153),
-    outlineVariant: Color(0xFF3A3F41),
-    inverseSurface: Color(0xFF101213),
-    onInverseSurface: Color(0xFFE8E6E4),
+    surfaceContainerLowest: Color(0xFF171B1E),
+    surfaceContainerLow: Color(0xFF171B1E),
+    surfaceContainer: Color(0xFF20252A),
+    surfaceContainerHigh: Color(0xFF20252A),
+    surfaceContainerHighest: Color(0xFF2B3238),
+    outline: Color(0xFF4C5359),
+    outlineVariant: Color(0xFF383F45),
+    inverseSurface: Color(0xFF0A0C0E),
+    onInverseSurface: Color(0xFFE9E7E5),
     inversePrimary: Color(0xFF0088B0),
     shadow: Color(0xFF000000),
     scrim: Color(0xFF000000),

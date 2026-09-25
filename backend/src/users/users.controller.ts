@@ -19,6 +19,7 @@ import { CurrentUser, AuthenticatedUser } from '../common/decorators/current-use
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 
 @ApiTags('users')
 @ApiBearerAuth()
@@ -30,6 +31,19 @@ export class UsersController {
   @Get('me')
   me(@CurrentUser() user: AuthenticatedUser) {
     return this.usersService.findOne(user.id);
+  }
+
+  /**
+   * Self-service — no `@RequirePermissions()`, any authenticated user may
+   * change their OWN password (proving they know the current one is the
+   * gate, not a permission). Registered ahead of `:id` for clarity, though
+   * the extra `/password` segment already makes the two routes unambiguous.
+   */
+  @Patch('me/password')
+  async changeOwnPassword(@CurrentUser() user: AuthenticatedUser, @Body() dto: ChangePasswordDto, @Req() req: Request) {
+    req.auditEntity = 'users';
+    req.auditEntityId = user.id;
+    return this.usersService.changeOwnPassword(user.id, dto);
   }
 
   @Get()

@@ -111,7 +111,7 @@ async function main() {
     console.log('Ensuring demo category...');
     let category = await prisma.category.findFirst({ where: { name: CATEGORY_NAME } });
     if (!category) {
-      category = await categoriesService.create({ name: CATEGORY_NAME, workstreamId: workstream.id });
+      category = await categoriesService.create({ name: CATEGORY_NAME, workstreamId: workstream.id }, performedBy);
       console.log(`  created category "${CATEGORY_NAME}"`);
     } else {
       console.log(`  reusing existing category "${CATEGORY_NAME}"`);
@@ -146,14 +146,17 @@ async function main() {
     for (const [key, def] of Object.entries(PRODUCTS) as [keyof typeof PRODUCTS, (typeof PRODUCTS)[keyof typeof PRODUCTS]][]) {
       let product = await prisma.product.findUnique({ where: { sku: def.sku } });
       if (!product) {
-        product = await productsService.create({
-          sku: def.sku,
-          name: def.name,
-          categoryId: category.id,
-          sellingPrice: def.sellingPrice,
-          costPrice: def.costPrice,
-          uom: def.uom,
-        });
+        product = await productsService.create(
+          {
+            sku: def.sku,
+            name: def.name,
+            categoryId: category.id,
+            sellingPrice: def.sellingPrice,
+            costPrice: def.costPrice,
+            uom: def.uom,
+          },
+          performedBy,
+        );
         console.log(`  created product "${def.name}" (${def.sku})`);
       } else {
         console.log(`  reusing existing product "${def.name}" (${def.sku})`);

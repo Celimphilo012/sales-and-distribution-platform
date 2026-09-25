@@ -1,0 +1,39 @@
+{
+  "name": "warehouse-node",
+  "version": "1.0.0",
+  "description": "Warehouse System API \u2014 plain JavaScript / Fastify port of /warehouse. Same API contract, same warehouse_db schema, with a cache layer.",
+  "private": true,
+  "license": "UNLICENSED",
+  "main": "app.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node app.js",
+    "dev": "node --watch src/server.js",
+    "prisma:generate": "prisma generate",
+    "prisma:deploy": "prisma migrate deploy",
+    "seed": "node prisma/seed.js",
+    "test": "node --test test/*.test.js"
+  },
+  "prisma": {
+    "seed": "node prisma/seed.js"
+  },
+  "dependencies": {
+    "@fastify/compress": "^8.0.1",
+    "@fastify/cors": "^10.0.1",
+    "@fastify/etag": "^6.0.1",
+    "@fastify/helmet": "^13.0.0",
+    "@fastify/multipart": "^9.0.1",
+    "@prisma/client": "^5.22.0",
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
+    "argon2": "^0.41.1",
+    "dotenv": "^16.4.7",
+    "exceljs": "^4.4.0",
+    "fastify": "^5.2.0",
+    "jsonwebtoken": "^9.0.2",
+    "lru-cache": "^11.0.2",
+    "prisma": "^5.22.0"
+  }
+}

@@ -23,6 +23,10 @@ npm run seed:demo             # optional: inventory demo data, through the real 
 npm start                     # or: npm run dev  (node --watch)
 ```
 
+**Upgrading an existing database** (one created before 2026-09-28): back it up, then run
+`db/upgrades/2026-09-28-security-notifications-packing.sql` once (see the header in that file). It was
+checked by upgrading a pre-change backup and diffing it against a fresh `db/schema.sql`: identical.
+
 Default port is 3200 so it can run beside the original on 3100. `/warehouse-frontend` points here by
 default (`AppConfig.apiBaseUrl`). Point the back-office at it by changing `WAREHOUSE_API_URL`; nothing
 else changes.

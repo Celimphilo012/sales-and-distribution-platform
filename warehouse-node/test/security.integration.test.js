@@ -435,11 +435,16 @@ describe('access control, one-time codes, MFA and notifications', () => {
       assert.ok(!app.outbox.some((m) => m.to === approverMuted.email), 'notify channel NONE opts out');
 
       const headers = await otpHeaders(api, fx.adminEmail, 'stock_adjustment.reject', adj.id);
-      await api.post(`/inventory/adjustments/${adj.id}/reject`, { reviewNote: 'recount first' }, { headers });
+      await api.post(`/inventory/adjustments/${adj.id}/reject`, { reviewNote: 'recount first <b>now</b>' }, { headers });
       await settle();
       const outcome = app.outbox.find((m) => m.to === requester.email && /was rejected/.test(m.text));
       assert.ok(outcome, 'the requester is told the outcome');
       assert.match(outcome.text, /recount first/);
+      // Emails are the branded HTML template (plus the plain-text alternative), with user text escaped.
+      assert.match(outcome.html, /^<!DOCTYPE html>/);
+      assert.match(outcome.html, /Your stock adjustment was rejected/);
+      assert.match(outcome.html, /recount first &lt;b&gt;now&lt;\/b&gt;/);
+      assert.ok(!outcome.html.includes('<b>now</b>'), 'user-entered text is never raw HTML');
     });
   });
 });

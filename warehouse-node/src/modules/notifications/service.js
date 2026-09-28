@@ -38,7 +38,8 @@ function createNotificationsService({ db, notifier, config, logger }) {
   const userById = (id) =>
     db.one("SELECT id, email, phone, notify_channel AS notifyChannel FROM users WHERE id = ? AND status = 'ACTIVE'", [id]);
 
-  async function deliver(users, event, subject, text) {
+  /** message: { subject, text (SMS), email (branded HTML content, core/email-template.js) }. */
+  async function deliver(users, event, message) {
     for (const user of users) {
       if (!user || user.notifyChannel === 'NONE') continue;
       const channel = user.notifyChannel === 'SMS' && user.phone ? 'SMS' : 'EMAIL';
@@ -47,8 +48,9 @@ function createNotificationsService({ db, notifier, config, logger }) {
         event,
         channel,
         to: channel === 'SMS' ? user.phone : user.email,
-        subject: `${config.appName}: ${subject}`,
-        text,
+        subject: `${config.appName}: ${message.subject}`,
+        text: message.text,
+        email: message.email,
       });
     }
   }
@@ -57,35 +59,72 @@ function createNotificationsService({ db, notifier, config, logger }) {
     work().catch((error) => logger.warn(`Notification "${event}" could not be prepared: ${error.message}`));
   };
 
+  const bucketLabel = (bucket) => bucket.replace('_', ' ').toLowerCase();
+  const signed = (a) => `${a.direction === 'INCREASE' ? '+' : '-'}${a.delta}`;
   const describe = (a) =>
-    `${a.direction === 'INCREASE' ? '+' : '-'}${a.delta} ${a.bucket.replace('_', ' ').toLowerCase()} of ` +
-    `${a.product.sku} ${a.product.name} at ${a.location.name} (${a.location.code})`;
+    `${signed(a)} ${bucketLabel(a.bucket)} of ${a.product.sku} ${a.product.name} at ${a.location.name} (${a.location.code})`;
+  const adjustmentDetails = (a) => [
+    ['Product', `${a.product.name} (${a.product.sku})`],
+    ['Location', `${a.location.name} (${a.location.code})`],
+    ['Change', `${signed(a)} ${bucketLabel(a.bucket)}`],
+    ['Requested by', a.requestedByUser?.fullName],
+  ];
+  const settingsFootnote = (why) => `${why} Choose email, SMS or no notifications in Settings.`;
+  /** An "open in the app" button, when APP_URL is configured (the app uses hash routes). */
+  const button = (label, route) => (config.appUrl ? { label, url: `${config.appUrl}/#${route}` } : undefined);
 
   /** A new adjustment request needs a reviewer: tell everyone who can approve it. */
   function adjustmentRequested(adjustment) {
     fireAndForget('adjustment.requested', async () => {
       const users = await recipients('inventory.adjust.approve', adjustment.location.warehouseId, adjustment.requestedBy);
-      await deliver(
-        users,
-        'adjustment.requested',
-        'stock adjustment awaiting approval',
-        `Stock adjustment awaiting your approval: ${describe(adjustment)}. ` +
-          `Requested by ${adjustment.requestedByUser.fullName}. Reason: ${adjustment.reason}.`,
-      );
+      const requester = adjustment.requestedByUser.fullName;
+      await deliver(users, 'adjustment.requested', {
+        subject: `approval needed: ${adjustment.product.name}`,
+        text: `Stock adjustment awaiting your approval: ${describe(adjustment)}. Requested by ${requester}. Reason: ${adjustment.reason}.`,
+        email: {
+          preheader: `${requester} requested ${describe(adjustment)}`,
+          eyebrow: 'Approval needed',
+          tone: 'warning',
+          heading: 'A stock adjustment is waiting for your review',
+          paragraphs: [
+            `${requester} has asked to change recorded stock. Nothing moves until someone with approval rights accepts it.`,
+          ],
+          details: adjustmentDetails(adjustment),
+          quote: { label: 'Reason given', text: adjustment.reason },
+          button: button('Review adjustment', '/stock-adjustments'),
+          footnote: settingsFootnote('You are receiving this because you can approve stock adjustments for this warehouse.'),
+        },
+      });
     });
   }
 
   /** The requester learns the outcome of their request. */
   function adjustmentReviewed(adjustment) {
     fireAndForget('adjustment.reviewed', async () => {
-      const verdict = adjustment.status === 'APPROVED' ? 'approved' : 'rejected';
-      await deliver(
-        [await userById(adjustment.requestedBy)],
-        `adjustment.${verdict}`,
-        `stock adjustment ${verdict}`,
-        `Your stock adjustment (${describe(adjustment)}) was ${verdict} by ${adjustment.reviewedByUser?.fullName ?? 'a reviewer'}.` +
+      const approved = adjustment.status === 'APPROVED';
+      const verdict = approved ? 'approved' : 'rejected';
+      const reviewer = adjustment.reviewedByUser?.fullName ?? 'a reviewer';
+      await deliver([await userById(adjustment.requestedBy)], `adjustment.${verdict}`, {
+        subject: `stock adjustment ${verdict}: ${adjustment.product.name}`,
+        text:
+          `Your stock adjustment (${describe(adjustment)}) was ${verdict} by ${reviewer}.` +
           (adjustment.reviewNote ? ` Note: ${adjustment.reviewNote}` : ''),
-      );
+        email: {
+          preheader: `${reviewer} ${verdict} your adjustment: ${describe(adjustment)}`,
+          eyebrow: approved ? 'Approved' : 'Rejected',
+          tone: approved ? 'success' : 'danger',
+          heading: `Your stock adjustment was ${verdict}`,
+          paragraphs: [
+            approved
+              ? `${reviewer} approved your request and the stock records have been updated.`
+              : `${reviewer} rejected your request, so no stock was changed.`,
+          ],
+          details: [...adjustmentDetails(adjustment).slice(0, 3), ['Reviewed by', reviewer]],
+          quote: adjustment.reviewNote ? { label: "Reviewer's note", text: adjustment.reviewNote } : undefined,
+          button: button('View adjustments', '/stock-adjustments'),
+          footnote: settingsFootnote('You are receiving this because you requested this adjustment.'),
+        },
+      });
     });
   }
 
@@ -95,13 +134,29 @@ function createNotificationsService({ db, notifier, config, logger }) {
     fireAndForget('stock_count.submitted', async () => {
       // The submitter may not approve their own count's adjustments, so they are not told to.
       const users = await recipients('inventory.adjust.approve', count.warehouseId, submitter.id);
-      await deliver(
-        users,
-        'stock_count.submitted',
-        'stock count variances awaiting approval',
-        `Stock count at ${count.location.name} (${count.location.code}) was submitted by ${submitter.fullName}: ` +
-          `${varianceCount} variance${varianceCount === 1 ? '' : 's'} now awaiting approval as stock adjustments.`,
-      );
+      const variances = `${varianceCount} variance${varianceCount === 1 ? '' : 's'}`;
+      await deliver(users, 'stock_count.submitted', {
+        subject: `stock count variances awaiting approval: ${count.location.name}`,
+        text:
+          `Stock count at ${count.location.name} (${count.location.code}) was submitted by ${submitter.fullName}: ` +
+          `${variances} now awaiting approval as stock adjustments.`,
+        email: {
+          preheader: `${submitter.fullName} submitted a count with ${variances}`,
+          eyebrow: 'Approval needed',
+          tone: 'warning',
+          heading: `A stock count found ${variances}`,
+          paragraphs: [
+            `${submitter.fullName} submitted a stock count. Each difference between the counted and recorded quantity became a stock adjustment, now waiting for approval.`,
+          ],
+          details: [
+            ['Location', `${count.location.name} (${count.location.code})`],
+            ['Counted by', submitter.fullName],
+            ['Adjustments to review', String(varianceCount)],
+          ],
+          button: button('Review adjustments', '/stock-adjustments'),
+          footnote: settingsFootnote('You are receiving this because you can approve stock adjustments for this warehouse.'),
+        },
+      });
     });
   }
 

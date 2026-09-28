@@ -58,6 +58,20 @@ function deliverySettingsRoutes(app) {
       to,
       subject: `${app.config.appName}: test email`,
       text: `This is a test ${channel === 'SMS' ? 'SMS' : 'email'} from ${app.config.appName}. If you received it, delivery is set up correctly.`,
+      email: {
+        preheader: 'Email delivery is working',
+        eyebrow: 'Delivery test',
+        tone: 'success',
+        heading: 'Email delivery is working',
+        paragraphs: [
+          `This test was sent from ${app.config.appName} with the email settings saved under Settings, Email & SMS delivery.`,
+          'Sign-in codes, confirmation codes and approval notifications will arrive looking like this.',
+        ],
+        details: [
+          ['Sent by', request.user.fullName ?? request.user.email],
+          ['Sent at', new Date().toUTCString().replace('GMT', 'UTC')],
+        ],
+      },
     });
     request.auditEntity = 'app_settings';
     request.auditEntityId = 'delivery';

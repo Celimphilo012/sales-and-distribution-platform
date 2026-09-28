@@ -54,6 +54,13 @@ class RefreshInterceptor extends Interceptor {
       final retryOptions = err.requestOptions;
       retryOptions.headers['Authorization'] = 'Bearer $newAccessToken';
       retryOptions.extra['retried'] = true;
+      // A multipart body (adjustment request, image upload, product import) is a
+      // one-shot stream: Dio refuses to send the same FormData twice, which made
+      // the retry fail inside the client and surface as "could not reach the
+      // server". Retry with a fresh copy of it instead.
+      if (retryOptions.data is FormData) {
+        retryOptions.data = (retryOptions.data as FormData).clone();
+      }
       final response = await _mainDio.fetch(retryOptions);
       handler.resolve(response);
     } on DioException catch (retryError) {

@@ -51,6 +51,9 @@ function loadConfig() {
     },
     trustProxy: (process.env.TRUST_PROXY ?? 'true') !== 'false',
     appName: process.env.APP_NAME ?? 'Warehouse System',
+    // Where people open the warehouse app (e.g. https://warehouse.example.com). Emails link to it
+    // ("Review adjustment"); left empty, emails simply carry no button.
+    appUrl: (process.env.APP_URL ?? '').replace(/\/+$/, ''),
     // Encrypts secrets at rest: authenticator-app (TOTP) secrets and the SMTP password / httpSMS
     // key saved from the admin screen. Set it once and never change it: rotating it makes every
     // enrolled authenticator app and every saved delivery credential unreadable. Falls back to a

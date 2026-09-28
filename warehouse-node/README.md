@@ -88,6 +88,9 @@ code to the other channel (`/auth/mfa/resend`). Admins reset a lost device with 
 stock count sends one summary. Each user picks EMAIL, SMS or NONE (`notify_channel`, Settings). Every
 send is logged in `notifications` (codes are never stored there). Transports (`core/notifier.js`): SMTP
 via nodemailer, SMS via **httpSMS** (`POST https://api.httpsms.com/v1/messages/send`, `x-api-key`).
+Emails are branded HTML in the app's own look (`core/email-template.js`: table layout + inline styles
+for email clients, every value HTML-escaped) with a plain-text alternative; SMS stays short plain text.
+Set `APP_URL` to give approval emails an "open in the app" button.
 
 **Delivery settings are set by an administrator in the app** (Settings → Email & SMS delivery,
 permission `settings.manage`; `GET/PUT /settings/delivery`, `POST /settings/delivery/test`): SMTP host,

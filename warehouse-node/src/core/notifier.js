@@ -1,5 +1,7 @@
 'use strict';
 
+const { renderEmail, renderText } = require('./email-template');
+
 /**
  * Sends email and SMS, and records every attempt in the `notifications` table.
  *
@@ -39,13 +41,19 @@ function createNotifier({ config, models, logger, deliverySettings }) {
     return smtp;
   }
 
-  async function deliverEmail(email, to, subject, text) {
+  async function deliverEmail(email, to, subject, text, html) {
     switch (email.transport) {
       case 'smtp':
-        await smtpTransport(email).sendMail({ from: email.from, to, subject, text });
+        await smtpTransport(email).sendMail({
+          from: email.from.includes('<') ? email.from : { name: config.appName, address: email.from },
+          to,
+          subject,
+          text,
+          html,
+        });
         return 'SENT';
       case 'memory':
-        outbox.push({ channel: 'EMAIL', to, subject, text });
+        outbox.push({ channel: 'EMAIL', to, subject, text, html });
         return 'LOGGED';
       case 'log':
         logger.info(`[email -> ${to}] ${subject}\n${text}`);
@@ -90,11 +98,14 @@ function createNotifier({ config, models, logger, deliverySettings }) {
   }
 
   /**
-   * message: { userId?, event, channel: 'EMAIL'|'SMS', to, subject?, text, sensitive? }
+   * message: { userId?, event, channel: 'EMAIL'|'SMS', to, subject?, text, email?, sensitive? }
+   * `text` is the short form (SMS). `email` is the structured content of the branded HTML email
+   * (core/email-template.js); an email without it falls back to a plain `text` email.
    * `sensitive` (one-time codes) keeps the text out of the notifications table.
    */
   async function send(message) {
-    const { userId = null, event, channel, to, subject, text, sensitive = false } = message;
+    const { userId = null, event, channel, to, subject, sensitive = false } = message;
+    let { text } = message;
     let status;
     let error = null;
     let providerInfo = null;
@@ -106,7 +117,12 @@ function createNotifier({ config, models, logger, deliverySettings }) {
         providerInfo = result.info ?? null;
         if (providerInfo) logger.info(`Notification (${event}) to ${to}: ${providerInfo}`);
       } else {
-        status = await deliverEmail(settings.email, to, subject ?? config.appName, text);
+        let html;
+        if (message.email) {
+          html = renderEmail(message.email, config);
+          text = renderText(message.email, config);
+        }
+        status = await deliverEmail(settings.email, to, subject ?? config.appName, text, html);
       }
     } catch (err) {
       status = 'FAILED';

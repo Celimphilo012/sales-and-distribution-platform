@@ -58,23 +58,60 @@ function createOtpService({ db, models, config, notifier }) {
     }
   }
 
-  function messageFor(purpose, action, code) {
+  /** { subject, text (SMS), email (branded HTML content) } for a code. */
+  function messageFor(purpose, action, code, user) {
     const minutes = Math.round(config.otp.codeTtlMs / 60_000);
+    const greeting = user.fullName ? `Hello ${user.fullName.split(' ')[0]},` : 'Hello,';
+    const codeNote = `Expires in ${minutes} minutes · can be used once`;
+    const requested = ['Requested', `${new Date().toUTCString().replace('GMT', 'UTC')}`];
     if (purpose === 'LOGIN') {
       return {
-        subject: `${config.appName} sign-in code`,
+        subject: `${code} is your ${config.appName} sign-in code`,
         text: `${config.appName}: your sign-in code is ${code}. It expires in ${minutes} minutes. If you are not signing in, change your password.`,
+        email: {
+          preheader: `Your sign-in code is ${code}`,
+          eyebrow: 'Sign-in verification',
+          tone: 'info',
+          heading: 'Your sign-in code',
+          paragraphs: [greeting, `Enter this code to finish signing in to ${config.appName}.`],
+          code,
+          codeNote,
+          details: [['Account', user.email], requested],
+          footnote: "Didn't try to sign in? Someone may know your password — change it now and tell your administrator. We will never ask you for this code.",
+        },
       };
     }
     if (purpose === 'MFA_SETUP') {
       return {
-        subject: `${config.appName} verification code`,
+        subject: `${code} is your ${config.appName} verification code`,
         text: `${config.appName}: your verification code is ${code}. It expires in ${minutes} minutes.`,
+        email: {
+          preheader: `Your verification code is ${code}`,
+          eyebrow: 'Set up sign-in verification',
+          tone: 'info',
+          heading: 'Confirm this email address',
+          paragraphs: [greeting, 'Enter this code in Settings to turn on sign-in verification by email.'],
+          code,
+          codeNote,
+          footnote: "Didn't ask for this? You can ignore this email — nothing changes without the code.",
+        },
       };
     }
+    const what = OTP_ACTIONS[action];
     return {
-      subject: `${config.appName} confirmation code`,
-      text: `${config.appName}: your code to ${OTP_ACTIONS[action]} is ${code}. It expires in ${minutes} minutes. If this wasn't you, tell your administrator.`,
+      subject: `${code} is your code to ${what}`,
+      text: `${config.appName}: your code to ${what} is ${code}. It expires in ${minutes} minutes. If this wasn't you, tell your administrator.`,
+      email: {
+        preheader: `Your code to ${what} is ${code}`,
+        eyebrow: 'Confirm a protected action',
+        tone: 'warning',
+        heading: `Confirm: ${what}`,
+        paragraphs: [greeting, `You asked to ${what}. This action needs a second check — enter this code to confirm it.`],
+        code,
+        codeNote,
+        details: [['Account', user.email], requested],
+        footnote: "Wasn't you? Don't share this code with anyone — tell your administrator straight away. We will never ask you for it.",
+      },
     };
   }
 
@@ -115,7 +152,7 @@ function createOtpService({ db, models, config, notifier }) {
     if (chosen !== 'TOTP') {
       const code = randomCode();
       await db.exec('UPDATE otp_challenges SET code_hash = ? WHERE id = ?', [hashCode(hmacKey, challenge.id, code), challenge.id]);
-      const { subject, text } = messageFor(purpose, action, code);
+      const { subject, text, email } = messageFor(purpose, action, code, user);
       const delivery = await notifier.send({
         userId: user.id,
         event: `otp.${purpose.toLowerCase()}`,
@@ -123,6 +160,7 @@ function createOtpService({ db, models, config, notifier }) {
         to: chosen === 'SMS' ? user.phone : user.email,
         subject,
         text,
+        email,
         sensitive: true,
       });
       if (!delivery.ok) {

@@ -1,14 +1,15 @@
 /// Static, compile-time app configuration.
 ///
-/// F1 ships with a hard-coded default so the app runs out of the box against
-/// a local backend. F2 (live auth wiring) can promote this to a
-/// `--dart-define`-driven value without changing any call sites.
+/// This app talks only to the ordering system's own API. The default points at
+/// `/ordering-backend` (Node.js + Express, port 3300) — not the older NestJS
+/// `/backend` on 3000. Override with `--dart-define=API_BASE_URL=...` for
+/// other environments without changing any call sites.
 class AppConfig {
   const AppConfig._();
 
   static const String apiBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'http://localhost:3000',
+    defaultValue: 'http://localhost:3300',
   );
 
   static const Duration connectTimeout = Duration(seconds: 15);

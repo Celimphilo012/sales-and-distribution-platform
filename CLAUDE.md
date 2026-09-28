@@ -8,9 +8,15 @@ ordering/back-office side must not share a database with the warehouse):
 - **Warehouse System** (`/warehouse`, port 3100, db `warehouse_db`) — owns the
   catalogue (products/categories/images), warehouses, locations, and the inventory
   ledger; has its own auth; exposes an API-key-protected API. **Built first.**
-- **Back-Office / Ordering System** (`/backend`, port 3000, db `distribution_platform`)
-  — the existing system: own auth, customers, orders, payments. Owns NO inventory;
-  calls the Warehouse API (shared key) for stock.
+  **Active implementation: `/warehouse-node`** (port 3200, same db + API contract) —
+  plain JavaScript on Node.js + Express with raw parameterised SQL via mysql2, NO
+  ORM. `/warehouse-frontend` talks ONLY to it. The NestJS/Prisma `/warehouse`
+  (3100) is the legacy original, kept for reference and parity checks.
+- **Back-Office / Ordering System** (db `distribution_platform`) — own auth, customers,
+  orders, payments. Owns NO inventory; calls the Warehouse API (shared key) for stock.
+  **Active implementation: `/ordering-backend`** (port 3300) — plain JavaScript on Node.js +
+  Express + mysql2, NO ORM, same API contract. `/ordering-frontend` talks ONLY to it. The
+  NestJS/Prisma `/backend` (3000) is the legacy original, kept for parity checks.
 
 Each system is standalone: its own database, its own auth, no shared code, no
 cross-imports, no foreign keys across the boundary, no shared DB transaction. See
@@ -22,7 +28,40 @@ cross-imports, no foreign keys across the boundary, no shared DB transaction. Se
 
 - **Backend:** Node.js + NestJS (TypeScript), REST + OpenAPI/Swagger
 - **Database:** MySQL / MariaDB (XAMPP local; requires MySQL 8.0+ or MariaDB 10.2.2+ for recursive location-tree CTEs)
-- **ORM:** Prisma (use `$queryRaw` for recursive location-tree queries)
+- **ORM: none** (user's decision, 2026-09-28). Both active backends (`/warehouse-node`,
+  `/ordering-backend`) are Express + mysql2 raw SQL (`src/core/db.js` + `src/core/models.js`,
+  deliberately duplicated — no shared code across systems). Prisma survives only in the legacy
+  `/warehouse` and `/backend`. NO migration tool and no migration-tracking table in either
+  database: each app's `db/schema.sql` is its whole schema (fresh install = load it, then
+  `npm run seed`); a schema change = a hand-run ALTER on each database + the same change edited
+  into `schema.sql` in one commit.
+
+**Warehouse security + notifications (2026-09-28, `/warehouse-node` + `/warehouse-frontend`):**
+- Warehouse ACCESS is deny-by-default (`user_warehouses`; `warehouse.access.all` for ADMIN;
+  `warehouse.access.assign` to manage). Workstream-manager assignments must sit inside it.
+  On upgrade every existing user was assigned to every existing warehouse (nobody locked out).
+- OTP step-up (428 → code by EMAIL/SMS/authenticator → retry with X-OTP-* headers) on adjustment
+  approve/reject, stock-count submit, all deactivations/deletions, API-key revoke, role delete,
+  MFA-off. Catalog: `warehouse-node/src/catalog/otp-actions.js`. Frontend: one `OtpInterceptor` +
+  dialog handles every protected action automatically.
+- Optional sign-in MFA per user: email / SMS / authenticator app (TOTP). Users have `phone`,
+  `notify_channel` (EMAIL|SMS|NONE), `mfa_method`.
+- Notifications (approval workflow) + all codes go out via SMTP (nodemailer) and httpSMS
+  (httpsms.com, texts sent from the org's own Android phone). A warehouse admin configures BOTH in
+  the app (Settings → Email & SMS delivery, permission `settings.manage`; stored in `app_settings`,
+  password/API key encrypted with SECRETS_ENCRYPTION_KEY, never returned; test-send button). `.env`
+  is only the fallback; until real sending is switched on, messages print to the server log.
+- Packing screen (`GET /packing`, `packing.view`): open orders' lines per user's warehouses/workstreams;
+  the ordering system sends `label` ("ORD-0012 · Customer") with each reserve.
+- Verified: warehouse-node 111 tests, warehouse-frontend 94 tests + analyze clean + browser pass
+  (MFA setup dialog, OTP prompt → code → retry on a test API key, Users, Packing).
+
+**Ordering port DONE (2026-09-28):** `/ordering-backend` — 33/33 read endpoints + error shapes
+byte-identical to `/backend` on real data (`test/parity.js`); 14 integration tests (full lifecycle
+against an in-process fake warehouse); `/ordering-frontend` repointed to 3300 (analyze clean, 51
+tests, live orders/dashboard load). Also fixed two R3b follow-ons there: 409 insufficient-stock now
+carries structured `shortLines`; whitespace-only reject notes are refused. `_prisma_migrations`
+dropped from `distribution_platform` (backup taken first).
 - **Auth:** JWT access token (short-lived) + rotating refresh token (stored hashed); passwords hashed with argon2
 - **Frontend:** Flutter (web / Android / iOS / desktop), Riverpod for state
 
@@ -85,7 +124,7 @@ across the boundary (reserve/release/issue, pricing hole closed).
 
 **Frontend (step 6 — two separate frontends, one per system):**
 - `/warehouse-frontend` — standalone Flutter app for the warehouse (logs into
-  warehouse 3100). 6a (foundation) DONE. 6b (Products + Categories) DONE.
+  warehouse-node 3200). 6a (foundation) DONE. 6b (Products + Categories) DONE.
   6c (Warehouses + dynamic locations tree) DONE.
   6d (Inventory views — "where is this product" + "what's in this location",
   read-only) DONE; the 6c "stock in location" placeholder is now real.

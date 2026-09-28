@@ -319,6 +319,11 @@ class _UsersTable extends StatelessWidget {
           cellBuilder: (u) => Text(u.roles.isEmpty ? '—' : u.roles.map((r) => r.name).join(', ')),
         ),
         AppDataColumn(
+          label: 'Warehouses',
+          cellBuilder: (u) => Text(u.warehouses.isEmpty ? '—' : u.warehouses.map((w) => w.code).join(', ')),
+        ),
+        AppDataColumn(label: 'Sign-in check', cellBuilder: (u) => Text(kMfaMethodLabels[u.mfaMethod] ?? u.mfaMethod)),
+        AppDataColumn(
           label: 'Status',
           cellBuilder: (u) => StatusBadge(
             label: u.status.label,

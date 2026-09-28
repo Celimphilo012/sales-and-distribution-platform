@@ -2,9 +2,9 @@
 
 function createTransfersService({ inventory, locations }) {
   async function transfer(dto, performedBy) {
-    // Both ends of a physical stock move must be leaf locations.
-    await locations.assertLeaf(dto.fromLocationId);
-    await locations.assertLeaf(dto.toLocationId);
+    // Both ends of a physical stock move must be leaf locations the user may access.
+    await locations.assertLeaf(dto.fromLocationId, performedBy);
+    await locations.assertLeaf(dto.toLocationId, performedBy);
 
     // One TRANSFER transaction moves both legs atomically — that is InventoryService's job.
     return inventory.applyTransaction({

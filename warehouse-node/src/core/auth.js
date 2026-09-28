@@ -5,16 +5,18 @@ const jwt = require('jsonwebtoken');
 const argon2 = require('argon2');
 const { unauthorized, forbidden } = require('./errors');
 const { TAGS } = require('./cache/cache');
+const { parseJson } = require('./models');
 
 const API_KEY_HEADER = 'x-api-key';
 const LAST_USED_TOUCH_INTERVAL_MS = 60_000;
 
 /**
- * Authentication + authorisation primitives, shared by every module.
+ * Authentication + authorisation primitives, shared by every module. Each guard is an async
+ * function of the request that throws a 401/403 (see core/http.js createRoutes):
  *
- *  - authenticate            preHandler: validates the access-token JWT, sets request.user
- *  - requirePermissions(...) preHandler: checks permission KEYS (never role names) — run after authenticate
- *  - requireScopes(...)      preHandler: the API-key equivalent — authenticates X-API-Key and checks scopes
+ *  - authenticate            validates the access-token JWT, sets req.user
+ *  - requirePermissions(...) checks permission KEYS (never role names) — run after authenticate
+ *  - requireScopes(...)      the API-key equivalent — authenticates X-API-Key and checks scopes
  *
  * Caching (see core/cache/cache.js):
  *  - a user's effective permission keys are cached for a short TTL and invalidated on any
@@ -23,7 +25,7 @@ const LAST_USED_TOUCH_INTERVAL_MS = 60_000;
  *    key against every active key's argon2 hash on EVERY request (deliberately slow, O(active keys)).
  *    argon2 stays as the at-rest format; the cache just means the slow verify runs once per key per TTL.
  */
-function createAuth({ config, prisma, cache }) {
+function createAuth({ config, db, cache }) {
   // ---- JWT --------------------------------------------------------------
   function signAccessToken(userId, email) {
     return jwt.sign({ sub: userId, email }, config.jwt.accessSecret, { expiresIn: config.jwt.accessExpiresIn });
@@ -41,19 +43,19 @@ function createAuth({ config, prisma, cache }) {
     }
   }
 
-  function extractBearer(request) {
-    const header = request.headers.authorization;
+  function extractBearer(req) {
+    const header = req.headers.authorization;
     if (!header) return undefined;
     const [type, token] = header.split(' ');
     return type === 'Bearer' ? token : undefined;
   }
 
-  async function authenticate(request) {
-    const token = extractBearer(request);
+  async function authenticate(req) {
+    const token = extractBearer(req);
     if (!token) throw unauthorized('Missing access token');
     try {
       const payload = jwt.verify(token, config.jwt.accessSecret, { algorithms: ['HS256'] });
-      request.user = { id: payload.sub, email: payload.email };
+      req.user = { id: payload.sub, email: payload.email };
     } catch {
       throw unauthorized('Invalid or expired access token');
     }
@@ -69,20 +71,24 @@ function createAuth({ config, prisma, cache }) {
       `perm:${userId}`,
       { ttlMs: config.cache.permissionsTtlMs, tags: [TAGS.PERMISSIONS] },
       async () => {
-        const grants = await prisma.rolePermission.findMany({
-          where: { role: { userRoles: { some: { userId } } } },
-          select: { permission: { select: { key: true } } },
-        });
-        return [...new Set(grants.map((g) => g.permission.key))];
+        const rows = await db.query(
+          `SELECT DISTINCT p.\`key\` AS \`key\`
+             FROM user_roles ur
+             JOIN role_permissions rp ON rp.role_id = ur.role_id
+             JOIN permissions p ON p.id = rp.permission_id
+            WHERE ur.user_id = ?`,
+          [userId],
+        );
+        return rows.map((r) => r.key);
       },
     );
   }
 
   function requirePermissions(...required) {
-    return async function permissionGuard(request) {
-      if (!request.user) throw unauthorized('Missing authenticated user');
+    return async function permissionGuard(req) {
+      if (!req.user) throw unauthorized('Missing authenticated user');
       if (required.length === 0) return;
-      const granted = await resolveEffectivePermissionKeys(request.user.id);
+      const granted = await resolveEffectivePermissionKeys(req.user.id);
       if (!required.every((key) => granted.includes(key))) throw forbidden('Insufficient permissions');
     };
   }
@@ -93,10 +99,12 @@ function createAuth({ config, prisma, cache }) {
   async function verifyApiKey(rawKey) {
     const digest = crypto.createHash('sha256').update(rawKey).digest('hex');
     return cache.wrap(`apikey:${digest}`, { ttlMs: config.cache.apiKeyTtlMs, tags: [TAGS.API_KEYS] }, async () => {
-      const candidates = await prisma.apiKey.findMany({ where: { isActive: true } });
+      const candidates = await db.query(
+        'SELECT id, name, key_hash AS keyHash, scopes FROM api_keys WHERE is_active = true',
+      );
       for (const candidate of candidates) {
         if (await argon2.verify(candidate.keyHash, rawKey)) {
-          return { id: candidate.id, name: candidate.name, scopes: candidate.scopes };
+          return { id: candidate.id, name: candidate.name, scopes: parseJson(candidate.scopes) };
         }
       }
       return undefined; // never cached: an unknown key must be re-checked each time
@@ -104,8 +112,8 @@ function createAuth({ config, prisma, cache }) {
   }
 
   function requireScopes(...required) {
-    return async function apiKeyGuard(request) {
-      const rawKey = request.headers[API_KEY_HEADER];
+    return async function apiKeyGuard(req) {
+      const rawKey = req.headers[API_KEY_HEADER];
       if (!rawKey || typeof rawKey !== 'string') throw unauthorized('Missing API key');
 
       const matched = await verifyApiKey(rawKey);
@@ -115,13 +123,13 @@ function createAuth({ config, prisma, cache }) {
         throw forbidden('API key lacks the required scope');
       }
 
-      request.apiKey = { id: matched.id, name: matched.name, scopes: matched.scopes };
+      req.apiKey = { id: matched.id, name: matched.name, scopes: matched.scopes };
 
       // Fire-and-forget and throttled: bookkeeping must never slow down or fail the request.
       const now = Date.now();
       if (now - (lastTouched.get(matched.id) ?? 0) > LAST_USED_TOUCH_INTERVAL_MS) {
         lastTouched.set(matched.id, now);
-        void prisma.apiKey.update({ where: { id: matched.id }, data: { lastUsedAt: new Date() } }).catch(() => {});
+        void db.exec('UPDATE api_keys SET last_used_at = ? WHERE id = ?', [new Date(), matched.id]).catch(() => {});
       }
     };
   }

@@ -4,24 +4,19 @@ const { randomBytes } = require('crypto');
 const argon2 = require('argon2');
 const { notFound } = require('../../core/errors');
 const { TAGS } = require('../../core/cache/cache');
+const { cols, hydrate } = require('../../core/models');
 
-const KEY_SELECT = {
-  id: true,
-  name: true,
-  scopes: true,
-  isActive: true,
-  createdAt: true,
-  lastUsedAt: true,
-  createdBy: true,
-};
+// The key hash never leaves this service.
+const KEY_FIELDS = ['id', 'name', 'scopes', 'isActive', 'createdAt', 'lastUsedAt', 'createdBy'];
 
-function createApiKeysService({ prisma, cache }) {
-  const findAll = () => prisma.apiKey.findMany({ select: KEY_SELECT, orderBy: { createdAt: 'asc' } });
+function createApiKeysService({ db, models, cache }) {
+  const findAll = async () =>
+    hydrate('apiKey', await db.query(`SELECT ${cols('apiKey', 'k', KEY_FIELDS)} FROM api_keys k ORDER BY k.created_at ASC`));
 
   async function getExisting(id) {
-    const key = await prisma.apiKey.findUnique({ where: { id }, select: KEY_SELECT });
+    const key = await db.one(`SELECT ${cols('apiKey', 'k', KEY_FIELDS)} FROM api_keys k WHERE k.id = ?`, [id]);
     if (!key) throw notFound(`API key ${id} not found`);
-    return key;
+    return hydrate('apiKey', key);
   }
 
   /**
@@ -32,20 +27,17 @@ function createApiKeysService({ prisma, cache }) {
     const rawKey = `whk_${randomBytes(32).toString('base64url')}`;
     const keyHash = await argon2.hash(rawKey);
 
-    const created = await prisma.apiKey.create({
-      data: { name: dto.name, keyHash, scopes: dto.scopes, createdBy },
-      select: KEY_SELECT,
-    });
+    const row = await models.insert('apiKey', { name: dto.name, keyHash, scopes: dto.scopes, createdBy });
     await cache.invalidate(TAGS.API_KEYS);
-    return { ...created, rawKey };
+    return { ...(await getExisting(row.id)), rawKey };
   }
 
   async function revoke(id) {
     await getExisting(id);
-    const revoked = await prisma.apiKey.update({ where: { id }, data: { isActive: false }, select: KEY_SELECT });
+    await db.exec('UPDATE api_keys SET is_active = false WHERE id = ?', [id]);
     // The verified-key cache must forget this key immediately, not at TTL expiry.
     await cache.invalidate(TAGS.API_KEYS);
-    return revoked;
+    return getExisting(id);
   }
 
   return { findAll, getExisting, create, revoke };

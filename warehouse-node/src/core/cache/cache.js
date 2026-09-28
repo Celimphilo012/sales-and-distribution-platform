@@ -117,6 +117,7 @@ const TAGS = {
   CATALOGUE: 'catalogue', // products, categories, workstreams, attribute types, images
   STRUCTURE: 'structure', // warehouses + locations tree
   STOCK: 'stock', // anything derived from the inventory ledger
+  SETTINGS: 'settings', // admin-editable app settings (email/SMS delivery)
 };
 
 module.exports = { Cache, createCache, TAGS };

@@ -1,31 +1,34 @@
 'use strict';
 
+const http = require('http');
 const { buildApp } = require('./app');
 
-async function start() {
-  const app = await buildApp();
-  const { port } = app.config;
+function start() {
+  const app = buildApp();
+  const { config, logger } = app.locals;
+  const server = http.createServer(app);
+  // Behind cPanel/Passenger the app sits behind a proxy; keep-alive matches Node's default LB idle timeout.
+  server.keepAliveTimeout = 65_000;
 
-  const shutdown = async (signal) => {
-    app.log.info(`${signal} received, shutting down`);
-    try {
-      await app.close();
-      process.exit(0);
-    } catch (error) {
-      app.log.error(error);
-      process.exit(1);
-    }
+  const shutdown = (signal) => {
+    logger.info(`${signal} received, shutting down`);
+    server.close(async () => {
+      try {
+        await app.close();
+        process.exit(0);
+      } catch (error) {
+        logger.error(error);
+        process.exit(1);
+      }
+    });
   };
   process.once('SIGTERM', () => shutdown('SIGTERM'));
   process.once('SIGINT', () => shutdown('SIGINT'));
 
-  // Explicit 0.0.0.0: with "localhost" Fastify binds several addresses, which Passenger's socket hand-off can't handle.
-  await app.listen({ port, host: '0.0.0.0' });
-  app.log.info(`Warehouse API (Fastify) listening on http://localhost:${port}`);
+  // Explicit 0.0.0.0: Passenger's socket hand-off can't handle several bound addresses.
+  server.listen(config.port, '0.0.0.0', () => {
+    logger.info(`Warehouse API (Express) listening on http://localhost:${config.port}`);
+  });
 }
 
-start().catch((error) => {
-  // eslint-disable-next-line no-console
-  console.error(error);
-  process.exit(1);
-});
+start();

@@ -2,87 +2,83 @@
 
 const { conflict, notFound } = require('../../core/errors');
 const { TAGS } = require('../../core/cache/cache');
+const { cols, groupBy } = require('../../core/models');
 
-const ROLE_SELECT = {
-  id: true,
-  name: true,
-  description: true,
-  isSystem: true,
-  createdAt: true,
-  updatedAt: true,
-  rolePermissions: {
-    select: { permission: { select: { id: true, key: true, description: true, module: true } } },
-  },
-};
-
-function present(role) {
-  const { rolePermissions, ...rest } = role;
-  return { ...rest, permissions: rolePermissions.map((rp) => rp.permission) };
-}
-
-function createRolesService({ prisma, cache }) {
-  async function findAll() {
-    const roles = await prisma.role.findMany({ select: ROLE_SELECT, orderBy: { name: 'asc' } });
-    return roles.map(present);
+function createRolesService({ db, models, cache }) {
+  /** Attaches permissions: [{ id, key, description, module }] to each role, one query for the list. */
+  async function withPermissions(roles, executor) {
+    if (roles.length === 0) return roles;
+    const rows = await db.query(
+      `SELECT rp.role_id AS roleId, ${cols('permission', 'p')}
+         FROM role_permissions rp JOIN permissions p ON p.id = rp.permission_id
+        WHERE rp.role_id IN (?)`,
+      [roles.map((r) => r.id)],
+      executor,
+    );
+    const byRole = groupBy(rows, 'roleId');
+    return roles.map((r) => ({
+      ...r,
+      permissions: (byRole.get(r.id) ?? []).map(({ roleId, ...permission }) => permission),
+    }));
   }
 
-  async function getExisting(id) {
-    const role = await prisma.role.findUnique({ where: { id }, select: ROLE_SELECT });
+  async function findAll() {
+    const roles = await db.query(`SELECT ${cols('role', 'r')} FROM roles r ORDER BY r.name ASC`);
+    return withPermissions(roles);
+  }
+
+  async function getExisting(id, executor) {
+    const role = await models.findById('role', id, executor);
     if (!role) throw notFound(`Role ${id} not found`);
-    return present(role);
+    const [withPerms] = await withPermissions([role], executor);
+    return withPerms;
   }
 
   async function create(dto) {
-    const existing = await prisma.role.findUnique({ where: { name: dto.name } });
+    const existing = await db.one('SELECT id FROM roles WHERE name = ?', [dto.name]);
     if (existing) throw conflict('A role with this name already exists');
 
-    const role = await prisma.role.create({
-      data: { name: dto.name, description: dto.description },
-      select: ROLE_SELECT,
-    });
-    return present(role);
+    const role = await models.insert('role', { name: dto.name, description: dto.description });
+    return getExisting(role.id);
   }
 
   async function update(id, dto) {
-    const existing = await prisma.role.findUnique({ where: { id } });
+    const existing = await models.findById('role', id);
     if (!existing) throw notFound(`Role ${id} not found`);
     if (existing.isSystem && dto.name) throw conflict('Cannot rename a system role');
 
-    const role = await prisma.role.update({
-      where: { id },
-      data: { name: dto.name ?? undefined, description: dto.description },
-      select: ROLE_SELECT,
-    });
-    return present(role);
+    await models.update('role', id, { name: dto.name ?? undefined, description: dto.description }, 'Role');
+    return getExisting(id);
   }
 
   async function remove(id) {
-    const existing = await prisma.role.findUnique({
-      where: { id },
-      include: { _count: { select: { userRoles: true } } },
-    });
+    const existing = await models.findById('role', id);
     if (!existing) throw notFound(`Role ${id} not found`);
     if (existing.isSystem) throw conflict('Cannot delete a system role');
-    if (existing._count.userRoles > 0) throw conflict('Cannot delete a role that is still assigned to users');
+    const { assigned } = await db.one('SELECT COUNT(*) AS assigned FROM user_roles WHERE role_id = ?', [id]);
+    if (assigned > 0) throw conflict('Cannot delete a role that is still assigned to users');
 
-    await prisma.role.delete({ where: { id } });
+    // Its role_permissions rows go with it (ON DELETE CASCADE).
+    await db.exec('DELETE FROM roles WHERE id = ?', [id]);
     return { id, deleted: true };
   }
 
   async function assignPermissions(id, dto) {
     await getExisting(id);
 
-    const role = await prisma.$transaction(async (tx) => {
-      await tx.rolePermission.deleteMany({ where: { roleId: id } });
-      await tx.rolePermission.createMany({
-        data: dto.permissionIds.map((permissionId) => ({ roleId: id, permissionId })),
-      });
-      return tx.role.findUniqueOrThrow({ where: { id }, select: ROLE_SELECT });
+    const role = await db.transaction(async (tx) => {
+      await db.exec('DELETE FROM role_permissions WHERE role_id = ?', [id], tx);
+      await models.insertMany(
+        'rolePermission',
+        dto.permissionIds.map((permissionId) => ({ roleId: id, permissionId })),
+        tx,
+      );
+      return getExisting(id, tx);
     });
 
     // Effective permissions changed for every user holding this role.
     await cache.invalidate(TAGS.PERMISSIONS);
-    return present(role);
+    return role;
   }
 
   return { findAll, findOne: getExisting, getExisting, create, update, remove, assignPermissions };

@@ -160,6 +160,12 @@ const List<NavGroup> kNavGroups = [
         icon: PhosphorIconsDuotone.slidersHorizontal,
         requiredPermissions: ['inventory.adjust.request', 'inventory.adjust.approve'],
       ),
+      NavItem(
+        label: 'Packing',
+        path: RoutePaths.packing,
+        icon: PhosphorIconsDuotone.package,
+        requiredPermissions: ['packing.view'],
+      ),
     ],
   ),
   NavGroup(

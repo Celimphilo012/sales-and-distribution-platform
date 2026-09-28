@@ -37,6 +37,7 @@ void main() {
         'inventory.transfer',
         'inventory.count',
         'inventory.adjust.request',
+        'packing.view',
       },
     );
 
@@ -54,6 +55,7 @@ void main() {
       'Stock Transfers',
       'Stock Counts',
       'Stock Adjustments',
+      'Packing',
       'Settings',
     });
     expect(visible.contains('Dashboard'), isFalse);
@@ -83,6 +85,7 @@ void main() {
         'inventory.count',
         'inventory.adjust.request',
         'inventory.adjust.approve',
+        'packing.view',
       },
     );
 
@@ -107,16 +110,17 @@ void groupingTests() {
     expect(group.items.map((i) => i.label), ['Users', 'Roles']);
   });
 
-  test('the five stock screens are grouped under "Stock"', () {
+  test('the six stock screens (incl. Packing) are grouped under "Stock"', () {
     final groups = visibleNavGroups(userWith(const {
       'inventory.view',
       'inventory.receive',
       'inventory.transfer',
       'inventory.count',
       'inventory.adjust.approve',
+      'packing.view',
     }));
     final stock = groups.firstWhere((g) => g.title == 'Stock');
-    expect(stock.items.length, 5);
+    expect(stock.items.length, 6);
   });
 
   test('a group with no visible items disappears entirely', () {

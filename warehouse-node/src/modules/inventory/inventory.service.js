@@ -1,353 +1,378 @@
-"use strict";
-exports.InventoryService = void 0;
+'use strict';
+
+const { randomUUID } = require('crypto');
 const { badRequest, conflict } = require('../../core/errors');
 const { TAGS } = require('../../core/cache/cache');
-const client_1 = require("@prisma/client");
-const inventory_transaction_effects_1 = require("./inventory-transaction-effects");
-const ZERO_BUCKETS = {
-    onHand: 0,
-    reserved: 0,
-    damaged: 0,
-    lost: 0,
-    expired: 0,
+const { isUniqueViolation } = require('../../core/db');
+const { cols, nest, Where } = require('../../core/models');
+const { InventoryTransactionType } = require('../../core/enums');
+const { resolveBucketDeltas } = require('./inventory-transaction-effects');
+
+/** Balance bucket (as resolveBucketDeltas names it) -> inventory_balances column. */
+const BUCKET_COLUMNS = {
+  onHand: 'on_hand',
+  reserved: 'reserved',
+  damaged: 'damaged',
+  lost: 'lost',
+  expired: 'expired',
 };
-// Structurally compatible with both InventoryBalanceUpdateInput (used by
-// `update`) and InventoryBalanceUpdateManyMutationInput (used by
-// `updateMany`) — both accept `{ <field>: { increment } }` for numeric
-// columns, so one helper covers both call sites below.
-function updateInputFor(bucket, delta) {
-    switch (bucket) {
-        case 'onHand':
-            return { onHand: { increment: delta } };
-        case 'reserved':
-            return { reserved: { increment: delta } };
-        case 'damaged':
-            return { damaged: { increment: delta } };
-        case 'lost':
-            return { lost: { increment: delta } };
-        case 'expired':
-            return { expired: { increment: delta } };
-    }
-}
-function createInputFor(productId, locationId, bucket, delta) {
-    const buckets = { ...ZERO_BUCKETS, [bucket]: delta };
-    return {
-        productId,
-        locationId,
-        onHand: buckets.onHand,
-        reserved: buckets.reserved,
-        damaged: buckets.damaged,
-        lost: buckets.lost,
-        expired: buckets.expired,
-    };
-}
-// One MariaDB CHECK constraint per bucket (see the step2b_inventory_ledger
-// migration) — the database's own backstop against a bucket going negative,
+
+// One MariaDB CHECK constraint per bucket (see inventory_balances in
+// db/schema.sql) — the database's own backstop against a bucket going negative,
 // on top of the DB-write guard trigger. No caller currently pre-validates
 // sufficient balance before writing (unlike the external reservation API's
 // own "available" check), so this constraint is the ONLY thing stopping an
 // over-issue/over-decrement for RECEIVE/ISSUE/TRANSFER/ADJUSTMENT/DAMAGED/
 // LOST alike — every one of them can hit this.
 const NONNEG_CONSTRAINT_BUCKETS = {
-    inventory_balances_on_hand_nonneg: 'onHand',
-    inventory_balances_reserved_nonneg: 'reserved',
-    inventory_balances_damaged_nonneg: 'damaged',
-    inventory_balances_lost_nonneg: 'lost',
-    inventory_balances_expired_nonneg: 'expired',
+  inventory_balances_on_hand_nonneg: 'onHand',
+  inventory_balances_reserved_nonneg: 'reserved',
+  inventory_balances_damaged_nonneg: 'damaged',
+  inventory_balances_lost_nonneg: 'lost',
+  inventory_balances_expired_nonneg: 'expired',
 };
 const BUCKET_LABELS = {
-    onHand: 'on-hand',
-    reserved: 'reserved',
-    damaged: 'damaged',
-    lost: 'lost',
-    expired: 'expired',
+  onHand: 'on-hand',
+  reserved: 'reserved',
+  damaged: 'damaged',
+  lost: 'lost',
+  expired: 'expired',
 };
+
 /**
- * Translates the raw MariaDB/Prisma error from a `..._nonneg` CHECK
- * constraint violation into a clean, human `ConflictException` — instead of
- * letting the engine's connector error (constraint name, SQLSTATE, raw SQL)
- * leak into the API response as an uncaught 500. Never returns; rethrows
- * whatever it was given untouched if it isn't one of these constraints.
+ * Translates the raw MariaDB/MySQL error from a `..._nonneg` CHECK constraint violation into a
+ * clean, human 409 — instead of letting the driver error (constraint name, SQLSTATE, raw SQL) leak
+ * into the API response as a 500. Never returns; rethrows anything that isn't one of these.
  */
 function translateBalanceConstraintViolation(error) {
-    const message = error instanceof Error ? error.message : String(error);
-    for (const [constraint, bucket] of Object.entries(NONNEG_CONSTRAINT_BUCKETS)) {
-        if (message.includes(constraint)) {
-            throw conflict(`This would take the ${BUCKET_LABELS[bucket]} quantity below zero at this location — there isn't enough stock there to do this.`);
-        }
+  const message = error instanceof Error ? error.message : String(error);
+  for (const [constraint, bucket] of Object.entries(NONNEG_CONSTRAINT_BUCKETS)) {
+    if (message.includes(constraint)) {
+      throw conflict(`This would take the ${BUCKET_LABELS[bucket]} quantity below zero at this location — there isn't enough stock there to do this.`);
     }
-    throw error;
+  }
+  throw error;
 }
+
+// The ledger row plus the { id, sku, name } / { id, name, code } summaries every ledger view shows.
+const TRANSACTION_SELECT = `
+  SELECT ${cols('inventoryTransaction', 't')},
+         ${cols('product', 'p', ['id', 'sku', 'name'], 'product.')},
+         ${cols('location', 'fl', ['id', 'name', 'code'], 'fromLocation.')},
+         ${cols('location', 'tl', ['id', 'name', 'code'], 'toLocation.')}
+    FROM inventory_transactions t
+    JOIN products p ON p.id = t.product_id
+    LEFT JOIN locations fl ON fl.id = t.from_location_id
+    LEFT JOIN locations tl ON tl.id = t.to_location_id`;
+
+/**
+ * Report scoping. `warehouseIds` is the viewer's warehouse scope (modules/access): null = every
+ * warehouse, otherwise a NON-EMPTY list (callers return an empty report for an empty scope, since
+ * `IN ()` is not valid SQL). Returns SQL fragments plus their parameters, in order of appearance.
+ */
+function reportScope(warehouseIds) {
+  const scoped = warehouseIds !== null && warehouseIds !== undefined;
+  return {
+    // Per-product on_hand over ACTIVE locations in scope (every balance row is already at a leaf).
+    onHandByProduct: `
+      SELECT ib.product_id, SUM(ib.on_hand) AS total_on_hand
+        FROM inventory_balances ib
+       INNER JOIN locations l ON l.id = ib.location_id AND l.is_active = 1
+       ${scoped ? 'WHERE l.warehouse_id IN (?)' : ''}
+       GROUP BY ib.product_id`,
+    // Products whose catalogue (category -> workstream) lives in a warehouse in scope.
+    productJoin: scoped
+      ? 'JOIN categories c ON c.id = p.category_id JOIN workstreams w ON w.id = c.workstream_id AND w.warehouse_id IN (?)'
+      : '',
+    // A ledger row is in scope if either end is a location in scope.
+    transactionFilter: scoped ? '(fl.warehouse_id IN (?) OR tl.warehouse_id IN (?))' : '',
+    params: (n) => (scoped ? Array(n).fill(warehouseIds) : []),
+    empty: scoped && warehouseIds.length === 0,
+  };
+}
+
 /**
  * Owns inventory_balances and inventory_transactions. This is the ONLY
  * service in the codebase permitted to write inventory_balances (rule 2) —
- * every other module (receiving, transfers, counts, orders/fulfilment in
- * later phases) must call applyTransaction() rather than touching Prisma's
- * `inventoryBalance` model directly. A DB trigger (see the
- * step2b_inventory_ledger migration) backstops this at the database level
- * too.
+ * every other module (receiving, transfers, counts, the external stock API)
+ * must call applyTransaction() rather than touching that table directly.
+ * A DB trigger (see the end of db/schema.sql) backstops this
+ * at the database level too.
  */
 class InventoryService {
-    constructor(prisma, productsService, locationsService, cache) {
-        this.prisma = prisma;
-        this.productsService = productsService;
-        this.locationsService = locationsService;
-        this.cache = cache;
+  constructor({ db, models, access }, productsService, locationsService, cache) {
+    this.db = db;
+    this.access = access;
+    this.models = models;
+    this.productsService = productsService;
+    this.locationsService = locationsService;
+    this.cache = cache;
+  }
+
+  /**
+   * Writes one inventory_transactions row (the truth) and the resulting
+   * inventory_balances delta(s) (the cache) in a single DB transaction
+   * (§H). Both commit or both roll back together.
+   */
+  async applyTransaction(input) {
+    if (!Number.isFinite(input.quantity) || input.quantity <= 0) {
+      throw badRequest('quantity must be a positive number');
     }
-    /**
-     * Writes one inventory_transactions row (the truth) and the resulting
-     * inventory_balances delta(s) (the cache) in a single DB transaction
-     * (§H). Both commit or both roll back together.
-     */
-    async applyTransaction(input) {
-        if (!Number.isFinite(input.quantity) || input.quantity <= 0) {
-            throw badRequest('quantity must be a positive number');
+    // Cheap existence check (the full getExisting also runs the stock aggregate — pointless here).
+    await this.productsService.assertExists(input.productId);
+    const locationIds = [input.fromLocationId, input.toLocationId].filter((id) => Boolean(id));
+    for (const locationId of locationIds) {
+      await this.locationsService.getExisting(locationId);
+    }
+    const deltas = resolveBucketDeltas(input);
+
+    const result = await this.db.transaction(async (tx) => {
+      // Lifts the DB trigger's write guard for this transaction. MySQL/MariaDB
+      // session variables are connection-scoped and survive both COMMIT and
+      // ROLLBACK, so it is cleared again in `finally` before this dedicated
+      // connection goes back to the pool — otherwise a later unrelated query
+      // reusing that connection would inherit the flag.
+      await this.db.exec('SET @allow_balance_write = 1', [], tx);
+      try {
+        const transaction = await this.models.insert(
+          'inventoryTransaction',
+          {
+            type: input.type,
+            productId: input.productId,
+            fromLocationId: input.fromLocationId ?? null,
+            toLocationId: input.toLocationId ?? null,
+            quantity: input.quantity,
+            reason: input.reason,
+            reference: input.reference,
+            orderId: input.orderId,
+            performedBy: input.performedBy,
+          },
+          tx,
+        );
+        for (const delta of deltas) {
+          await this.applyBalanceDelta(tx, input.productId, delta);
         }
-        // Cheap existence check (the full getExisting also runs the stock aggregate — pointless here).
-        await this.productsService.assertExists(input.productId);
-        const locationIds = [input.fromLocationId, input.toLocationId].filter((id) => Boolean(id));
-        for (const locationId of locationIds) {
-            await this.locationsService.getExisting(locationId);
+        return transaction;
+      } finally {
+        await this.db.exec('SET @allow_balance_write = NULL', [], tx);
+      }
+    });
+
+    // Committed: everything derived from the ledger (product totals, dashboards, reports) is now stale.
+    await this.cache.invalidate(TAGS.STOCK);
+    return result;
+  }
+
+  /**
+   * Deliberately NOT `INSERT ... ON DUPLICATE KEY UPDATE`: the CHECK constraints must be evaluated
+   * against the real post-increment row, and a negative delta (e.g. TRANSFER's -30 leg) must never
+   * be judged as a fresh row's starting value. Explicit update-then-insert gets both cases right.
+   */
+  async applyBalanceDelta(tx, productId, delta) {
+    const column = BUCKET_COLUMNS[delta.bucket];
+    const increment = () =>
+      this.db.exec(
+        `UPDATE inventory_balances SET \`${column}\` = \`${column}\` + ? WHERE product_id = ? AND location_id = ?`,
+        [delta.delta, productId, delta.locationId],
+        tx,
+      );
+
+    try {
+      const updated = await increment();
+      if (updated.affectedRows > 0) return;
+      try {
+        // First stock of this product at this location: every bucket starts at 0 except the one moving.
+        const buckets = Object.keys(BUCKET_COLUMNS).map((bucket) => (bucket === delta.bucket ? delta.delta : 0));
+        await this.db.exec(
+          `INSERT INTO inventory_balances (id, product_id, location_id, on_hand, reserved, damaged, lost, expired)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [randomUUID(), productId, delta.locationId, ...buckets],
+          tx,
+        );
+      } catch (error) {
+        // Lost a race with a concurrent first-write for the same (product, location) between the
+        // UPDATE above and this INSERT — the row exists now, so retry as an update.
+        if (isUniqueViolation(error)) {
+          await increment();
+          return;
         }
-        const deltas = (0, inventory_transaction_effects_1.resolveBucketDeltas)(input);
-        const result = await this.prisma.$transaction(async (tx) => {
-            // Lifts the DB trigger's write guard for this transaction. Unlike
-            // Postgres's `SET LOCAL` (transaction-scoped, auto-reset at
-            // COMMIT/ROLLBACK), MySQL/MariaDB session variables are
-            // connection-scoped and survive both COMMIT and ROLLBACK — so we
-            // must explicitly clear it in `finally` before this dedicated
-            // connection goes back to Prisma's pool, or a later unrelated query
-            // reusing that connection would inherit the flag.
-            await tx.$executeRaw `SET @allow_balance_write = 1`;
-            try {
-                const transaction = await tx.inventoryTransaction.create({
-                    data: {
-                        type: input.type,
-                        productId: input.productId,
-                        fromLocationId: input.fromLocationId ?? null,
-                        toLocationId: input.toLocationId ?? null,
-                        quantity: input.quantity,
-                        reason: input.reason,
-                        reference: input.reference,
-                        orderId: input.orderId,
-                        performedBy: input.performedBy,
-                    },
-                });
-                for (const delta of deltas) {
-                    await this.applyBalanceDelta(tx, input.productId, delta);
-                }
-                return transaction;
-            }
-            finally {
-                await tx.$executeRaw `SET @allow_balance_write = NULL`;
-            }
-        });
-        // Committed: everything derived from the ledger (product totals, dashboards, reports) is now stale.
-        await this.cache.invalidate(TAGS.STOCK);
-        return result;
+        throw error;
+      }
+    } catch (error) {
+      // Any of the three writes above can hit a `..._nonneg` CHECK constraint — translate it into a
+      // clean error instead of leaking the raw one.
+      translateBalanceConstraintViolation(error);
     }
-    /**
-     * Deliberately NOT `upsert()`. Postgres validates CHECK constraints on
-     * the speculatively-proposed INSERT row of an `INSERT ... ON CONFLICT DO
-     * UPDATE` *before* conflict resolution redirects it to the UPDATE branch
-     * — so a negative delta (e.g. TRANSFER's -30 leg) fails the "on_hand >=
-     * 0" check against the raw insert value even when an existing row would
-     * happily absorb it via increment. Explicit update-then-create sidesteps
-     * that: a real UPDATE is checked against the post-increment row, and a
-     * real CREATE is checked against its own starting value — both correct.
-     */
-    async applyBalanceDelta(tx, productId, delta) {
-        try {
-            const updated = await tx.inventoryBalance.updateMany({
-                where: { productId, locationId: delta.locationId },
-                data: updateInputFor(delta.bucket, delta.delta),
-            });
-            if (updated.count > 0)
-                return;
-            try {
-                await tx.inventoryBalance.create({
-                    data: createInputFor(productId, delta.locationId, delta.bucket, delta.delta),
-                });
-            }
-            catch (error) {
-                // Lost a race with a concurrent first-write for the same (product,
-                // location) between the updateMany above and this create — the row
-                // exists now, so retry as an update.
-                if (error instanceof client_1.Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-                    await tx.inventoryBalance.update({
-                        where: { productId_locationId: { productId, locationId: delta.locationId } },
-                        data: updateInputFor(delta.bucket, delta.delta),
-                    });
-                    return;
-                }
-                throw error;
-            }
-        }
-        catch (error) {
-            // Any of the three writes above (the updateMany, the create, or the
-            // P2002 retry's update) can hit a `..._nonneg` CHECK constraint —
-            // translate it into a clean error instead of leaking the raw one.
-            translateBalanceConstraintViolation(error);
-        }
-    }
-    async findBalances(query) {
-        const balances = await this.prisma.inventoryBalance.findMany({
-            where: {
-                productId: query.productId,
-                locationId: query.locationId,
-                location: query.warehouseId ? { warehouseId: query.warehouseId } : undefined,
-            },
-            include: {
-                product: { select: { id: true, sku: true, name: true, uom: true } },
-                location: { select: { id: true, name: true, code: true, warehouseId: true } },
-            },
-            orderBy: [{ productId: 'asc' }, { locationId: 'asc' }],
-        });
-        return balances.map((b) => ({
-            ...b,
-            available: b.onHand.minus(b.reserved),
-        }));
-    }
-    findTransactions(query) {
-        return this.prisma.inventoryTransaction.findMany({
-            where: {
-                productId: query.productId,
-                type: query.type,
-                OR: query.locationId
-                    ? [{ fromLocationId: query.locationId }, { toLocationId: query.locationId }]
-                    : undefined,
-                createdAt: {
-                    gte: query.from ? new Date(query.from) : undefined,
-                    lte: query.to ? new Date(query.to) : undefined,
-                },
-            },
-            include: {
-                product: { select: { id: true, sku: true, name: true } },
-                fromLocation: { select: { id: true, name: true, code: true } },
-                toLocation: { select: { id: true, name: true, code: true } },
-            },
-            orderBy: { createdAt: 'desc' },
-        });
-    }
-    /**
-     * Reports dashboard — every ACTIVE product whose total on-hand across
-     * ACTIVE leaf locations is below its min_stock_level, ordered worst-short
-     * first. Every `inventory_balances` row is already at a leaf by
-     * construction (`assertLeaf()` on every write via `applyTransaction`), so
-     * the only extra filter needed is the location's own `is_active`.
-     *
-     * The inner subquery aggregates on_hand PER PRODUCT in SQL (a `LEFT JOIN`
-     * so a product with zero balance rows still gets a 0, matching "SUM over
-     * an empty set is 0" — a product with no stock anywhere and a positive
-     * min level correctly counts as low stock). The comparison against
-     * min_stock_level happens in the outer query, not in application code —
-     * no full-table fetch, no summing in JS.
-     */
-    async getLowStockProducts() {
-        const rows = await this.prisma.$queryRaw `
+  }
+
+  /** Balance and ledger views are limited to locations in the viewer's warehouses (modules/access). */
+  async findBalances(query, viewerId) {
+    const scope = await this.access.warehouseScope(viewerId);
+    const where = new Where()
+      .in('l.warehouse_id', scope ?? undefined)
+      .eq('ib.product_id', query.productId)
+      .eq('ib.location_id', query.locationId)
+      .eq('l.warehouse_id', query.warehouseId);
+    const rows = await this.db.query(
+      `SELECT ${cols('inventoryBalance', 'ib')},
+              ${cols('product', 'p', ['id', 'sku', 'name', 'uom'], 'product.')},
+              ${cols('location', 'l', ['id', 'name', 'code', 'warehouseId'], 'location.')},
+              (ib.on_hand - ib.reserved) AS available
+         FROM inventory_balances ib
+         JOIN products p ON p.id = ib.product_id
+         JOIN locations l ON l.id = ib.location_id
+         ${where.sql}
+        ORDER BY ib.product_id ASC, ib.location_id ASC`,
+      where.params,
+    );
+    return rows.map(nest);
+  }
+
+  async findTransactions(query, viewerId) {
+    const scope = await this.access.warehouseScope(viewerId);
+    if (scope !== null && scope.length === 0) return [];
+    const where = new Where().eq('t.product_id', query.productId).eq('t.type', query.type);
+    if (scope !== null) where.raw('(fl.warehouse_id IN (?) OR tl.warehouse_id IN (?))', scope, scope);
+    if (query.locationId) where.raw('(t.from_location_id = ? OR t.to_location_id = ?)', query.locationId, query.locationId);
+    if (query.from) where.raw('t.created_at >= ?', new Date(query.from));
+    if (query.to) where.raw('t.created_at <= ?', new Date(query.to));
+    const rows = await this.db.query(`${TRANSACTION_SELECT} ${where.sql} ORDER BY t.created_at DESC`, where.params);
+    return rows.map(nest);
+  }
+
+  /**
+   * Reports dashboard — every ACTIVE product whose total on-hand across
+   * ACTIVE leaf locations is below its min_stock_level, ordered worst-short
+   * first. The inner subquery aggregates on_hand PER PRODUCT in SQL (a LEFT
+   * JOIN so a product with zero balance rows still gets a 0 — a product with
+   * no stock anywhere and a positive min level correctly counts as low stock).
+   * The comparison happens in SQL — no full-table fetch, no summing in JS.
+   */
+  async getLowStockProducts(warehouseIds = null) {
+    const scope = reportScope(warehouseIds);
+    if (scope.empty) return [];
+    const rows = await this.db.query(
+      `
       SELECT x.id, x.sku, x.name, x.min_stock_level AS minStockLevel, x.on_hand AS onHand
       FROM (
         SELECT p.id, p.sku, p.name, p.min_stock_level,
                COALESCE(s.total_on_hand, 0) AS on_hand
         FROM products p
-        LEFT JOIN (
-          SELECT ib.product_id, SUM(ib.on_hand) AS total_on_hand
-          FROM inventory_balances ib
-          INNER JOIN locations l ON l.id = ib.location_id AND l.is_active = 1
-          GROUP BY ib.product_id
-        ) s ON s.product_id = p.id
+        ${scope.productJoin}
+        LEFT JOIN (${scope.onHandByProduct}) s ON s.product_id = p.id
         WHERE p.status = 'ACTIVE'
       ) x
       WHERE x.on_hand < x.min_stock_level
       ORDER BY (x.min_stock_level - x.on_hand) DESC, x.sku ASC
-    `;
-        return rows.map((r) => {
-            const onHand = Number(r.onHand);
-            const minStockLevel = Number(r.minStockLevel);
-            return {
-                productId: r.id,
-                sku: r.sku,
-                name: r.name,
-                onHand,
-                minStockLevel,
-                shortfall: minStockLevel - onHand,
-            };
-        });
-    }
-    /**
-     * Reports dashboard — total value of on-hand stock (ACTIVE products only,
-     * cost_price required) plus the 5 highest-value products. Products with a
-     * null cost_price are excluded from the total (never treated as 0) and
-     * counted separately so the dashboard can disclose the gap honestly.
-     * Both the total and the top-5 ranking are computed in SQL.
-     */
-    async getInventoryValuation() {
-        const productBalanceCte = client_1.Prisma.sql `
+    `,
+      scope.params(2),
+    );
+    return rows.map((r) => {
+      const onHand = Number(r.onHand);
+      const minStockLevel = Number(r.minStockLevel);
+      return {
+        productId: r.id,
+        sku: r.sku,
+        name: r.name,
+        onHand,
+        minStockLevel,
+        shortfall: minStockLevel - onHand,
+      };
+    });
+  }
+
+  /**
+   * Reports dashboard — total value of on-hand stock (ACTIVE products only,
+   * cost_price required) plus the 5 highest-value products. Products with a
+   * null cost_price are excluded from the total (never treated as 0) and
+   * counted separately so the dashboard can disclose the gap honestly.
+   * Both the total and the top-5 ranking are computed in SQL.
+   */
+  async getInventoryValuation(warehouseIds = null) {
+    const scope = reportScope(warehouseIds);
+    if (scope.empty) return { total: 0, excludedProductCount: 0, topProducts: [] };
+    const productBalances = `
       SELECT p.id, p.sku, p.name, p.cost_price, COALESCE(s.total_on_hand, 0) AS on_hand
       FROM products p
-      LEFT JOIN (
-        SELECT ib.product_id, SUM(ib.on_hand) AS total_on_hand
-        FROM inventory_balances ib
-        INNER JOIN locations l ON l.id = ib.location_id AND l.is_active = 1
-        GROUP BY ib.product_id
-      ) s ON s.product_id = p.id
+      ${scope.productJoin}
+      LEFT JOIN (${scope.onHandByProduct}) s ON s.product_id = p.id
       WHERE p.status = 'ACTIVE' AND p.cost_price IS NOT NULL
     `;
-        const [totalRow] = await this.prisma.$queryRaw `
-      SELECT SUM(x.on_hand * x.cost_price) AS total FROM (${productBalanceCte}) x
-    `;
-        const topRows = await this.prisma.$queryRaw `
-      SELECT x.id, x.sku, x.name, x.on_hand AS onHand, x.cost_price AS costPrice,
-             (x.on_hand * x.cost_price) AS value
-      FROM (${productBalanceCte}) x
-      ORDER BY value DESC, x.sku ASC
-      LIMIT 5
-    `;
-        const excludedProductCount = await this.prisma.product.count({
-            where: { status: 'ACTIVE', costPrice: null },
-        });
-        return {
-            total: Number(totalRow?.total ?? 0),
-            excludedProductCount,
-            topProducts: topRows.map((r) => ({
-                productId: r.id,
-                sku: r.sku,
-                name: r.name,
-                onHand: Number(r.onHand),
-                costPrice: Number(r.costPrice),
-                value: Number(r.value),
-            })),
-        };
-    }
-    /**
-     * Reports dashboard — transaction counts by type over the last [days]
-     * (native Prisma `groupBy`, a DB-level aggregate), plus the most recent 15
-     * transactions overall as a "recent activity" feed. The feed is
-     * deliberately NOT scoped to [days]: a quiet week would leave it empty and
-     * defeat its purpose, unlike the period counts which measure throughput.
-     */
-    async getStockMovementSummary(days = 7) {
-        const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-        const grouped = await this.prisma.inventoryTransaction.groupBy({
-            by: ['type'],
-            where: { createdAt: { gte: since } },
-            _count: { _all: true },
-        });
-        const byType = Object.fromEntries(Object.values(client_1.InventoryTransactionType).map((type) => [
-            type,
-            grouped.find((g) => g.type === type)?._count._all ?? 0,
-        ]));
-        const recentActivity = await this.prisma.inventoryTransaction.findMany({
-            include: {
-                product: { select: { id: true, sku: true, name: true } },
-                fromLocation: { select: { id: true, name: true, code: true } },
-                toLocation: { select: { id: true, name: true, code: true } },
-                performedByUser: { select: { id: true, fullName: true, email: true } },
-            },
-            orderBy: { createdAt: 'desc' },
-            take: 15,
-        });
-        return { periodDays: days, byType, recentActivity };
-    }
+    const [totalRow, topRows, excludedRow] = await Promise.all([
+      this.db.one(`SELECT SUM(x.on_hand * x.cost_price) AS total FROM (${productBalances}) x`, scope.params(2)),
+      this.db.query(
+        `
+        SELECT x.id, x.sku, x.name, x.on_hand AS onHand, x.cost_price AS costPrice,
+               (x.on_hand * x.cost_price) AS value
+        FROM (${productBalances}) x
+        ORDER BY value DESC, x.sku ASC
+        LIMIT 5
+      `,
+        scope.params(2),
+      ),
+      this.db.one(
+        `SELECT COUNT(*) AS n FROM products p ${scope.productJoin} WHERE p.status = 'ACTIVE' AND p.cost_price IS NULL`,
+        scope.params(1),
+      ),
+    ]);
+    return {
+      total: Number(totalRow?.total ?? 0),
+      excludedProductCount: Number(excludedRow.n),
+      topProducts: topRows.map((r) => ({
+        productId: r.id,
+        sku: r.sku,
+        name: r.name,
+        onHand: Number(r.onHand),
+        costPrice: Number(r.costPrice),
+        value: Number(r.value),
+      })),
+    };
+  }
+
+  /**
+   * Reports dashboard — transaction counts by type over the last [days]
+   * (a DB-level GROUP BY), plus the most recent 15 transactions overall as a
+   * "recent activity" feed. The feed is deliberately NOT scoped to [days]: a
+   * quiet week would leave it empty and defeat its purpose, unlike the period
+   * counts which measure throughput.
+   */
+  async getStockMovementSummary(days = 7, warehouseIds = null) {
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const scope = reportScope(warehouseIds);
+    const emptyByType = () => Object.fromEntries(Object.values(InventoryTransactionType).map((type) => [type, 0]));
+    if (scope.empty) return { periodDays: days, byType: emptyByType(), recentActivity: [] };
+    const scopeAnd = scope.transactionFilter ? `AND ${scope.transactionFilter}` : '';
+    const scopeWhere = scope.transactionFilter ? `WHERE ${scope.transactionFilter}` : '';
+    const [grouped, recentRows] = await Promise.all([
+      this.db.query(
+        `SELECT t.type, COUNT(*) AS n FROM inventory_transactions t
+           LEFT JOIN locations fl ON fl.id = t.from_location_id
+           LEFT JOIN locations tl ON tl.id = t.to_location_id
+          WHERE t.created_at >= ? ${scopeAnd}
+          GROUP BY t.type`,
+        [since, ...scope.params(2)],
+      ),
+      this.db.query(
+        `SELECT ${cols('inventoryTransaction', 't')},
+                ${cols('product', 'p', ['id', 'sku', 'name'], 'product.')},
+                ${cols('location', 'fl', ['id', 'name', 'code'], 'fromLocation.')},
+                ${cols('location', 'tl', ['id', 'name', 'code'], 'toLocation.')},
+                ${cols('user', 'u', ['id', 'fullName', 'email'], 'performedByUser.')}
+           FROM inventory_transactions t
+           JOIN products p ON p.id = t.product_id
+           LEFT JOIN locations fl ON fl.id = t.from_location_id
+           LEFT JOIN locations tl ON tl.id = t.to_location_id
+           JOIN users u ON u.id = t.performed_by
+          ${scopeWhere}
+          ORDER BY t.created_at DESC
+          LIMIT 15`,
+        scope.params(2),
+      ),
+    ]);
+    const countByType = new Map(grouped.map((g) => [g.type, Number(g.n)]));
+    const byType = Object.fromEntries(Object.values(InventoryTransactionType).map((type) => [type, countByType.get(type) ?? 0]));
+    return { periodDays: days, byType, recentActivity: recentRows.map(nest) };
+  }
 }
-exports.InventoryService = InventoryService;
+
+module.exports = { InventoryService };

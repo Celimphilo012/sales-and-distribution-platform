@@ -1,5 +1,5 @@
 name: warehouse_frontend
-description: "Warehouse System — Flutter front end (standalone, talks only to /warehouse on port 3100)."
+description: "Warehouse System — Flutter front end (standalone, talks only to /warehouse-node on port 3200)."
 publish_to: 'none'
 
 version: 1.0.0+1
@@ -21,6 +21,7 @@ dependencies:
   phosphor_flutter: ^2.1.0
   file_picker: ^13.1.0
   web: ^1.1.1
+  qr_flutter: ^4.1.0
 
 dev_dependencies:
   flutter_test:

@@ -46,6 +46,9 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
         (dio) => dio.post<Map<String, dynamic>>('/auth/login', data: {'email': email, 'password': password}),
       );
       final data = response.data!;
+      // Sign-in verification is on: no tokens yet, the login screen asks for the code.
+      if (data['mfaRequired'] == true) return AuthState.mfaPending(MfaChallenge.fromJson(data));
+
       await tokenStore.saveTokens(
         accessToken: data['accessToken'] as String,
         refreshToken: data['refreshToken'] as String,
@@ -54,6 +57,51 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
       final user = await _fetchCurrentUser();
       return AuthState.authenticated(user);
     });
+  }
+
+  /// Finishes an MFA sign-in with the code. Throws [AppError] (e.g. a wrong
+  /// code) WITHOUT touching state, so the code screen stays up for a retry
+  /// instead of bouncing through the splash screen.
+  Future<void> verifyMfa(String code) async {
+    final challenge = state.value?.mfa;
+    if (challenge == null) return;
+    final apiClient = ref.read(apiClientProvider);
+    final tokenStore = ref.read(authTokenStoreProvider);
+
+    final response = await apiClient.guard(
+      (dio) => dio.post<Map<String, dynamic>>(
+        '/auth/mfa/verify',
+        data: {'challengeId': challenge.challengeId, 'code': code},
+      ),
+    );
+    final data = response.data!;
+    await tokenStore.saveTokens(
+      accessToken: data['accessToken'] as String,
+      refreshToken: data['refreshToken'] as String,
+    );
+    state = AsyncValue.data(AuthState.authenticated(await _fetchCurrentUser()));
+  }
+
+  /// Sends a fresh sign-in code, optionally on the other channel (EMAIL <-> SMS).
+  Future<void> resendMfa({String? channel}) async {
+    final challenge = state.value?.mfa;
+    if (challenge == null) return;
+    final response = await ref.read(apiClientProvider).guard(
+      (dio) => dio.post<Map<String, dynamic>>(
+        '/auth/mfa/resend',
+        data: {'challengeId': challenge.challengeId, 'channel': ?channel},
+      ),
+    );
+    state = AsyncValue.data(AuthState.mfaPending(MfaChallenge.fromJson(response.data!)));
+  }
+
+  /// Back to the email/password form.
+  void cancelMfa() => state = const AsyncValue.data(AuthState.unauthenticated());
+
+  /// Re-reads `/auth/me` after the user changed their own profile or MFA settings.
+  Future<void> refreshUser() async {
+    if (!(state.value?.isAuthenticated ?? false)) return;
+    state = AsyncValue.data(AuthState.authenticated(await _fetchCurrentUser()));
   }
 
   Future<void> logout() async {
@@ -101,6 +149,9 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
       permissions: permissions.toSet(),
       roles: roles,
       status: me['status'] as String?,
+      phone: me['phone'] as String?,
+      notifyChannel: me['notifyChannel'] as String? ?? 'EMAIL',
+      mfaMethod: me['mfaMethod'] as String? ?? 'NONE',
     );
   }
 }

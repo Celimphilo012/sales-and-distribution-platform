@@ -11,11 +11,12 @@ const updateBody = obj({
   workstreamId: opt(uuid),
 });
 
-async function categoriesRoutes(app) {
-  const { categories } = app.services;
+function categoriesRoutes(app) {
+  const { categories, otp } = app.services;
   const view = [app.authenticate, app.requirePermissions('catalogue.view')];
   const manage = [app.authenticate, app.requirePermissions('products.manage')];
   const idParams = { params: uuidParams('id') };
+  const deactivateOtp = otp.requireOtp('category.deactivate', { when: (req) => req.body.isActive === false });
 
   app.get('/', { onRequest: view, schema: { querystring: listQuery } }, async (request) =>
     categories.findAll(request.query, request.user.id),
@@ -29,16 +30,24 @@ async function categoriesRoutes(app) {
     categories.create(request.body, request.user.id),
   );
 
-  app.patch('/:id', { onRequest: manage, schema: { ...idParams, body: updateBody } }, async (request) => {
-    request.auditOldValue = await categories.getExisting(request.params.id);
-    return categories.update(request.params.id, request.body, request.user.id);
-  });
+  app.patch(
+    '/:id',
+    { onRequest: manage, preHandler: [deactivateOtp], schema: { ...idParams, body: updateBody } },
+    async (request) => {
+      request.auditOldValue = await categories.getExisting(request.params.id);
+      return categories.update(request.params.id, request.body, request.user.id);
+    },
+  );
 
-  app.delete('/:id', { onRequest: manage, schema: idParams }, async (request) => {
-    request.auditOldValue = await categories.getExisting(request.params.id);
-    request.auditAction = 'DEACTIVATE';
-    return categories.remove(request.params.id, request.user.id);
-  });
+  app.delete(
+    '/:id',
+    { onRequest: manage, preHandler: [otp.requireOtp('category.deactivate')], schema: idParams },
+    async (request) => {
+      request.auditOldValue = await categories.getExisting(request.params.id);
+      request.auditAction = 'DEACTIVATE';
+      return categories.remove(request.params.id, request.user.id);
+    },
+  );
 }
 
 module.exports = categoriesRoutes;

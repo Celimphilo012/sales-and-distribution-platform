@@ -2,7 +2,7 @@
 
 /**
  * Small JSON-Schema builders. They replace the class-validator DTO classes:
- * Fastify validates with Ajv before the handler runs, and every object schema
+ * core/http.js validates with Ajv before the handler runs, and every object schema
  * built with obj() rejects unknown properties (the old ValidationPipe's
  * `forbidNonWhitelisted: true`).
  *

@@ -1,6 +1,6 @@
 'use strict';
 
-const { AdjustmentBucket, AdjustmentDirection, AdjustmentStatus } = require('@prisma/client');
+const { AdjustmentBucket, AdjustmentDirection, AdjustmentStatus } = require('../../core/enums');
 const { obj, nonEmpty, str, num, uuid, opt, enumOf, uuidParams } = require('../../core/schema');
 const { notFound } = require('../../core/errors');
 const { compileValidator } = require('../../core/validate');
@@ -30,25 +30,25 @@ const validateCreate = compileValidator(createSchema);
 
 // Mounted at /inventory/adjustments. Two-step: a request never moves stock; approval (by a DIFFERENT
 // user) is what writes the ledger.
-async function stockAdjustmentsRoutes(app) {
-  const { stockAdjustments } = app.services;
+function stockAdjustmentsRoutes(app) {
+  const { stockAdjustments, otp } = app.services;
   const { authenticate, requirePermissions } = app;
 
   app.get(
     '/',
     { onRequest: [authenticate, requirePermissions('inventory.view')], schema: { querystring: listQuery } },
-    async (request) => stockAdjustments.findAll(request.query),
+    async (request) => stockAdjustments.findAll(request.query, request.user.id),
   );
 
   app.post(
     '/',
     { onRequest: [authenticate, requirePermissions('inventory.adjust.request')] },
-    async (request) => {
+    async (request, res) => {
       let dto;
       let photoPath;
 
-      if (request.isMultipart()) {
-        const upload = await saveImageUpload(request, ADJUSTMENT_PHOTO_SUBDIR, {
+      if (request.is('multipart/form-data')) {
+        const upload = await saveImageUpload(request, res, ADJUSTMENT_PHOTO_SUBDIR, {
           fieldName: 'photo',
           required: false,
           invalidTypeMessage: 'Photo must be a JPEG, PNG, or WebP image',
@@ -88,18 +88,20 @@ async function stockAdjustmentsRoutes(app) {
       onRequest: [authenticate, requirePermissions('inventory.view')],
       schema: { params: uuidParams('id') },
     },
-    async (request, reply) => {
-      const adjustment = await stockAdjustments.getExisting(request.params.id);
+    async (request, res) => {
+      const adjustment = await stockAdjustments.getAccessible(request.params.id, request.user.id);
       if (!adjustment.photoPath) throw notFound(`Stock adjustment ${request.params.id} has no photo attached`);
-      return sendImageFile(request, reply, ADJUSTMENT_PHOTO_SUBDIR, adjustment.photoPath);
+      return sendImageFile(request, res, ADJUSTMENT_PHOTO_SUBDIR, adjustment.photoPath);
     },
   );
 
+  // Approving/rejecting is confirmed with a one-time code (catalog/otp-actions.js).
   const review = (action, verb, bodySchema, run) => {
     app.post(
       `/:id/${action}`,
       {
         onRequest: [authenticate, requirePermissions('inventory.adjust.approve')],
+        preHandler: [otp.requireOtp(`stock_adjustment.${action}`)],
         schema: { params: uuidParams('id'), body: bodySchema },
       },
       async (request) => {

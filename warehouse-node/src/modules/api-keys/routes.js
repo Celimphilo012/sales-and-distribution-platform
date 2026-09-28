@@ -15,8 +15,8 @@ const createBody = obj(
  * Admin-only JWT-guarded management of the external API's keys — separate from the keys
  * themselves, which authenticate via the scope guard on /api/v1/*. Gated behind users.manage.
  */
-async function apiKeysRoutes(app) {
-  const { apiKeys } = app.services;
+function apiKeysRoutes(app) {
+  const { apiKeys, otp } = app.services;
   const guard = [app.authenticate, app.requirePermissions('users.manage')];
 
   app.get('/', { onRequest: guard }, async () => apiKeys.findAll());
@@ -29,10 +29,11 @@ async function apiKeysRoutes(app) {
     return created;
   });
 
-  app.post('/:id/revoke', { onRequest: guard, schema: { params: uuidParams('id') } }, async (request, reply) => {
+  const revokeOpts = { onRequest: guard, preHandler: [otp.requireOtp('api_key.revoke')], schema: { params: uuidParams('id') } };
+  app.post('/:id/revoke', revokeOpts, async (request, res) => {
     request.auditOldValue = await apiKeys.getExisting(request.params.id);
     request.auditAction = 'REVOKE';
-    reply.code(201);
+    res.status(201);
     return apiKeys.revoke(request.params.id);
   });
 }

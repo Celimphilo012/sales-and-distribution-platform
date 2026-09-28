@@ -84,8 +84,9 @@ export class WarehouseApiClient {
     return this.request('POST', '/api/v1/stock/availability', { items });
   }
 
-  reserve(reference: string, lines: WarehouseStockLine[]): Promise<WarehouseReserveResult> {
-    return this.request('POST', '/api/v1/stock/reserve', { reference, lines });
+  /** `label` is human text the warehouse shows its packers (e.g. "ORD-0012 · Customer name"). */
+  reserve(reference: string, lines: WarehouseStockLine[], label?: string): Promise<WarehouseReserveResult> {
+    return this.request('POST', '/api/v1/stock/reserve', { reference, label, lines });
   }
 
   release(reference: string): Promise<WarehouseReleaseResult> {

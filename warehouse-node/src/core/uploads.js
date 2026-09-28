@@ -3,14 +3,16 @@
 const { randomUUID } = require('crypto');
 const fs = require('fs');
 const path = require('path');
-const { pipeline } = require('stream/promises');
+const multer = require('multer');
 const { badRequest, notFound } = require('./errors');
+const { HANDLED } = require('./http');
 
 // Local disk for now (see CLAUDE.md: the file-storage decision — local disk vs a cloud bucket —
 // hasn't been made). Nothing outside this file knows where a file physically lives: callers deal
 // only with the stored filename the DB keeps and the GET .../file endpoint that serves it, so
 // moving to a bucket later means changing this file, not the API shape.
-const UPLOAD_ROOT = path.join(process.cwd(), 'uploads');
+// Anchored to the app folder (not process.cwd()) so it is the same wherever the process starts.
+const UPLOAD_ROOT = process.env.UPLOAD_DIR || path.join(__dirname, '..', '..', 'uploads');
 
 const ALLOWED_MIME_TO_EXT = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp' };
 const EXT_TO_CONTENT_TYPE = {
@@ -28,51 +30,43 @@ const imageContentType = (storedFilename) =>
   EXT_TO_CONTENT_TYPE[path.extname(storedFilename).toLowerCase()] ?? 'application/octet-stream';
 
 /**
- * Streams the request's `file` part to `uploads/<subdir>/` under a random name (the client's own
+ * Parses a multipart/form-data request with ONE file field into memory (multer): afterwards
+ * req.file is the file (or undefined) and req.body holds the plain-text form fields. A file under
+ * any other field name, a second file, or a file over `maxBytes` is rejected with a 400.
+ */
+function readMultipart(req, res, { fieldName, maxBytes }) {
+  const middleware = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: maxBytes, files: 1, fields: 20 },
+  }).single(fieldName);
+  return new Promise((resolve, reject) => middleware(req, res, (error) => (error ? reject(error) : resolve())));
+}
+
+/**
+ * Saves the request's image part to `uploads/<subdir>/` under a random name (the client's own
  * filename is never used as a path component), rejecting anything that is not a JPEG/PNG/WebP
  * image and anything over IMAGE_MAX_BYTES. Returns { filename, fields } where `fields` holds the
- * plain-text form fields, whether they arrived before or after the file.
+ * plain-text form fields.
  * options: { fieldName = 'file', required = true, invalidTypeMessage }
  */
-async function saveImageUpload(request, subdir, options = {}) {
+async function saveImageUpload(req, res, subdir, options = {}) {
   const { fieldName = 'file', required = true, invalidTypeMessage = 'Image must be a JPEG, PNG, or WebP file' } = options;
-  const fields = {};
-  let filename;
 
-  for await (const part of request.parts({ limits: { fileSize: IMAGE_MAX_BYTES } })) {
-    if (part.type !== 'file') {
-      fields[part.fieldname] = part.value;
-      continue;
-    }
+  await readMultipart(req, res, { fieldName, maxBytes: IMAGE_MAX_BYTES });
+  const fields = { ...(req.body ?? {}) };
+  const file = req.file;
 
-    if (part.fieldname !== fieldName || filename) {
-      part.file.resume();
-      throw badRequest(`Upload rejected: Unexpected field "${part.fieldname}"`);
-    }
-
-    const ext = ALLOWED_MIME_TO_EXT[part.mimetype];
-    if (!ext) {
-      part.file.resume();
-      throw badRequest(invalidTypeMessage);
-    }
-
-    await fs.promises.mkdir(uploadDirFor(subdir), { recursive: true });
-    const stored = `${randomUUID()}${ext}`;
-    const target = imageFilePath(subdir, stored);
-
-    try {
-      await pipeline(part.file, fs.createWriteStream(target));
-      if (part.file.truncated) {
-        throw Object.assign(new Error('File is too large.'), { code: 'FST_REQ_FILE_TOO_LARGE' });
-      }
-    } catch (error) {
-      await fs.promises.unlink(target).catch(() => {});
-      throw error;
-    }
-    filename = stored;
+  if (!file) {
+    if (required) throw badRequest('A file is required');
+    return { filename: undefined, fields };
   }
 
-  if (!filename && required) throw badRequest('A file is required');
+  const ext = ALLOWED_MIME_TO_EXT[file.mimetype];
+  if (!ext) throw badRequest(invalidTypeMessage);
+
+  await fs.promises.mkdir(uploadDirFor(subdir), { recursive: true });
+  const filename = `${randomUUID()}${ext}`;
+  await fs.promises.writeFile(imageFilePath(subdir, filename), file.buffer);
   return { filename, fields };
 }
 
@@ -89,7 +83,7 @@ function deleteImageFile(subdir, storedFilename) {
  * perfect ETag: clients revalidate (`no-cache`) and get a cheap 304 instead of re-downloading the
  * bytes on every screen render.
  */
-async function sendImageFile(request, reply, subdir, storedFilename) {
+async function sendImageFile(req, res, subdir, storedFilename) {
   const fullPath = imageFilePath(subdir, storedFilename);
   let stat;
   try {
@@ -99,14 +93,25 @@ async function sendImageFile(request, reply, subdir, storedFilename) {
   }
 
   const etag = `"${storedFilename}"`;
-  reply.header('ETag', etag).header('Cache-Control', 'private, no-cache').header('Last-Modified', stat.mtime.toUTCString());
+  res.set({ ETag: etag, 'Cache-Control': 'private, no-cache', 'Last-Modified': stat.mtime.toUTCString() });
 
-  if (request.headers['if-none-match'] === etag) return reply.code(304).send();
+  if (req.headers['if-none-match'] === etag) {
+    res.status(304).end();
+    return HANDLED;
+  }
 
-  return reply
-    .type(imageContentType(storedFilename))
-    .header('Content-Length', stat.size)
-    .send(fs.createReadStream(fullPath));
+  res.status(200).type(imageContentType(storedFilename)).set('Content-Length', String(stat.size));
+  fs.createReadStream(fullPath).pipe(res);
+  return HANDLED;
 }
 
-module.exports = { IMAGE_MAX_BYTES, saveImageUpload, deleteImageFile, sendImageFile, imageFilePath, imageContentType };
+module.exports = {
+  IMAGE_MAX_BYTES,
+  UPLOAD_ROOT,
+  readMultipart,
+  saveImageUpload,
+  deleteImageFile,
+  sendImageFile,
+  imageFilePath,
+  imageContentType,
+};

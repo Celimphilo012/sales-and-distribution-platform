@@ -1,15 +1,25 @@
 'use strict';
 
-const Fastify = require('fastify');
+const express = require('express');
+const helmet = require('helmet');
+const cors = require('cors');
+const compression = require('compression');
 const { loadConfig } = require('./config');
-const { createPrisma } = require('./core/prisma');
+const { createDb } = require('./core/db');
+const { createModels } = require('./core/models');
 const { createCache } = require('./core/cache/cache');
 const { createAuth } = require('./core/auth');
-const { AJV_OPTIONS, installErrorHandling } = require('./core/http');
-const { installAudit } = require('./core/audit');
+const { createRoutes, createErrorHandler, notFoundHandler } = require('./core/http');
+const { auditMiddleware } = require('./core/audit');
+const { createLogger, requestLogger } = require('./core/logger');
+const { createNotifier } = require('./core/notifier');
+const { createDeliverySettingsService } = require('./modules/delivery-settings/service');
 const { buildServices } = require('./container');
 
-/** [mountPath, routes plugin]. Order does not matter: Fastify's router prefers static over parametric segments. */
+/**
+ * [mountPath, routes function]. ORDER MATTERS in Express (first match wins): more specific mounts
+ * (/users/me/workstreams, /products/import, /inventory/receiving) come before their broader parent.
+ */
 const MODULES = [
   ['/auth', require('./modules/auth/routes')],
   ['/users/me/workstreams', require('./modules/workstream-managers/routes').myWorkstreamsRoutes],
@@ -33,83 +43,77 @@ const MODULES = [
   ['/inventory/counts', require('./modules/stock-counts/routes')],
   ['/inventory', require('./modules/inventory/routes')],
   ['/api/v1', require('./modules/external-api/routes')],
+  ['/packing', require('./modules/packing/routes')],
+  ['/settings/delivery', require('./modules/delivery-settings/routes')],
   ['/reports', require('./modules/reports/routes').reportsRoutes],
   ['/dashboard', require('./modules/reports/routes').dashboardRoutes],
 ];
 
 /**
- * Builds the Fastify instance without listening — tests call this directly; server.js listens.
- * `overrides` lets a test inject its own config / prisma / cache.
+ * Builds the Express app without listening — tests and server.js both call this.
+ * `overrides` lets a test inject its own config / db / cache / logger.
+ *
+ * Returns the Express `app` (a plain (req, res) handler, so http.createServer(app) serves it) with
+ * the shared context attached: app.locals.{config, db, cache, services}, and app.close() to release
+ * the database pool.
  */
-async function buildApp(overrides = {}) {
+function buildApp(overrides = {}) {
   const config = overrides.config ?? loadConfig();
-  const prisma = overrides.prisma ?? createPrisma();
+  const logger = overrides.logger ?? createLogger();
+  const db = overrides.db ?? createDb(config.databaseUrl);
+  const models = createModels(db);
   const cache = overrides.cache ?? createCache(config.cache);
+  const auth = createAuth({ config, db, cache });
+  // Delivery settings come first: the notifier reads them on every send.
+  const deliverySettings = createDeliverySettingsService({ db, cache, config });
+  const notifier = overrides.notifier ?? createNotifier({ config, models, logger, deliverySettings });
+  const services = buildServices({ db, models, cache, config, auth, notifier, logger });
+  Object.assign(services, { deliverySettings, notifier });
 
-  const app = Fastify({
-    logger: overrides.logger ?? { level: process.env.LOG_LEVEL ?? 'info' },
-    trustProxy: config.trustProxy,
-    ajv: AJV_OPTIONS,
-    // Behind cPanel/Passenger the app sits behind a proxy; keep-alive matches Node's default LB idle timeout.
-    keepAliveTimeout: 65_000,
-    bodyLimit: 1024 * 1024,
-  });
+  const app = express();
+  app.disable('x-powered-by');
+  app.set('trust proxy', config.trustProxy);
+  app.set('etag', 'weak'); // JSON responses carry an ETag; a matching If-None-Match gets a 304
 
-  const auth = createAuth({ config, prisma, cache });
-
-  app.decorate('config', config);
-  app.decorate('prisma', prisma);
-  app.decorate('cache', cache);
-  app.decorate('authenticate', auth.authenticate);
-  app.decorate('requirePermissions', auth.requirePermissions);
-  app.decorate('requireScopes', auth.requireScopes);
-  app.decorate('services', buildServices({ prisma, cache, config, auth }));
-
-  installErrorHandling(app, { logger: app.log });
-  installAudit(app, { prisma, basePath: config.basePath });
-
-  // Express tolerated an empty body on a JSON request (e.g. POST .../revoke); Fastify rejects it by default.
-  app.addContentTypeParser('application/json', { parseAs: 'string' }, (_request, body, done) => {
-    if (!body) return done(null, {});
-    try {
-      done(null, JSON.parse(body));
-    } catch (error) {
-      error.statusCode = 400;
-      done(error);
-    }
-  });
-
-  // POST answers 201 unless a handler overrides it (Nest's default; login/refresh/logout etc. set 200).
-  app.addHook('onRequest', async (request, reply) => {
-    if (request.method === 'POST') reply.code(201);
-  });
-
-  await app.register(require('@fastify/helmet'));
-  await app.register(require('@fastify/cors'), {
-    origin: config.corsOrigins,
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Authorization', 'Content-Type'],
-  });
-  await app.register(require('@fastify/compress'), { threshold: 1024 });
-  await app.register(require('@fastify/etag'));
-  await app.register(require('@fastify/multipart'), { limits: { files: 1, fields: 20 } });
+  app.use(requestLogger(logger));
+  app.use(helmet());
+  app.use(
+    cors({
+      origin: config.corsOrigins,
+      credentials: true,
+      methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+      // X-OTP-*: the one-time code that confirms a sensitive action (modules/otp).
+      allowedHeaders: ['Authorization', 'Content-Type', 'X-OTP-Challenge', 'X-OTP-Code'],
+    }),
+  );
+  app.use(compression({ threshold: 1024 }));
+  // Tolerates an empty body on a JSON request (e.g. POST .../revoke): req.body stays undefined.
+  app.use(express.json({ limit: '1mb' }));
+  app.use(auditMiddleware({ models, basePath: config.basePath }));
 
   // Everything (including /health) mounts under API_BASE_PATH when the app is served from a sub-path.
-  await app.register(
-    async function api(scope) {
-      scope.get('/health', async () => ({ status: 'ok' }));
-      for (const [mountPath, plugin] of MODULES) {
-        await scope.register(plugin, { prefix: mountPath });
-      }
-    },
-    { prefix: config.basePath ? `/${config.basePath}` : '' },
-  );
+  const router = express.Router();
+  const routes = createRoutes(router);
+  const shared = {
+    config,
+    db,
+    models,
+    cache,
+    services,
+    authenticate: auth.authenticate,
+    requirePermissions: auth.requirePermissions,
+    requireScopes: auth.requireScopes,
+  };
 
-  app.addHook('onClose', async () => {
-    await prisma.$disconnect();
-  });
+  routes.scope('').get('/health', async () => ({ status: 'ok' }));
+  for (const [mountPath, register] of MODULES) register({ ...shared, ...routes.scope(mountPath) });
 
+  app.use(config.basePath ? `/${config.basePath}` : '/', router);
+  app.use(notFoundHandler);
+  app.use(createErrorHandler(logger));
+
+  Object.assign(app.locals, { config, db, models, cache, services, logger, notifier });
+  app.close = () => db.close();
   return app;
 }
 

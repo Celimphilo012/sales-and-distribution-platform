@@ -1,15 +1,17 @@
 'use strict';
 
 /**
- * Integration-test harness. Boots the real Fastify app (in-process, via inject) against a THROWAWAY
- * database. It refuses to run against anything whose name does not end in `_test`, so a mistyped env
- * var can never write ledger rows into a real warehouse_db.
+ * Integration-test harness. Boots the real Express app on an ephemeral localhost port against a
+ * THROWAWAY database. It refuses to run against anything whose name does not end in `_test`, so a
+ * mistyped env var can never write ledger rows into a real warehouse_db.
  *
  * One-time setup:
- *   mysql -u root -e "CREATE DATABASE warehouse_db_test"
- *   DATABASE_URL=mysql://root:@localhost:3306/warehouse_db_test npx prisma migrate deploy
- *   DATABASE_URL=... SEED_ADMIN_EMAIL=admin@test.local SEED_ADMIN_PASSWORD=TestPass123! node prisma/seed.js
+ *   mysql -u root -e "CREATE DATABASE warehouse_db_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+ *   mysql -u root warehouse_db_test < db/schema.sql
+ *   DATABASE_URL=... SEED_ADMIN_EMAIL=admin@test.local SEED_ADMIN_PASSWORD=TestPass123! npm run seed
  */
+const http = require('http');
+
 const TEST_URL = process.env.TEST_DATABASE_URL ?? 'mysql://root:@localhost:3306/warehouse_db_test';
 if (!/_test(\?|$)/.test(TEST_URL)) {
   throw new Error(`Refusing to run tests against "${TEST_URL}" — the database name must end in _test`);
@@ -21,6 +23,8 @@ process.env.JWT_REFRESH_SECRET = 'test-refresh-secret';
 process.env.JWT_ACCESS_EXPIRES_IN = '15m';
 process.env.JWT_REFRESH_EXPIRES_IN = '7d';
 process.env.LOG_LEVEL = 'silent';
+// Uploaded test images go to a throwaway folder, never the app's real uploads/.
+process.env.UPLOAD_DIR = require('path').join(require('os').tmpdir(), 'warehouse-node-test-uploads');
 
 const { loadConfig } = require('../src/config');
 const { buildApp } = require('../src/app');
@@ -30,12 +34,63 @@ const ADMIN = {
   password: process.env.TEST_ADMIN_PASSWORD ?? 'TestPass123!',
 };
 
+/**
+ * Starts the app on 127.0.0.1:<random port> and returns a handle exposing:
+ *   inject({ method, url, payload, headers }) -> { statusCode, json(), body, headers, rawPayload }
+ *   db, cache, config (the app's own instances), outbox (every email/SMS "sent"), close()
+ *
+ * Email and SMS always go to the in-memory outbox. One-time-code confirmation is OFF unless a
+ * suite asks for it with { otp: { enabled: true } } — suites that are not about OTP stay readable.
+ */
 async function createTestApp(configOverrides = {}) {
   const base = loadConfig();
-  const config = { ...base, ...configOverrides, cache: { ...base.cache, ...(configOverrides.cache ?? {}) } };
-  const app = await buildApp({ config, logger: false });
-  await app.ready();
-  return app;
+  const config = {
+    ...base,
+    ...configOverrides,
+    cache: { ...base.cache, ...(configOverrides.cache ?? {}) },
+    otp: { ...base.otp, enabled: false, ...(configOverrides.otp ?? {}) },
+    email: { ...base.email, transport: 'memory' },
+    sms: { ...base.sms, transport: 'memory' },
+  };
+  const app = buildApp({ config });
+  const server = http.createServer(app);
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const origin = `http://127.0.0.1:${server.address().port}`;
+
+  async function inject({ method = 'GET', url, payload, headers = {} }) {
+    const h = { ...headers };
+    let body;
+    if (payload !== undefined) {
+      if (Buffer.isBuffer(payload) || typeof payload === 'string') body = payload;
+      else {
+        body = JSON.stringify(payload);
+        if (!Object.keys(h).some((k) => k.toLowerCase() === 'content-type')) h['content-type'] = 'application/json';
+      }
+    }
+    const res = await fetch(origin + url, { method, headers: h, body });
+    const rawPayload = Buffer.from(await res.arrayBuffer());
+    const text = rawPayload.toString('utf8');
+    return {
+      statusCode: res.status,
+      body: text,
+      rawPayload,
+      headers: Object.fromEntries(res.headers.entries()),
+      json: () => JSON.parse(text),
+    };
+  }
+
+  const { db, cache, notifier } = app.locals;
+  return {
+    inject,
+    db,
+    cache,
+    config,
+    outbox: notifier.outbox,
+    close: async () => {
+      await new Promise((resolve) => server.close(resolve));
+      await app.close();
+    },
+  };
 }
 
 /** Small client around app.inject that carries an auth header and parses JSON. */
@@ -89,7 +144,7 @@ async function multipart(fields = {}, files = []) {
 /** Unique suffix so re-runs never collide on unique columns (sku, code, email). */
 const uid = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
-/** Lets fire-and-forget work (audit rows written in onResponse) finish before asserting on it. */
+/** Lets fire-and-forget work (audit rows written after the response) finish before asserting on it. */
 const settle = (ms = 150) => new Promise((resolve) => setTimeout(resolve, ms));
 
 module.exports = { createTestApp, client, loginAs, multipart, uid, settle, ADMIN };

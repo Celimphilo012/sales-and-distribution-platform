@@ -37,6 +37,30 @@ class WarehouseUserRoleRef {
       WarehouseUserRoleRef(id: json['id'] as String, name: json['name'] as String);
 }
 
+/// A warehouse a user is assigned to (access is deny-by-default: a user sees
+/// only the warehouses listed here, unless they hold `warehouse.access.all`).
+class UserWarehouseRef {
+  const UserWarehouseRef({required this.id, required this.name, required this.code});
+
+  final String id;
+  final String name;
+  final String code;
+
+  factory UserWarehouseRef.fromJson(Map<String, dynamic> json) =>
+      UserWarehouseRef(id: json['id'] as String, name: json['name'] as String, code: json['code'] as String);
+}
+
+/// How a user receives approval notifications / default one-time codes.
+const Map<String, String> kNotifyChannelLabels = {'EMAIL': 'Email', 'SMS': 'SMS', 'NONE': 'Off'};
+
+/// Sign-in verification methods.
+const Map<String, String> kMfaMethodLabels = {
+  'NONE': 'Off',
+  'EMAIL': 'Email code',
+  'SMS': 'SMS code',
+  'TOTP': 'Authenticator app',
+};
+
 /// Mirrors `GET/POST/PATCH/DELETE /users` (`UsersService`). `roleIds` on
 /// write is a FULL REPLACE of the user's role set (`UpdateUserDto.roleIds` /
 /// `CreateUserDto.roleIds`) — there is no separate assign/unassign-one-role
@@ -53,6 +77,10 @@ class WarehouseUser {
     required this.createdAt,
     required this.updatedAt,
     required this.roles,
+    this.phone,
+    this.notifyChannel = 'EMAIL',
+    this.mfaMethod = 'NONE',
+    this.warehouses = const [],
   });
 
   final String id;
@@ -62,6 +90,10 @@ class WarehouseUser {
   final DateTime createdAt;
   final DateTime updatedAt;
   final List<WarehouseUserRoleRef> roles;
+  final String? phone;
+  final String notifyChannel;
+  final String mfaMethod;
+  final List<UserWarehouseRef> warehouses;
 
   factory WarehouseUser.fromJson(Map<String, dynamic> json) => WarehouseUser(
     id: json['id'] as String,
@@ -72,6 +104,12 @@ class WarehouseUser {
     updatedAt: DateTime.parse(json['updatedAt'] as String),
     roles: (json['roles'] as List<dynamic>)
         .map((e) => WarehouseUserRoleRef.fromJson(e as Map<String, dynamic>))
+        .toList(),
+    phone: json['phone'] as String?,
+    notifyChannel: json['notifyChannel'] as String? ?? 'EMAIL',
+    mfaMethod: json['mfaMethod'] as String? ?? 'NONE',
+    warehouses: (json['warehouses'] as List<dynamic>? ?? const [])
+        .map((e) => UserWarehouseRef.fromJson(e as Map<String, dynamic>))
         .toList(),
   );
 }

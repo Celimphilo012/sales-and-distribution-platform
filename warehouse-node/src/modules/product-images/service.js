@@ -2,76 +2,86 @@
 
 const { notFound } = require('../../core/errors');
 const { TAGS } = require('../../core/cache/cache');
+const { cols } = require('../../core/models');
 const { deleteImageFile } = require('../../core/uploads');
 
 const PRODUCT_IMAGE_UPLOAD_SUBDIR = 'products';
 
-function createProductImagesService({ prisma, cache, products }) {
+function createProductImagesService({ db, models, cache, products }) {
   // Images are embedded in every product read, so any image change invalidates the catalogue.
   const invalidate = () => cache.invalidate(TAGS.CATALOGUE);
 
-  async function findAll(productId) {
-    await products.assertExists(productId);
-    return prisma.productImage.findMany({ where: { productId }, orderBy: { sortOrder: 'asc' } });
+  // Every operation takes the acting user: images belong to a product, and the product to a
+  // warehouse the user must have access to (modules/access).
+  async function findAll(productId, userId) {
+    await products.assertAccessible(productId, userId);
+    return db.query(
+      `SELECT ${cols('productImage', 'i')} FROM product_images i WHERE i.product_id = ? ORDER BY i.sort_order ASC`,
+      [productId],
+    );
   }
 
   async function getExisting(productId, imageId) {
-    const image = await prisma.productImage.findUnique({ where: { id: imageId } });
+    const image = await models.findById('productImage', imageId);
     if (!image || image.productId !== productId) {
       throw notFound(`Image ${imageId} not found for product ${productId}`);
     }
     return image;
   }
 
-  async function createRow(productId, source, dto) {
-    await products.assertExists(productId);
+  async function createRow(productId, source, dto, userId) {
+    await products.assertAccessible(productId, userId);
 
-    const image = await prisma.$transaction(async (tx) => {
-      if (dto.isPrimary) await tx.productImage.updateMany({ where: { productId }, data: { isPrimary: false } });
-      return tx.productImage.create({
-        data: { productId, ...source, sortOrder: dto.sortOrder ?? 0, isPrimary: dto.isPrimary ?? false },
-      });
+    const image = await db.transaction(async (tx) => {
+      if (dto.isPrimary) await db.exec('UPDATE product_images SET is_primary = false WHERE product_id = ?', [productId], tx);
+      return models.insert(
+        'productImage',
+        { productId, ...source, sortOrder: dto.sortOrder ?? 0, isPrimary: dto.isPrimary ?? false },
+        tx,
+      );
     });
     await invalidate();
     return image;
   }
 
-  const create = (productId, dto) => createRow(productId, { url: dto.url }, dto);
+  const create = (productId, dto, userId) => createRow(productId, { url: dto.url }, dto, userId);
 
   /** Same as create(), but for a file uploaded from device storage instead of a pasted URL. */
-  const createFromUpload = (productId, storedFilename, dto) =>
-    createRow(productId, { storagePath: storedFilename }, dto);
+  const createFromUpload = (productId, storedFilename, dto, userId) =>
+    createRow(productId, { storagePath: storedFilename }, dto, userId);
 
   /** Stored filename of an uploaded image, for GET .../file. 404s for a URL-based image (nothing on disk). */
-  async function getStoredFilename(productId, imageId) {
+  async function getStoredFilename(productId, imageId, userId) {
+    await products.assertAccessible(productId, userId);
     const image = await getExisting(productId, imageId);
     if (!image.storagePath) throw notFound(`Image ${imageId} has no uploaded file`);
     return image.storagePath;
   }
 
-  async function update(productId, imageId, dto) {
+  async function update(productId, imageId, dto, userId) {
+    await products.assertAccessible(productId, userId);
     const existing = await getExisting(productId, imageId);
 
     // Switching an uploaded image over to a pasted URL — keep the url/storagePath invariant
     // (exactly one set) and clean up the now-orphaned file on disk.
     const clearingStoragePath = dto.url !== undefined && existing.storagePath;
 
-    const updated = await prisma.$transaction(async (tx) => {
+    const updated = await db.transaction(async (tx) => {
       if (dto.isPrimary) {
-        await tx.productImage.updateMany({
-          where: { productId, id: { not: imageId } },
-          data: { isPrimary: false },
-        });
+        await db.exec('UPDATE product_images SET is_primary = false WHERE product_id = ? AND id <> ?', [productId, imageId], tx);
       }
-      return tx.productImage.update({
-        where: { id: imageId },
-        data: {
+      return models.update(
+        'productImage',
+        imageId,
+        {
           url: dto.url,
           storagePath: clearingStoragePath ? null : undefined,
           sortOrder: dto.sortOrder ?? undefined,
           isPrimary: dto.isPrimary ?? undefined,
         },
-      });
+        'Image',
+        tx,
+      );
     });
 
     if (clearingStoragePath) deleteImageFile(PRODUCT_IMAGE_UPLOAD_SUBDIR, existing.storagePath);
@@ -79,10 +89,11 @@ function createProductImagesService({ prisma, cache, products }) {
     return updated;
   }
 
-  async function remove(productId, imageId) {
+  async function remove(productId, imageId, userId) {
+    await products.assertAccessible(productId, userId);
     const existing = await getExisting(productId, imageId);
     // Media rows are not historical/reference data — hard delete is fine.
-    await prisma.productImage.delete({ where: { id: imageId } });
+    await db.exec('DELETE FROM product_images WHERE id = ?', [imageId]);
     if (existing.storagePath) deleteImageFile(PRODUCT_IMAGE_UPLOAD_SUBDIR, existing.storagePath);
     await invalidate();
     return { id: imageId, deleted: true };

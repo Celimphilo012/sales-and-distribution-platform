@@ -14,7 +14,9 @@ import '../../../shared/widgets/status_badge.dart';
 import '../../users/data/users_providers.dart';
 import '../data/api_keys_providers.dart';
 import '../domain/api_key.dart';
+import 'widgets/account_sections.dart';
 import 'widgets/create_api_key_dialog.dart';
+import 'widgets/delivery_settings_section.dart';
 import 'widgets/raw_api_key_dialog.dart';
 
 /// STEP 6f — SETTINGS: profile+password (any logged-in user) and API-key
@@ -38,11 +40,27 @@ class SettingsScreen extends ConsumerWidget {
             constraints: const BoxConstraints(maxWidth: 720),
             child: _ProfileSection(user: user),
           ),
+          if (user != null) ...[
+            const SizedBox(height: AppSpacing.md),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 720),
+              // Keyed on the saved values so the form re-seeds after a save/refresh.
+              child: ContactSection(key: ValueKey('${user.phone}|${user.notifyChannel}'), user: user),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            ConstrainedBox(constraints: const BoxConstraints(maxWidth: 720), child: MfaSection(user: user)),
+            const SizedBox(height: AppSpacing.md),
+            ConstrainedBox(constraints: const BoxConstraints(maxWidth: 720), child: MyWarehousesSection(user: user)),
+          ],
           const SizedBox(height: AppSpacing.md),
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 720),
             child: const _PasswordSection(),
           ),
+          if (user?.can('settings.manage') ?? false) ...[
+            const SizedBox(height: AppSpacing.lg),
+            ConstrainedBox(constraints: const BoxConstraints(maxWidth: 720), child: const DeliverySettingsSection()),
+          ],
           if (canManageKeys) ...[
             const SizedBox(height: AppSpacing.lg),
             const _ApiKeysSection(),

@@ -1,17 +1,15 @@
 'use strict';
 
-const { Prisma } = require('@prisma/client');
-const { conflict, notFound } = require('../../core/errors');
+const { conflict } = require('../../core/errors');
 const { TAGS } = require('../../core/cache/cache');
+const { isUniqueViolation } = require('../../core/db');
+const { cols } = require('../../core/models');
 
-function createAttributeTypesService({ prisma, cache, config }) {
+function createAttributeTypesService({ db, models, cache, config }) {
   const invalidate = () => cache.invalidate(TAGS.CATALOGUE);
 
   function translateUniqueViolation(error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-      return conflict('An attribute type with this code already exists');
-    }
-    return error;
+    return isUniqueViolation(error) ? conflict('An attribute type with this code already exists') : error;
   }
 
   const findAll = (query = {}) =>
@@ -19,22 +17,22 @@ function createAttributeTypesService({ prisma, cache, config }) {
       `attribute-types:list:${query.includeInactive ? 'all' : 'active'}`,
       { ttlMs: config.cache.referenceTtlMs, tags: [TAGS.CATALOGUE] },
       () =>
-        prisma.attributeType.findMany({
-          where: { isActive: query.includeInactive ? undefined : true },
-          orderBy: { name: 'asc' },
-        }),
+        db.query(
+          `SELECT ${cols('attributeType', 'a')} FROM attribute_types a
+            ${query.includeInactive ? '' : 'WHERE a.is_active = true'}
+            ORDER BY a.name ASC`,
+        ),
     );
 
-  async function getExisting(id) {
-    const attributeType = await prisma.attributeType.findUnique({ where: { id } });
-    if (!attributeType) throw notFound(`Attribute type ${id} not found`);
-    return attributeType;
-  }
+  const getExisting = (id) => models.getById('attributeType', id, 'Attribute type');
 
   async function create(dto) {
     try {
-      const created = await prisma.attributeType.create({
-        data: { name: dto.name, code: dto.code, dataType: dto.dataType ?? 'TEXT', unit: dto.unit },
+      const created = await models.insert('attributeType', {
+        name: dto.name,
+        code: dto.code,
+        dataType: dto.dataType ?? 'TEXT',
+        unit: dto.unit,
       });
       await invalidate();
       return created;
@@ -46,16 +44,18 @@ function createAttributeTypesService({ prisma, cache, config }) {
   async function update(id, dto) {
     await getExisting(id);
     try {
-      const updated = await prisma.attributeType.update({
-        where: { id },
-        data: {
+      const updated = await models.update(
+        'attributeType',
+        id,
+        {
           name: dto.name ?? undefined,
           code: dto.code ?? undefined,
           dataType: dto.dataType ?? undefined,
           unit: dto.unit,
           isActive: dto.isActive ?? undefined,
         },
-      });
+        'Attribute type',
+      );
       await invalidate();
       return updated;
     } catch (error) {
@@ -66,7 +66,7 @@ function createAttributeTypesService({ prisma, cache, config }) {
   async function remove(id) {
     await getExisting(id);
     // Reference data is soft-deleted (rule 10) — products keep a valid historical attribute-type reference.
-    const removed = await prisma.attributeType.update({ where: { id }, data: { isActive: false } });
+    const removed = await models.update('attributeType', id, { isActive: false }, 'Attribute type');
     await invalidate();
     return removed;
   }

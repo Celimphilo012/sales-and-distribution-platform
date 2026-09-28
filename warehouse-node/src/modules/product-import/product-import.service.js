@@ -1,7 +1,7 @@
 "use strict";
 exports.ProductImportService = void 0;
 const { HttpError, notFound } = require('../../core/errors');
-const client_1 = require("@prisma/client");
+const { isUniqueViolation } = require('../../core/db');
 const spreadsheet_reader_1 = require("./parsing/spreadsheet-reader");
 const strict_number_1 = require("./parsing/strict-number");
 const build_import_template_1 = require("./template/build-import-template");
@@ -52,7 +52,7 @@ class ProductImportService {
      */
     async buildExampleRows(attributeTypes, userId) {
         const scopedIds = await this.workstreamManagersService.getAssignedWorkstreamIds(userId);
-        let activeWorkstreams = await this.getActiveWorkstreams();
+        let activeWorkstreams = await this.getActiveWorkstreams(userId);
         if (scopedIds.length > 0) {
             const scoped = new Set(scopedIds);
             activeWorkstreams = activeWorkstreams.filter((w) => scoped.has(w.id));
@@ -220,7 +220,7 @@ class ProductImportService {
         return { created, updated, failed, fileName: session.fileName };
     }
     describeWriteError(error) {
-        if (error instanceof client_1.Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        if (isUniqueViolation(error)) {
             return 'A product with this SKU already exists';
         }
         if ((error instanceof HttpError && error.statusCode === 404)) {
@@ -263,11 +263,14 @@ class ProductImportService {
     // -----------------------------------------------------------------
     // Row validation (preview time)
     // -----------------------------------------------------------------
-    /** Active workstreams whose warehouse is ALSO active — `WorkstreamsService.findAll()` only filters the workstream's own `isActive`, not its warehouse's (the two are independent soft-deletes), so this cross-references both. */
-    async getActiveWorkstreams() {
+    /**
+     * Active workstreams whose warehouse is ALSO active — `WorkstreamsService.findAll()` only filters the workstream's own `isActive`, not its warehouse's (the two are independent soft-deletes), so this cross-references both.
+     * [userId] limits them to warehouses that user may access (modules/access).
+     */
+    async getActiveWorkstreams(userId) {
         const [workstreams, warehouses] = await Promise.all([
             this.workstreamsService.findAll({ includeInactive: false }),
-            this.warehousesService.findAll({ includeInactive: false }),
+            this.warehousesService.findAll({ includeInactive: false }, userId),
         ]);
         const activeWarehouseIds = new Set(warehouses.map((w) => w.id));
         return workstreams
@@ -276,7 +279,7 @@ class ProductImportService {
     }
     async buildValidationContext(rows, userId) {
         const [activeWorkstreams, categories, attributeTypes, scopedIds] = await Promise.all([
-            this.getActiveWorkstreams(),
+            this.getActiveWorkstreams(userId),
             this.categoriesService.findAll({ includeInactive: false }),
             this.attributeTypesService.findAll({ includeInactive: false }),
             this.workstreamManagersService.getAssignedWorkstreamIds(userId),

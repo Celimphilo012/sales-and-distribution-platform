@@ -8,8 +8,8 @@ const assignBody = obj({ permissionIds: arrayOf({ type: 'string', format: 'uuid'
   'permissionIds',
 ]);
 
-async function rolesRoutes(app) {
-  const { roles } = app.services;
+function rolesRoutes(app) {
+  const { roles, otp } = app.services;
   const guard = [app.authenticate, app.requirePermissions('roles.manage')];
   const idParams = { params: uuidParams('id') };
 
@@ -28,7 +28,7 @@ async function rolesRoutes(app) {
     return roles.assignPermissions(request.params.id, request.body);
   });
 
-  app.delete('/:id', { onRequest: guard, schema: idParams }, async (request) => {
+  app.delete('/:id', { onRequest: guard, preHandler: [otp.requireOtp('role.delete')], schema: idParams }, async (request) => {
     request.auditOldValue = await roles.getExisting(request.params.id);
     return roles.remove(request.params.id);
   });

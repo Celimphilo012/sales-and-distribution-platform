@@ -28,6 +28,7 @@ class RoutePaths {
   static const stockCounts = '/stock-counts';
   static String stockCountDetail(String id) => '$stockCounts/$id';
   static const stockAdjustments = '/stock-adjustments';
+  static const packing = '/packing';
   static const users = '/users';
   static const roles = '/roles';
   static String roleDetail(String id) => '$roles/$id';

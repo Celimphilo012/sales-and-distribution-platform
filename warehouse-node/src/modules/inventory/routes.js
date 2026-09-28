@@ -1,6 +1,6 @@
 'use strict';
 
-const { InventoryTransactionType } = require('@prisma/client');
+const { InventoryTransactionType } = require('../../core/enums');
 const { obj, uuid, dateString, enumOf } = require('../../core/schema');
 
 const balancesQuery = obj({ productId: uuid, locationId: uuid, warehouseId: uuid });
@@ -14,16 +14,16 @@ const transactionsQuery = obj({
 
 // Read-only views over the ledger — every write goes through InventoryService.applyTransaction.
 // Deliberately not cached: these are the screens people check right after receiving/transferring stock.
-async function inventoryRoutes(app) {
+function inventoryRoutes(app) {
   const { inventory } = app.services;
   const guard = [app.authenticate, app.requirePermissions('inventory.view')];
 
   app.get('/balances', { onRequest: guard, schema: { querystring: balancesQuery } }, async (request) =>
-    inventory.findBalances(request.query),
+    inventory.findBalances(request.query, request.user.id),
   );
 
   app.get('/transactions', { onRequest: guard, schema: { querystring: transactionsQuery } }, async (request) =>
-    inventory.findTransactions(request.query),
+    inventory.findTransactions(request.query, request.user.id),
   );
 }
 

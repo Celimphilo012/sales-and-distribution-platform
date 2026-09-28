@@ -11,7 +11,7 @@ const PNG = Buffer.from(
   'base64',
 );
 
-describe('warehouse API (Fastify port)', () => {
+describe('warehouse API (Express port)', () => {
   let app;
   let api; // admin client
   const run = uid();
@@ -256,10 +256,11 @@ describe('warehouse API (Fastify port)', () => {
       await api.put(`/roles/${role.id}/permissions`, { permissionIds: perms.filter((p) => ['catalogue.view', 'products.manage'].includes(p.key)).map((p) => p.id) });
       const email = `wm-${uid()}@test.local`;
       const user = (await api.post('/users', { email, password: 'Passw0rd!x', fullName: 'WS Manager', roleIds: [role.id] })).json;
+      await api.put(`/users/${user.id}/warehouses`, { warehouseIds: [fx.warehouseId] }); // access is deny-by-default
       const { accessToken } = await loginAs(app, { email, password: 'Passw0rd!x' });
       const mgr = client(app, { token: accessToken });
 
-      // Unscoped until assigned: sees everything.
+      // No workstream assignment: sees every workstream in their warehouse.
       assert.ok((await mgr.get('/categories')).json.some((c) => c.id === otherCat.id));
 
       await api.post(`/workstreams/${fx.workstream.id}/managers`, { userId: user.id });
@@ -320,7 +321,7 @@ describe('warehouse API (Fastify port)', () => {
     });
 
     it('the DB trigger blocks any write to inventory_balances outside applyTransaction (rule 2)', async () => {
-      await assert.rejects(app.prisma.inventoryBalance.updateMany({ where: { productId: fx.product.id }, data: { onHand: 5 } }));
+      await assert.rejects(app.db.exec('UPDATE inventory_balances SET on_hand = 5 WHERE product_id = ?', [fx.product.id]));
       assert.equal((await balanceOf(fx.product.id, fx.locA.id)).onHand, 70);
     });
 
@@ -362,6 +363,7 @@ describe('warehouse API (Fastify port)', () => {
       await api.put(`/roles/${role.id}/permissions`, { permissionIds: perms.filter((p) => ['inventory.view', 'inventory.adjust.request', 'inventory.count'].includes(p.key)).map((p) => p.id) });
       const email = `wh-${uid()}@test.local`;
       requesterId = (await api.post('/users', { email, password: 'Passw0rd!x', fullName: 'Floor Staff', roleIds: [role.id] })).json.id;
+      await api.put(`/users/${requesterId}/warehouses`, { warehouseIds: [fx.warehouseId] }); // access is deny-by-default
       requester = client(app, { token: (await loginAs(app, { email, password: 'Passw0rd!x' })).accessToken });
     });
 

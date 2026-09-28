@@ -25,7 +25,8 @@ function required(name) {
 
 function loadConfig() {
   return {
-    port: int('PORT', 3100),
+    port: int('PORT', 3200),
+    databaseUrl: required('DATABASE_URL'),
     // Set when the app is mounted under a sub-path (cPanel/Passenger passes the
     // FULL path through). Empty locally.
     basePath: (process.env.API_BASE_PATH ?? '').trim().replace(/^\/+|\/+$/g, ''),
@@ -49,6 +50,39 @@ function loadConfig() {
       reportsTtlMs: int('CACHE_REPORTS_TTL_MS', 30_000),
     },
     trustProxy: (process.env.TRUST_PROXY ?? 'true') !== 'false',
+    appName: process.env.APP_NAME ?? 'Warehouse System',
+    // Encrypts secrets at rest: authenticator-app (TOTP) secrets and the SMTP password / httpSMS
+    // key saved from the admin screen. Set it once and never change it: rotating it makes every
+    // enrolled authenticator app and every saved delivery credential unreadable. Falls back to a
+    // key derived from JWT_REFRESH_SECRET so local dev works without it.
+    secretsKey: process.env.SECRETS_ENCRYPTION_KEY || `derived:${required('JWT_REFRESH_SECRET')}`,
+    otp: {
+      // Deliberately NOT read from the environment: step-up codes cannot be switched off in a
+      // deployment. Only the test harness turns this off (for suites that are not about OTP).
+      enabled: true,
+      codeTtlMs: int('OTP_CODE_TTL_MS', 10 * 60_000),
+      maxAttempts: 5,
+      // At most this many codes may be requested per user per window (SMS costs money).
+      maxPerWindow: int('OTP_MAX_PER_WINDOW', 5),
+      windowMs: 10 * 60_000,
+    },
+    email: {
+      // smtp = really send; log = print to the server log (the default until SMTP is configured).
+      transport: process.env.EMAIL_TRANSPORT ?? (process.env.SMTP_HOST ? 'smtp' : 'log'),
+      host: process.env.SMTP_HOST,
+      port: int('SMTP_PORT', 587),
+      secure: (process.env.SMTP_SECURE ?? 'false') === 'true', // true for port 465
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS,
+      from: process.env.EMAIL_FROM ?? process.env.SMTP_USER ?? 'warehouse@localhost',
+    },
+    sms: {
+      // httpsms = really send via httpsms.com; log = print to the server log (default until configured).
+      transport: process.env.SMS_TRANSPORT ?? (process.env.HTTPSMS_API_KEY ? 'httpsms' : 'log'),
+      apiKey: process.env.HTTPSMS_API_KEY,
+      from: process.env.HTTPSMS_FROM, // the httpSMS-registered phone number, +country format
+      baseUrl: process.env.HTTPSMS_BASE_URL ?? 'https://api.httpsms.com',
+    },
   };
 }
 

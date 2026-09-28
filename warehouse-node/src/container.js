@@ -5,6 +5,9 @@
  * through services, never direct DB reach-ins). A module only receives the services it lists.
  * Each module below is one folder under src/modules with service.js + routes.js.
  */
+const { createAccessService } = require('./modules/access/service');
+const { createOtpService } = require('./modules/otp/service');
+const { createNotificationsService } = require('./modules/notifications/service');
 const { createAuthService } = require('./modules/auth/service');
 const { createUsersService } = require('./modules/users/service');
 const { createRolesService } = require('./modules/roles/service');
@@ -24,14 +27,19 @@ const { StockAdjustmentsService } = require('./modules/stock-adjustments/service
 const { StockCountsService } = require('./modules/stock-counts/service');
 const { StockReservationsService } = require('./modules/external-api/stock-reservations.service');
 const { createReportsService } = require('./modules/reports/service');
+const { createPackingService } = require('./modules/packing/service');
 const { ProductImportService } = require('./modules/product-import/product-import.service');
 const { ProductImportSessionStore } = require('./modules/product-import/product-import-session.store');
 
-function buildServices({ prisma, cache, config, auth }) {
-  const base = { prisma, cache, config };
+function buildServices({ db, models, cache, config, auth, notifier, logger }) {
   const services = {};
+  // Warehouse access (deny by default) is needed by almost everything, so it rides in `base`.
+  services.access = createAccessService({ db, models, cache, config, auth });
+  services.notifications = createNotificationsService({ db, notifier, config, logger });
+  const base = { db, models, cache, config, access: services.access, notifications: services.notifications };
 
-  services.auth = createAuthService({ ...base, auth });
+  services.otp = createOtpService({ ...base, notifier });
+  services.auth = createAuthService({ ...base, auth, otp: services.otp });
   services.users = createUsersService(base);
   services.roles = createRolesService(base);
   services.apiKeys = createApiKeysService(base);
@@ -52,6 +60,7 @@ function buildServices({ prisma, cache, config, auth }) {
   services.products = createProductsService({
     ...base,
     categories: services.categories,
+    workstreams: services.workstreams,
     attributeTypes: services.attributeTypes,
     workstreamManagers: services.workstreamManagers,
   });
@@ -67,20 +76,21 @@ function buildServices({ prisma, cache, config, auth }) {
     new ProductImportSessionStore(),
   );
 
-
   // ---- Inventory ledger. InventoryService.applyTransaction is the ONLY writer of inventory_balances (rule 2). ----
-  services.inventory = new InventoryService(prisma, services.products, services.locations, cache);
+  services.inventory = new InventoryService(base, services.products, services.locations, cache);
   services.receiving = createReceivingService({ inventory: services.inventory, locations: services.locations });
   services.transfers = createTransfersService({ inventory: services.inventory, locations: services.locations });
   services.stockAdjustments = new StockAdjustmentsService(
-    prisma,
+    base,
     services.products,
     services.locations,
     services.inventory,
     cache,
   );
-  services.stockCounts = new StockCountsService(prisma, services.products, services.locations, services.stockAdjustments, cache);
-  services.stockReservations = new StockReservationsService(prisma, services.products, services.locations, services.inventory);
+  services.stockCounts = new StockCountsService(base, services.products, services.locations, services.stockAdjustments, cache);
+  services.stockReservations = new StockReservationsService(base, services.products, services.locations, services.inventory);
+
+  services.packing = createPackingService({ ...base, workstreamManagers: services.workstreamManagers });
 
   services.reports = createReportsService({
     ...base,

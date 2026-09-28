@@ -224,7 +224,8 @@ export class OrdersService {
       quantity: Number(itemById.get(alloc.orderItemId)!.quantityOrdered),
     }));
 
-    const result = await this.warehouseApi.reserve(order.id, lines);
+    // The label is what warehouse packers see on their packing list (the order id alone means nothing to them).
+    const result = await this.warehouseApi.reserve(order.id, lines, `${order.orderNumber} · ${order.customer.name}`);
 
     if (!result.success) {
       const detail = result.shortLines

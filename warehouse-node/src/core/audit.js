@@ -8,6 +8,7 @@ const SENSITIVE_KEYS = new Set([
   'currentPassword',
   'newPassword',
   'refreshToken',
+  'totpSecret',
   'accessToken',
   'token',
 ]);
@@ -20,63 +21,49 @@ function redact(body) {
 }
 
 /**
- * Writes one audit_logs row for every mutating request that completes
- * successfully (status < 400). Entity defaults to the first URL segment and the
- * entity id to the most specific route param, exactly like the original
- * AuditInterceptor. Handlers may set request.auditEntity / auditEntityId /
- * auditOldValue / auditAction / auditBody to override any of these.
+ * Express middleware that writes one audit_logs row for every mutating request that completes
+ * successfully (status < 400). Entity defaults to the first URL segment and the entity id to the
+ * most specific route param, exactly like the original AuditInterceptor. Handlers may set
+ * req.auditEntity / auditEntityId / auditOldValue / auditAction / auditBody to override any of these.
  *
- * The write happens in onResponse — after the client already has its answer —
+ * The write happens on the response's 'finish' event — after the client already has its answer —
  * so auditing adds no latency, and a failed audit write never breaks a request.
  */
-function installAudit(app, { prisma, basePath }) {
-  app.decorateRequest('user', null);
-  app.decorateRequest('apiKey', null);
-  app.decorateRequest('auditEntity', null);
-  app.decorateRequest('auditEntityId', null);
-  app.decorateRequest('auditOldValue', null);
-  app.decorateRequest('auditAction', null);
-  app.decorateRequest('auditBody', null);
-  app.decorateRequest('responseId', null);
-
+function auditMiddleware({ models, basePath }) {
   const prefix = basePath ? `/${basePath}` : '';
 
-  app.addHook('preSerialization', async (request, _reply, payload) => {
-    if (MUTATING_METHODS.has(request.method) && payload && typeof payload === 'object') {
-      request.responseId = payload.id ?? null;
-    }
-    return payload;
-  });
+  return function audit(req, res, next) {
+    if (!MUTATING_METHODS.has(req.method)) return next();
 
-  app.addHook('onResponse', async (request, reply) => {
-    const method = request.method;
-    if (!MUTATING_METHODS.has(method) || reply.statusCode >= 400) return;
+    res.on('finish', () => {
+      if (res.statusCode >= 400) return;
 
-    try {
-      let path = request.url.split('?')[0];
+      let path = req.originalUrl.split('?')[0];
       if (prefix && path.startsWith(prefix)) path = path.slice(prefix.length);
 
-      const entity = request.auditEntity ?? path.split('/').filter(Boolean)[0] ?? 'unknown';
-      const params = Object.values(request.params ?? {});
-      const entityId = request.auditEntityId ?? params[params.length - 1] ?? request.responseId ?? null;
-      const body = request.auditBody ?? request.body;
+      const entity = req.auditEntity ?? path.split('/').filter(Boolean)[0] ?? 'unknown';
+      const params = Object.values(req.auditParams ?? {});
+      const entityId = req.auditEntityId ?? params[params.length - 1] ?? req.responseId ?? null;
+      const body = req.auditBody ?? req.body;
 
-      await prisma.auditLog.create({
-        data: {
-          userId: request.user?.id ?? null,
+      models
+        .insert('auditLog', {
+          userId: req.user?.id ?? null,
           // External-API calls authenticate with an API key, never a user: record which key acted.
-          apiKeyId: request.apiKey?.id ?? null,
-          action: request.auditAction ?? METHOD_ACTIONS[method] ?? method,
+          apiKeyId: req.apiKey?.id ?? null,
+          action: req.auditAction ?? METHOD_ACTIONS[req.method] ?? req.method,
           entity,
           entityId: entityId ?? null,
-          oldValue: request.auditOldValue ?? undefined,
-          newValue: method === 'DELETE' ? undefined : redact(body),
-        },
-      });
-    } catch {
-      // Audit logging must never break the request/response cycle.
-    }
-  });
+          oldValue: req.auditOldValue ?? undefined,
+          newValue: req.method === 'DELETE' ? undefined : redact(body),
+        })
+        .catch(() => {
+          // Audit logging must never break the request/response cycle.
+        });
+    });
+
+    next();
+  };
 }
 
-module.exports = { installAudit };
+module.exports = { auditMiddleware, redact };

@@ -1,44 +1,89 @@
 'use strict';
 
-const { ProductStatus } = require('@prisma/client');
+const { ProductStatus } = require('../../core/enums');
 const { badRequest, conflict, notFound } = require('../../core/errors');
 const { TAGS } = require('../../core/cache/cache');
+const { cols, nest, groupBy, Where } = require('../../core/models');
 
-const PRODUCT_INCLUDE = {
-  category: {
-    select: {
-      id: true,
-      name: true,
-      workstreamId: true,
-      workstream: { select: { id: true, name: true, code: true } },
-      // One level up only — the frontend's "Parent (Sub)" display never needs the full ancestor chain.
-      parent: { select: { id: true, name: true } },
-    },
-  },
-  images: { orderBy: { sortOrder: 'asc' } },
-  // Descriptive metadata only (NOT variants) — never read by inventory/ledger code.
-  attributes: { include: { attributeType: true }, orderBy: { attributeType: { name: 'asc' } } },
-};
+/**
+ * A product read is: the product row + category { id, name, workstreamId, workstream { id, name,
+ * code, warehouseId }, parent { id, name } | null } + images (by sortOrder) + attributes (each with its full
+ * attributeType, by type name). The category chain is one joined query; images and attributes are
+ * one batched query each for the whole result set — never one query per product.
+ */
+const PRODUCT_SELECT = `
+  SELECT ${cols('product', 'p')},
+         ${cols('category', 'c', ['id', 'name', 'workstreamId'], 'category.')},
+         ${cols('workstream', 'w', ['id', 'name', 'code', 'warehouseId'], 'category.workstream.')},
+         ${cols('category', 'pc', ['id', 'name'], 'category.parent.')}
+    FROM products p
+    JOIN categories c ON c.id = p.category_id
+    JOIN workstreams w ON w.id = c.workstream_id
+    LEFT JOIN categories pc ON pc.id = c.parent_id`;
 
-function createProductsService({ prisma, cache, config, categories, attributeTypes, workstreamManagers }) {
+/** LIKE pattern for a "contains" search, with the user's own % and _ matched literally. */
+const containsPattern = (text) => `%${text.replace(/[\\%_]/g, '\\$&')}%`;
+
+function createProductsService({
+  db,
+  models,
+  cache,
+  config,
+  access,
+  categories,
+  workstreams,
+  attributeTypes,
+  workstreamManagers,
+}) {
   // A product embeds totalOnHand (ledger-derived), so its cached reads die on catalogue AND stock writes.
   const readTags = [TAGS.CATALOGUE, TAGS.STOCK];
   const invalidate = () => cache.invalidate(TAGS.CATALOGUE);
 
+  /** Runs PRODUCT_SELECT with a WHERE clause and attaches images + attributes. */
+  async function loadProducts(where = new Where(), orderBy = 'ORDER BY p.name ASC') {
+    const products = (await db.query(`${PRODUCT_SELECT} ${where.sql} ${orderBy}`, where.params)).map(nest);
+    if (products.length === 0) return products;
+    const ids = products.map((p) => p.id);
+
+    const [images, attributes] = await Promise.all([
+      db.query(`SELECT ${cols('productImage', 'i')} FROM product_images i WHERE i.product_id IN (?) ORDER BY i.sort_order ASC`, [ids]),
+      db.query(
+        `SELECT ${cols('productAttribute', 'pa')}, ${cols('attributeType', 'aty', undefined, 'attributeType.')}
+           FROM product_attributes pa
+           JOIN attribute_types aty ON aty.id = pa.attribute_type_id
+          WHERE pa.product_id IN (?)
+          ORDER BY aty.name ASC`,
+        [ids],
+      ),
+    ]);
+    const imagesByProduct = groupBy(images, 'productId');
+    const attributesByProduct = groupBy(attributes.map(nest), 'productId');
+
+    return products.map((p) => ({
+      ...p,
+      images: imagesByProduct.get(p.id) ?? [],
+      // Descriptive metadata only (NOT variants) — never read by inventory/ledger code.
+      attributes: attributesByProduct.get(p.id) ?? [],
+    }));
+  }
+
   /**
-   * Sum of on_hand across every ACTIVE location, batched for a whole result set in ONE groupBy —
-   * never N+1, never a full-table fetch summed in JS. Read straight off inventory_balances (never
-   * written here — rule 2 is about writes) which also avoids a circular module dependency.
+   * Sum of on_hand across every ACTIVE location, batched for a whole result set in ONE grouped
+   * query — never N+1, never a full-table fetch summed in JS. Read straight off inventory_balances
+   * (never written here — rule 2 is about writes) which also avoids a circular module dependency.
    */
   async function attachTotalOnHand(products) {
     if (products.length === 0) return [];
 
-    const totals = await prisma.inventoryBalance.groupBy({
-      by: ['productId'],
-      where: { productId: { in: products.map((p) => p.id) }, location: { isActive: true } },
-      _sum: { onHand: true },
-    });
-    const totalByProductId = new Map(totals.map((t) => [t.productId, Number(t._sum.onHand ?? 0)]));
+    const totals = await db.query(
+      `SELECT ib.product_id AS productId, SUM(ib.on_hand) AS onHand
+         FROM inventory_balances ib
+         JOIN locations l ON l.id = ib.location_id AND l.is_active = true
+        WHERE ib.product_id IN (?)
+        GROUP BY ib.product_id`,
+      [products.map((p) => p.id)],
+    );
+    const totalByProductId = new Map(totals.map((t) => [t.productId, Number(t.onHand ?? 0)]));
     return products.map((p) => ({ ...p, totalOnHand: totalByProductId.get(p.id) ?? 0 }));
   }
 
@@ -51,18 +96,20 @@ function createProductsService({ prisma, cache, config, categories, attributeTyp
     return assignedIds.includes(explicit) ? explicit : { in: [] };
   }
 
-  async function queryProducts(query, workstreamId) {
-    const where = {
-      categoryId: query.categoryId,
-      status: query.status ?? (query.includeInactive ? undefined : ProductStatus.ACTIVE),
-      // Product has no workstream_id of its own — it is implied by its category's.
-      category: workstreamId ? { workstreamId } : undefined,
-    };
+  async function queryProducts(query, workstreamId, warehouseIds) {
+    const where = new Where()
+      .eq('p.category_id', query.categoryId)
+      .in('w.warehouse_id', warehouseIds ?? undefined)
+      .eq('p.status', query.status ?? (query.includeInactive ? undefined : ProductStatus.ACTIVE));
+
+    // Product has no workstream_id of its own — it is implied by its category's.
+    if (workstreamId && typeof workstreamId === 'object') where.in('c.workstream_id', workstreamId.in);
+    else if (workstreamId) where.eq('c.workstream_id', workstreamId);
 
     if (query.search) {
-      // No `mode: 'insensitive'` on MySQL/MariaDB (Postgres-only); the default *_ci collation already
-      // makes LIKE/contains case-insensitive.
-      where.OR = [{ sku: { contains: query.search } }, { name: { contains: query.search } }];
+      // The default *_ci collation already makes LIKE case-insensitive.
+      const pattern = containsPattern(query.search);
+      where.raw('(p.sku LIKE ? OR p.name LIKE ?)', pattern, pattern);
     }
 
     // `?attribute=Colour:Red` — matched by the attribute TYPE's name (not code), split on the FIRST
@@ -72,22 +119,29 @@ function createProductsService({ prisma, cache, config, categories, attributeTyp
       if (separatorIndex > 0) {
         const name = query.attribute.slice(0, separatorIndex).trim();
         const value = query.attribute.slice(separatorIndex + 1).trim();
-        where.attributes = { some: { attributeType: { name }, value } };
+        where.raw(
+          `EXISTS (SELECT 1 FROM product_attributes fa JOIN attribute_types ft ON ft.id = fa.attribute_type_id
+                    WHERE fa.product_id = p.id AND ft.name = ? AND fa.value = ?)`,
+          name,
+          value,
+        );
       }
     }
 
-    const products = await prisma.product.findMany({ where, include: PRODUCT_INCLUDE, orderBy: { name: 'asc' } });
-    return attachTotalOnHand(products);
+    return attachTotalOnHand(await loadProducts(where));
   }
 
   /**
-   * [viewerId], when given, narrows the result to products whose category is in a workstream that
-   * viewer is assigned to. Free-text searches are NOT cached (unbounded key space); the plain
+   * [viewerId], when given, narrows the result to the viewer's warehouses (modules/access), then to
+   * products whose category is in a workstream that viewer is assigned to manage (if any). Free-text searches are NOT cached (unbounded key space); the plain
    * list/filter views the screens open on are.
    */
   async function findAll(query = {}, viewerId) {
-    const workstreamId = await effectiveWorkstreamIdFilter(query.workstreamId, viewerId);
-    if (query.search) return queryProducts(query, workstreamId);
+    const [workstreamId, warehouseIds] = await Promise.all([
+      effectiveWorkstreamIdFilter(query.workstreamId, viewerId),
+      access.warehouseScope(viewerId),
+    ]);
+    if (query.search) return queryProducts(query, workstreamId, warehouseIds);
 
     const wsKey = workstreamId && typeof workstreamId === 'object' ? `in:${workstreamId.in.join(',')}` : (workstreamId ?? '-');
     const key = [
@@ -97,28 +151,43 @@ function createProductsService({ prisma, cache, config, categories, attributeTyp
       query.status ?? '-',
       query.includeInactive ? 'all' : 'active',
       query.attribute ?? '-',
+      access.scopeKey(warehouseIds),
     ].join(':');
-    return cache.wrap(key, { ttlMs: config.cache.catalogueTtlMs, tags: readTags }, () => queryProducts(query, workstreamId));
+    return cache.wrap(key, { ttlMs: config.cache.catalogueTtlMs, tags: readTags }, () =>
+      queryProducts(query, workstreamId, warehouseIds),
+    );
   }
 
   // Never cached: writers and audit old-values must see the row as it is right now.
   async function getExisting(id) {
-    const product = await prisma.product.findUnique({ where: { id }, include: PRODUCT_INCLUDE });
+    const [product] = await loadProducts(new Where().eq('p.id', id), '');
     if (!product) throw notFound(`Product ${id} not found`);
     const [withTotal] = await attachTotalOnHand([product]);
     return withTotal;
   }
 
-  /** Cheap existence check (no includes, no stock aggregate) for callers that only need a 404. */
+  /** 404 unless the product exists; 403 unless `userId` may access its warehouse (no userId = unscoped). */
+  async function assertAccessible(id, userId) {
+    const row = await db.one(
+      `SELECT w.warehouse_id AS warehouseId FROM products p
+         JOIN categories c ON c.id = p.category_id JOIN workstreams w ON w.id = c.workstream_id
+        WHERE p.id = ?`,
+      [id],
+    );
+    if (!row) throw notFound(`Product ${id} not found`);
+    await access.assertWarehouse(userId, row.warehouseId);
+  }
+
+  /** Cheap existence check (no joins, no stock aggregate) for callers that only need a 404. */
   async function assertExists(id) {
-    const product = await prisma.product.findUnique({ where: { id }, select: { id: true } });
+    const product = await db.one('SELECT id FROM products WHERE id = ?', [id]);
     if (!product) throw notFound(`Product ${id} not found`);
   }
 
   /** One query for a whole list of ids (used by stock counts); 404s naming the first missing id. */
   async function assertAllExist(ids) {
     const unique = [...new Set(ids)];
-    const found = await prisma.product.findMany({ where: { id: { in: unique } }, select: { id: true } });
+    const found = await db.query('SELECT id FROM products WHERE id IN (?)', [unique]);
     if (found.length === unique.length) return;
     const foundIds = new Set(found.map((p) => p.id));
     throw notFound(`Product ${unique.find((id) => !foundIds.has(id))} not found`);
@@ -129,6 +198,7 @@ function createProductsService({ prisma, cache, config, categories, attributeTyp
     const product = await cache.wrap(`products:one:${id}`, { ttlMs: config.cache.catalogueTtlMs, tags: readTags }, () =>
       getExisting(id),
     );
+    await access.assertWarehouse(viewerId, product.category.workstream.warehouseId);
     if (viewerId) await workstreamManagers.assertScopedAccess(viewerId, product.category.workstreamId);
     return product;
   }
@@ -136,11 +206,19 @@ function createProductsService({ prisma, cache, config, categories, attributeTyp
   /** Bulk existing-product lookup by SKU (active or not) — one query for a whole import file. */
   function findManyBySkus(skus) {
     if (skus.length === 0) return Promise.resolve([]);
-    return prisma.product.findMany({ where: { sku: { in: skus } }, include: PRODUCT_INCLUDE });
+    return loadProducts(new Where().in('p.sku', skus), '');
   }
 
-  /** DB-level COUNT for the reports dashboard's catalogue summary. */
-  const countActive = () => prisma.product.count({ where: { status: ProductStatus.ACTIVE } });
+  /** DB-level COUNT for the reports dashboard's catalogue summary, within the given warehouses (null = all). */
+  async function countActive(warehouseIds = null) {
+    const where = new Where().eq('p.status', ProductStatus.ACTIVE).in('w.warehouse_id', warehouseIds ?? undefined);
+    const row = await db.one(
+      `SELECT COUNT(*) AS n FROM products p
+         JOIN categories c ON c.id = p.category_id JOIN workstreams w ON w.id = c.workstream_id ${where.sql}`,
+      where.params,
+    );
+    return Number(row.n);
+  }
 
   function coerceAttributeValue(attributeType, raw) {
     if (attributeType.dataType === 'NUMBER') {
@@ -180,16 +258,18 @@ function createProductsService({ prisma, cache, config, categories, attributeTyp
 
   async function create(dto, actingUserId) {
     const category = await categories.getExisting(dto.categoryId);
+    await workstreams.getAccessible(category.workstreamId, actingUserId);
     await workstreamManagers.assertScopedAccess(actingUserId, category.workstreamId);
 
-    const existingSku = await prisma.product.findUnique({ where: { sku: dto.sku } });
+    const existingSku = await db.one('SELECT id FROM products WHERE sku = ?', [dto.sku]);
     if (existingSku) throw conflict('A product with this SKU already exists');
 
     const attributes = await resolveAttributes(dto.attributes);
 
-    const productId = await prisma.$transaction(async (tx) => {
-      const product = await tx.product.create({
-        data: {
+    const productId = await db.transaction(async (tx) => {
+      const product = await models.insert(
+        'product',
+        {
           sku: dto.sku,
           name: dto.name,
           description: dto.description,
@@ -199,9 +279,10 @@ function createProductsService({ prisma, cache, config, categories, attributeTyp
           uom: dto.uom,
           minStockLevel: dto.minStockLevel ?? 0,
         },
-      });
+        tx,
+      );
       if (attributes?.length) {
-        await tx.productAttribute.createMany({ data: attributes.map((a) => ({ productId: product.id, ...a })) });
+        await models.insertMany('productAttribute', attributes.map((a) => ({ productId: product.id, ...a })), tx);
       }
       return product.id;
     });
@@ -212,21 +293,24 @@ function createProductsService({ prisma, cache, config, categories, attributeTyp
 
   async function update(id, dto, actingUserId) {
     const existing = await getExisting(id);
+    await access.assertWarehouse(actingUserId, existing.category.workstream.warehouseId);
     // Scoped to the product's CURRENT workstream (via its category) always — moving it to a new
     // category additionally requires scope over the DESTINATION category's workstream.
     await workstreamManagers.assertScopedAccess(actingUserId, existing.category.workstreamId);
 
     if (dto.categoryId) {
       const newCategory = await categories.getExisting(dto.categoryId);
+      await workstreams.getAccessible(newCategory.workstreamId, actingUserId);
       await workstreamManagers.assertScopedAccess(actingUserId, newCategory.workstreamId);
     }
 
     const attributes = await resolveAttributes(dto.attributes);
 
-    await prisma.$transaction(async (tx) => {
-      await tx.product.update({
-        where: { id },
-        data: {
+    await db.transaction(async (tx) => {
+      await models.update(
+        'product',
+        id,
+        {
           name: dto.name ?? undefined,
           description: dto.description,
           categoryId: dto.categoryId ?? undefined,
@@ -236,14 +320,16 @@ function createProductsService({ prisma, cache, config, categories, attributeTyp
           minStockLevel: dto.minStockLevel ?? undefined,
           status: dto.status ?? undefined,
         },
-      });
+        'Product',
+        tx,
+      );
 
       // Only touch attributes when the field was explicitly provided — omitted leaves the existing
       // set untouched; `[]` deliberately clears it; otherwise it REPLACES the full set.
       if (attributes !== undefined) {
-        await tx.productAttribute.deleteMany({ where: { productId: id } });
+        await db.exec('DELETE FROM product_attributes WHERE product_id = ?', [id], tx);
         if (attributes.length) {
-          await tx.productAttribute.createMany({ data: attributes.map((a) => ({ productId: id, ...a })) });
+          await models.insertMany('productAttribute', attributes.map((a) => ({ productId: id, ...a })), tx);
         }
       }
     });
@@ -254,14 +340,15 @@ function createProductsService({ prisma, cache, config, categories, attributeTyp
 
   async function remove(id, actingUserId) {
     const existing = await getExisting(id);
+    await access.assertWarehouse(actingUserId, existing.category.workstream.warehouseId);
     await workstreamManagers.assertScopedAccess(actingUserId, existing.category.workstreamId);
     // Reference data is soft-deleted (rule 10) — orders/inventory transactions keep a valid historical reference.
-    await prisma.product.update({ where: { id }, data: { status: ProductStatus.INACTIVE } });
+    await models.update('product', id, { status: ProductStatus.INACTIVE }, 'Product');
     await invalidate();
     return getExisting(id);
   }
 
-  return { findAll, findOne, getExisting, assertExists, assertAllExist, findManyBySkus, countActive, create, update, remove, invalidate };
+  return { findAll, findOne, getExisting, assertExists, assertAccessible, assertAllExist, findManyBySkus, countActive, create, update, remove, invalidate };
 }
 
-module.exports = { createProductsService, PRODUCT_INCLUDE };
+module.exports = { createProductsService };

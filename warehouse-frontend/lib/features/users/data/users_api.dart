@@ -24,24 +24,35 @@ class UsersApi {
     required String email,
     required String password,
     required String fullName,
+    String? phone,
+    String? notifyChannel,
     List<String>? roleIds,
   }) async {
     final response = await _apiClient.guard(
       (dio) => dio.post<Map<String, dynamic>>(
         '/users',
-        data: {'email': email, 'password': password, 'fullName': fullName, 'roleIds': ?roleIds},
+        data: {
+          'email': email,
+          'password': password,
+          'fullName': fullName,
+          'phone': ?phone,
+          'notifyChannel': ?notifyChannel,
+          'roleIds': ?roleIds,
+        },
       ),
     );
     return WarehouseUser.fromJson(response.data!);
   }
 
   /// [roleIds], when supplied, REPLACES the user's full role set — omit it
-  /// to leave roles untouched (`UpdateUserDto.roleIds` is optional).
+  /// to leave roles untouched. [phone] `''` clears the number; null leaves it.
   Future<WarehouseUser> update(
     String id, {
     String? fullName,
     String? password,
     UserStatus? status,
+    String? phone,
+    String? notifyChannel,
     List<String>? roleIds,
   }) async {
     final response = await _apiClient.guard(
@@ -51,10 +62,29 @@ class UsersApi {
           'fullName': ?fullName,
           'password': ?password,
           'status': ?status?.apiValue,
+          'phone': ?phone,
+          'notifyChannel': ?notifyChannel,
           'roleIds': ?roleIds,
         },
       ),
     );
+    return WarehouseUser.fromJson(response.data!);
+  }
+
+  /// `PUT /users/:id/warehouses` — REPLACES the warehouses the user may access
+  /// (needs `warehouse.access.assign`). Losing a warehouse also drops the
+  /// user's workstream-manager assignments inside it.
+  Future<WarehouseUser> setWarehouses(String id, List<String> warehouseIds) async {
+    final response = await _apiClient.guard(
+      (dio) => dio.put<Map<String, dynamic>>('/users/$id/warehouses', data: {'warehouseIds': warehouseIds}),
+    );
+    return WarehouseUser.fromJson(response.data!);
+  }
+
+  /// `POST /users/:id/mfa/reset` — turns off a user's sign-in verification
+  /// (lost phone / new device); they can set it up again themselves.
+  Future<WarehouseUser> resetMfa(String id) async {
+    final response = await _apiClient.guard((dio) => dio.post<Map<String, dynamic>>('/users/$id/mfa/reset'));
     return WarehouseUser.fromJson(response.data!);
   }
 

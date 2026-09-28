@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/auth/auth_provider.dart';
 import '../../../core/error/app_error.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../shared/widgets/app_dialog.dart';
@@ -9,6 +10,8 @@ import '../../../shared/widgets/app_multi_select_list.dart';
 import '../../../shared/widgets/app_text_field.dart';
 import '../../roles/data/roles_providers.dart';
 import '../../roles/domain/role.dart';
+import '../../warehouses/data/warehouses_providers.dart';
+import '../../warehouses/domain/warehouse.dart';
 import '../data/users_providers.dart';
 import '../domain/user.dart';
 
@@ -16,7 +19,9 @@ import '../domain/user.dart';
 /// create-only (`CreateUserDto` has no counterpart field on `UpdateUserDto`
 /// — the backend never supports changing it), password is required on
 /// create and an optional reset field on edit, and role assignment is a
-/// FULL REPLACE of the user's role set either way (`roleIds`).
+/// FULL REPLACE of the user's role set either way (`roleIds`). Warehouse
+/// access (deny by default) is set here too, for admins holding
+/// `warehouse.access.assign`; so are the phone number and notification channel.
 Future<void> showUserFormDialog(BuildContext context, {WarehouseUser? user}) {
   return showDialog<void>(context: context, builder: (context) => _UserFormDialog(user: user));
 }
@@ -35,8 +40,12 @@ class _UserFormDialogState extends ConsumerState<_UserFormDialog> {
   late final TextEditingController _emailController;
   late final TextEditingController _fullNameController;
   late final TextEditingController _passwordController;
+  late final TextEditingController _phoneController;
   late UserStatus _status;
+  late String _notifyChannel;
   late Set<String> _selectedRoleIds;
+  late Set<String> _selectedWarehouseIds;
+  late String _mfaMethod;
   bool _saving = false;
   String? _error;
 
@@ -48,8 +57,12 @@ class _UserFormDialogState extends ConsumerState<_UserFormDialog> {
     _emailController = TextEditingController(text: widget.user?.email ?? '');
     _fullNameController = TextEditingController(text: widget.user?.fullName ?? '');
     _passwordController = TextEditingController();
+    _phoneController = TextEditingController(text: widget.user?.phone ?? '');
     _status = widget.user?.status ?? UserStatus.active;
+    _notifyChannel = widget.user?.notifyChannel ?? 'EMAIL';
     _selectedRoleIds = (widget.user?.roles ?? const []).map((r) => r.id).toSet();
+    _selectedWarehouseIds = (widget.user?.warehouses ?? const []).map((w) => w.id).toSet();
+    _mfaMethod = widget.user?.mfaMethod ?? 'NONE';
   }
 
   @override
@@ -57,6 +70,7 @@ class _UserFormDialogState extends ConsumerState<_UserFormDialog> {
     _emailController.dispose();
     _fullNameController.dispose();
     _passwordController.dispose();
+    _phoneController.dispose();
     super.dispose();
   }
 
@@ -71,25 +85,51 @@ class _UserFormDialogState extends ConsumerState<_UserFormDialog> {
     final api = ref.read(usersApiProvider);
     final fullName = _fullNameController.text.trim();
     final password = _passwordController.text.trim();
+    final phone = _phoneController.text.trim();
+    final canAssign = ref.read(authProvider).value?.user?.can('warehouse.access.assign') ?? false;
     try {
+      final WarehouseUser saved;
       if (_isEditing) {
-        await api.update(
+        saved = await api.update(
           widget.user!.id,
           fullName: fullName,
           password: password.isEmpty ? null : password,
           status: _status,
+          phone: phone, // '' clears it
+          notifyChannel: _notifyChannel,
           roleIds: _selectedRoleIds.toList(),
         );
       } else {
-        await api.create(
+        saved = await api.create(
           email: _emailController.text.trim(),
           password: password,
           fullName: fullName,
+          phone: phone.isEmpty ? null : phone,
+          notifyChannel: _notifyChannel,
           roleIds: _selectedRoleIds.toList(),
         );
       }
+      final before = (widget.user?.warehouses ?? const []).map((w) => w.id).toSet();
+      final changed = before.length != _selectedWarehouseIds.length || !before.containsAll(_selectedWarehouseIds);
+      if (canAssign && changed) await api.setWarehouses(saved.id, _selectedWarehouseIds.toList());
       ref.invalidate(usersListProvider);
       if (mounted) Navigator.of(context, rootNavigator: true).pop();
+    } on AppError catch (e) {
+      setState(() => _error = e.message);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _resetMfa() async {
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      final updated = await ref.read(usersApiProvider).resetMfa(widget.user!.id);
+      ref.invalidate(usersListProvider);
+      setState(() => _mfaMethod = updated.mfaMethod);
     } on AppError catch (e) {
       setState(() => _error = e.message);
     } finally {
@@ -101,6 +141,9 @@ class _UserFormDialogState extends ConsumerState<_UserFormDialog> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final rolesAsync = ref.watch(rolesListProvider);
+    final canAssign = ref.watch(authProvider.select((s) => s.value?.user?.can('warehouse.access.assign') ?? false));
+    // Inactive warehouses too: an assignment to one must stay visible so it can be removed.
+    final warehousesAsync = canAssign ? ref.watch(warehousesProvider(true)) : null;
 
     return AppDialog(
       title: _isEditing ? 'Edit user' : 'New user',
@@ -136,6 +179,39 @@ class _UserFormDialogState extends ConsumerState<_UserFormDialog> {
                   return null;
                 },
               ),
+              const SizedBox(height: AppSpacing.md),
+              AppTextField(
+                label: 'Mobile number (optional)',
+                controller: _phoneController,
+                keyboardType: TextInputType.phone,
+                hintText: '+268 7612 3456',
+                helperText: 'International format — used for SMS codes and SMS notifications',
+              ),
+              const SizedBox(height: AppSpacing.md),
+              AppDropdownField<String>(
+                label: 'Notifications',
+                value: _notifyChannel,
+                items: kNotifyChannelLabels.keys.toList(),
+                itemLabel: (c) => kNotifyChannelLabels[c]!,
+                onChanged: (value) {
+                  if (value != null) setState(() => _notifyChannel = value);
+                },
+              ),
+              if (_isEditing) ...[
+                const SizedBox(height: AppSpacing.md),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Sign-in verification: ${kMfaMethodLabels[_mfaMethod] ?? _mfaMethod}',
+                        style: theme.textTheme.bodyMedium,
+                      ),
+                    ),
+                    if (_mfaMethod != 'NONE')
+                      TextButton(onPressed: _saving ? null : _resetMfa, child: const Text('Reset (lost device)')),
+                  ],
+                ),
+              ],
               if (_isEditing) ...[
                 const SizedBox(height: AppSpacing.md),
                 AppDropdownField<UserStatus>(
@@ -171,6 +247,35 @@ class _UserFormDialogState extends ConsumerState<_UserFormDialog> {
                   }),
                 ),
               ),
+              if (warehousesAsync != null) ...[
+                const SizedBox(height: AppSpacing.md),
+                Text('Warehouse access', style: theme.textTheme.labelLarge),
+                Text(
+                  'Users see and work in only the warehouses ticked here (roles with all-warehouse access see every one).',
+                  style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                ),
+                warehousesAsync.when(
+                  loading: () => const LinearProgressIndicator(),
+                  error: (error, stackTrace) => Text(
+                    'Could not load warehouses',
+                    style: TextStyle(color: theme.colorScheme.error),
+                  ),
+                  data: (warehouses) => AppMultiSelectList<Warehouse>(
+                    items: warehouses,
+                    selectedIds: _selectedWarehouseIds,
+                    idOf: (w) => w.id,
+                    labelOf: (w) => w.name,
+                    subtitleOf: (w) => w.isActive ? w.code : '${w.code} · inactive',
+                    onToggle: (warehouse, selected) => setState(() {
+                      if (selected) {
+                        _selectedWarehouseIds.add(warehouse.id);
+                      } else {
+                        _selectedWarehouseIds.remove(warehouse.id);
+                      }
+                    }),
+                  ),
+                ),
+              ],
               if (_error != null) ...[
                 const SizedBox(height: AppSpacing.sm),
                 Text(_error!, style: TextStyle(color: theme.colorScheme.error)),

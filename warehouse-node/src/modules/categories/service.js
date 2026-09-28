@@ -2,11 +2,22 @@
 
 const { badRequest, conflict, notFound } = require('../../core/errors');
 const { TAGS } = require('../../core/cache/cache');
+const { cols, nest, Where } = require('../../core/models');
 
-const CATEGORY_INCLUDE = { workstream: { select: { id: true, name: true, code: true } } };
+// Every category read carries its workstream's { id, name, code }.
+const CATEGORY_SELECT = `
+  SELECT ${cols('category', 'c')},
+         ${cols('workstream', 'w', ['id', 'name', 'code'], 'workstream.')}
+    FROM categories c
+    JOIN workstreams w ON w.id = c.workstream_id`;
 
-function createCategoriesService({ prisma, cache, config, workstreams, workstreamManagers }) {
+function createCategoriesService({ db, models, cache, config, access, workstreams, workstreamManagers }) {
   const invalidate = () => cache.invalidate(TAGS.CATALOGUE);
+
+  async function findWithWorkstream(id) {
+    const row = await db.one(`${CATEGORY_SELECT} WHERE c.id = ?`, [id]);
+    return row ? nest(row) : null;
+  }
 
   /**
    * Intersects an explicit `workstreamId` query filter (if any) with a scoped viewer's assigned
@@ -22,39 +33,46 @@ function createCategoriesService({ prisma, cache, config, workstreams, workstrea
     return assignedIds.includes(explicit) ? explicit : { in: [] };
   }
 
-  /** [viewerId], when given, narrows the result to categories in a workstream that viewer is assigned to. */
+  /**
+   * [viewerId], when given, narrows the result to the viewer's warehouses, then to categories in a
+   * workstream the viewer is assigned to manage (if they have any such assignment).
+   */
   async function findAll(options = {}, viewerId) {
-    const workstreamId = await effectiveWorkstreamIdFilter(options.workstreamId, viewerId);
+    const [workstreamId, warehouseIds] = await Promise.all([
+      effectiveWorkstreamIdFilter(options.workstreamId, viewerId),
+      access.warehouseScope(viewerId),
+    ]);
     const wsKey = workstreamId && typeof workstreamId === 'object' ? `in:${workstreamId.in.join(',')}` : (workstreamId ?? '-');
-    const key = `categories:list:${options.includeInactive ? 'all' : 'active'}:${options.parentId ?? '-'}:${wsKey}`;
+    const key = `categories:list:${options.includeInactive ? 'all' : 'active'}:${options.parentId ?? '-'}:${wsKey}:${access.scopeKey(warehouseIds)}`;
 
-    return cache.wrap(key, { ttlMs: config.cache.referenceTtlMs, tags: [TAGS.CATALOGUE] }, () =>
-      prisma.category.findMany({
-        where: {
-          isActive: options.includeInactive ? undefined : true,
-          parentId: options.parentId,
-          workstreamId,
-        },
-        include: CATEGORY_INCLUDE,
-        orderBy: { name: 'asc' },
-      }),
-    );
+    return cache.wrap(key, { ttlMs: config.cache.referenceTtlMs, tags: [TAGS.CATALOGUE] }, async () => {
+      const where = new Where().eq('c.parent_id', options.parentId).in('w.warehouse_id', warehouseIds ?? undefined);
+      if (!options.includeInactive) where.raw('c.is_active = true');
+      if (workstreamId && typeof workstreamId === 'object') where.in('c.workstream_id', workstreamId.in);
+      else where.eq('c.workstream_id', workstreamId);
+      const rows = await db.query(`${CATEGORY_SELECT} ${where.sql} ORDER BY c.name ASC`, where.params);
+      return rows.map(nest);
+    });
   }
 
   // Never cached: writers (and audit old-values) must see the row as it is right now.
-  async function getExisting(id) {
-    const category = await prisma.category.findUnique({ where: { id } });
-    if (!category) throw notFound(`Category ${id} not found`);
-    return category;
-  }
+  const getExisting = (id) => models.getById('category', id, 'Category');
 
-  /** DB-level COUNT for the reports dashboard's catalogue summary. */
-  const countActive = () => prisma.category.count({ where: { isActive: true } });
+  /** DB-level COUNT for the reports dashboard's catalogue summary, within the given warehouses (null = all). */
+  async function countActive(warehouseIds = null) {
+    const where = new Where().raw('c.is_active = true').in('w.warehouse_id', warehouseIds ?? undefined);
+    const row = await db.one(
+      `SELECT COUNT(*) AS n FROM categories c JOIN workstreams w ON w.id = c.workstream_id ${where.sql}`,
+      where.params,
+    );
+    return Number(row.n);
+  }
 
   /** [viewerId], when given, 403s if that viewer is scoped and this category's workstream isn't one of theirs. */
   async function findOne(id, viewerId) {
-    const category = await prisma.category.findUnique({ where: { id }, include: CATEGORY_INCLUDE });
+    const category = await findWithWorkstream(id);
     if (!category) throw notFound(`Category ${id} not found`);
+    await workstreams.getAccessible(category.workstreamId, viewerId);
     if (viewerId) await workstreamManagers.assertScopedAccess(viewerId, category.workstreamId);
     return category;
   }
@@ -68,13 +86,13 @@ function createCategoriesService({ prisma, cache, config, workstreams, workstrea
       }
       if (visited.has(currentId)) break;
       visited.add(currentId);
-      const parent = await prisma.category.findUnique({ where: { id: currentId }, select: { parentId: true } });
+      const parent = await db.one('SELECT parent_id AS parentId FROM categories WHERE id = ?', [currentId]);
       currentId = parent?.parentId ?? null;
     }
   }
 
   async function create(dto, actingUserId) {
-    await workstreams.getExisting(dto.workstreamId);
+    await workstreams.getAccessible(dto.workstreamId, actingUserId);
     await workstreamManagers.assertScopedAccess(actingUserId, dto.workstreamId);
 
     if (dto.parentId) {
@@ -84,16 +102,18 @@ function createCategoriesService({ prisma, cache, config, workstreams, workstrea
       }
     }
 
-    const created = await prisma.category.create({
-      data: { name: dto.name, parentId: dto.parentId ?? null, workstreamId: dto.workstreamId },
-      include: CATEGORY_INCLUDE,
+    const created = await models.insert('category', {
+      name: dto.name,
+      parentId: dto.parentId ?? null,
+      workstreamId: dto.workstreamId,
     });
     await invalidate();
-    return created;
+    return findWithWorkstream(created.id);
   }
 
   async function update(id, dto, actingUserId) {
     const existing = await getExisting(id);
+    await workstreams.getAccessible(existing.workstreamId, actingUserId);
 
     // Scoped to the category's CURRENT workstream always — moving it to a new one additionally
     // requires scope over the DESTINATION, so a manager can't move a category into a workstream
@@ -101,10 +121,10 @@ function createCategoriesService({ prisma, cache, config, workstreams, workstrea
     await workstreamManagers.assertScopedAccess(actingUserId, existing.workstreamId);
 
     if (dto.workstreamId !== undefined && dto.workstreamId !== existing.workstreamId) {
-      await workstreams.getExisting(dto.workstreamId);
+      await workstreams.getAccessible(dto.workstreamId, actingUserId);
       await workstreamManagers.assertScopedAccess(actingUserId, dto.workstreamId);
 
-      const childCount = await prisma.category.count({ where: { parentId: id } });
+      const { childCount } = await db.one('SELECT COUNT(*) AS childCount FROM categories WHERE parent_id = ?', [id]);
       if (childCount > 0) {
         throw badRequest(
           'Cannot change the workstream of a category that has sub-categories — move or update the sub-categories first',
@@ -123,32 +143,31 @@ function createCategoriesService({ prisma, cache, config, workstreams, workstrea
       }
     }
 
-    const updated = await prisma.category.update({
-      where: { id },
-      data: {
+    await models.update(
+      'category',
+      id,
+      {
         name: dto.name ?? undefined,
         isActive: dto.isActive ?? undefined,
         workstreamId: dto.workstreamId ?? undefined,
-        ...(dto.parentId !== undefined ? { parentId: dto.parentId } : {}),
+        // null is meaningful here: it moves the category to the root.
+        parentId: dto.parentId,
       },
-      include: CATEGORY_INCLUDE,
-    });
+      'Category',
+    );
     await invalidate();
-    return updated;
+    return findWithWorkstream(id);
   }
 
   async function remove(id, actingUserId) {
     const existing = await getExisting(id);
+    await workstreams.getAccessible(existing.workstreamId, actingUserId);
     await workstreamManagers.assertScopedAccess(actingUserId, existing.workstreamId);
 
     // Reference data is soft-deleted (rule 10) — products keep a valid historical category reference.
-    const removed = await prisma.category.update({
-      where: { id },
-      data: { isActive: false },
-      include: CATEGORY_INCLUDE,
-    });
+    await models.update('category', id, { isActive: false }, 'Category');
     await invalidate();
-    return removed;
+    return findWithWorkstream(id);
   }
 
   return { findAll, findOne, getExisting, countActive, create, update, remove };

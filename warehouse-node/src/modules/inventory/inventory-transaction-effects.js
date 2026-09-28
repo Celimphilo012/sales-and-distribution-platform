@@ -1,6 +1,6 @@
 "use strict";
 exports.resolveBucketDeltas = resolveBucketDeltas;
-const client_1 = require("@prisma/client");
+const { InventoryTransactionType } = require('../../core/enums');
 const { badRequest } = require('../../core/errors');
 /**
  * Maps a transaction type + its location(s) to the concrete balance-bucket
@@ -32,19 +32,19 @@ function resolveBucketDeltas(input) {
     };
     switch (type) {
         // Stock enters the system at a location.
-        case client_1.InventoryTransactionType.RECEIVE:
-        case client_1.InventoryTransactionType.RETURN:
+        case InventoryTransactionType.RECEIVE:
+        case InventoryTransactionType.RETURN:
             requireTo();
             forbidFrom();
             return [{ locationId: toLocationId, bucket: 'onHand', delta: quantity }];
         // Stock leaves the system from a location.
-        case client_1.InventoryTransactionType.ISSUE:
-        case client_1.InventoryTransactionType.SALE:
+        case InventoryTransactionType.ISSUE:
+        case InventoryTransactionType.SALE:
             requireFrom();
             forbidTo();
             return [{ locationId: fromLocationId, bucket: 'onHand', delta: -quantity }];
         // Stock physically moves between two locations (§H point 3).
-        case client_1.InventoryTransactionType.TRANSFER:
+        case InventoryTransactionType.TRANSFER:
             requireFrom();
             requireTo();
             if (fromLocationId === toLocationId) {
@@ -57,14 +57,14 @@ function resolveBucketDeltas(input) {
         // Same-location bucket reclassification: sellable stock leaves on_hand
         // and enters the damaged/lost bucket. Never a silent overwrite (rule 4)
         // — both sides of the move are recorded as explicit deltas.
-        case client_1.InventoryTransactionType.DAMAGED:
+        case InventoryTransactionType.DAMAGED:
             requireFrom();
             forbidTo();
             return [
                 { locationId: fromLocationId, bucket: 'onHand', delta: -quantity },
                 { locationId: fromLocationId, bucket: 'damaged', delta: quantity },
             ];
-        case client_1.InventoryTransactionType.LOST:
+        case InventoryTransactionType.LOST:
             requireFrom();
             forbidTo();
             return [
@@ -73,19 +73,19 @@ function resolveBucketDeltas(input) {
             ];
         // Reservation only earmarks stock (reduces `available` via the reserved
         // bucket) — on_hand is untouched until actual dispatch (Phase 1E/1F).
-        case client_1.InventoryTransactionType.RESERVATION:
+        case InventoryTransactionType.RESERVATION:
             requireFrom();
             forbidTo();
             return [{ locationId: fromLocationId, bucket: 'reserved', delta: quantity }];
-        case client_1.InventoryTransactionType.RELEASE_RESERVATION:
+        case InventoryTransactionType.RELEASE_RESERVATION:
             requireFrom();
             forbidTo();
             return [{ locationId: fromLocationId, bucket: 'reserved', delta: -quantity }];
         // Generic manual corrections. Caller picks the bucket (default onHand)
         // and the direction: toLocationId increases it, fromLocationId
         // decreases it — exactly one of the two, never both (that's TRANSFER).
-        case client_1.InventoryTransactionType.ADJUSTMENT:
-        case client_1.InventoryTransactionType.STOCK_COUNT: {
+        case InventoryTransactionType.ADJUSTMENT:
+        case InventoryTransactionType.STOCK_COUNT: {
             const targetBucket = bucket ?? 'onHand';
             if (fromLocationId && toLocationId) {
                 throw badRequest(`${type} accepts only one of fromLocationId/toLocationId`);

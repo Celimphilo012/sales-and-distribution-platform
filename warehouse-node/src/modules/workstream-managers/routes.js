@@ -7,12 +7,12 @@ const { obj, uuid, uuidParams } = require('../../core/schema');
  * (workstreams.manage) and from the catalogue mutations this assignment scopes (products.manage).
  * Gated workstreams.assign throughout.
  */
-async function workstreamManagersRoutes(app) {
+function workstreamManagersRoutes(app) {
   const { workstreamManagers } = app.services;
   const guard = [app.authenticate, app.requirePermissions('workstreams.assign')];
 
   app.get('/', { onRequest: guard, schema: { params: uuidParams('workstreamId') } }, async (request) =>
-    workstreamManagers.listForWorkstream(request.params.workstreamId),
+    workstreamManagers.listForWorkstream(request.params.workstreamId, request.user.id),
   );
 
   app.post(
@@ -23,7 +23,7 @@ async function workstreamManagersRoutes(app) {
     },
     async (request) => {
       request.auditEntity = 'workstream_managers';
-      const row = await workstreamManagers.assign(request.params.workstreamId, request.body.userId);
+      const row = await workstreamManagers.assign(request.params.workstreamId, request.body.userId, request.user.id);
       request.auditEntityId = row.id;
       return row;
     },
@@ -34,13 +34,13 @@ async function workstreamManagersRoutes(app) {
     { onRequest: guard, schema: { params: uuidParams('workstreamId', 'userId') } },
     async (request) => {
       request.auditEntity = 'workstream_managers';
-      return workstreamManagers.unassign(request.params.workstreamId, request.params.userId);
+      return workstreamManagers.unassign(request.params.workstreamId, request.params.userId, request.user.id);
     },
   );
 }
 
 /** "Which workstreams am I scoped to?" — any authenticated user may read their own assignments. */
-async function myWorkstreamsRoutes(app) {
+function myWorkstreamsRoutes(app) {
   app.get('/', { onRequest: [app.authenticate] }, async (request) =>
     app.services.workstreamManagers.listForUser(request.user.id),
   );

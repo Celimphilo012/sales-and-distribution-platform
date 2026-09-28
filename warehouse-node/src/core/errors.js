@@ -26,6 +26,8 @@ module.exports = {
   forbidden: make(403, 'Forbidden'),
   notFound: make(404, 'Not Found'),
   conflict: make(409, 'Conflict'),
+  preconditionRequired: make(428, 'Precondition Required'),
+  tooManyRequests: make(429, 'Too Many Requests'),
   unprocessable: make(422, 'Unprocessable Entity'),
   serviceUnavailable: make(503, 'Service Unavailable'),
   internal: make(500, 'Internal Server Error'),

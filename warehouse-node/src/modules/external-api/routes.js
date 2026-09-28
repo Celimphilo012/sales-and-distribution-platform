@@ -1,6 +1,6 @@
 'use strict';
 
-const { ProductStatus } = require('@prisma/client');
+const { ProductStatus } = require('../../core/enums');
 const { obj, nonEmpty, str, num, uuid, opt, arrayOf, enumOf, boolQuery } = require('../../core/schema');
 
 // System-to-system: authenticated by X-API-Key (never a user JWT), scoped per route, mounted at /api/v1.
@@ -23,10 +23,15 @@ const availabilityBody = obj(
   { items: arrayOf(obj({ productId: uuid, locationId: opt(uuid) }, ['productId']), { minItems: 1 }) },
   ['items'],
 );
-const reserveBody = obj({ reference: nonEmpty(), lines: arrayOf(stockLine, { minItems: 1 }) }, ['reference', 'lines']);
+const issueBody = obj({ reference: nonEmpty(), lines: arrayOf(stockLine, { minItems: 1 }) }, ['reference', 'lines']);
+// `label` is optional human text for the packing screen (e.g. "ORD-0012 · Customer name").
+const reserveBody = obj(
+  { reference: nonEmpty(), label: opt(str({ maxLength: 191 })), lines: arrayOf(stockLine, { minItems: 1 }) },
+  ['reference', 'lines'],
+);
 const releaseBody = obj({ reference: nonEmpty() }, ['reference']);
 
-async function externalApiRoutes(app) {
+function externalApiRoutes(app) {
   const { products, categories, warehouses, locations, stockReservations } = app.services;
   const { requireScopes } = app;
 
@@ -56,8 +61,8 @@ async function externalApiRoutes(app) {
   app.post(
     '/stock/availability',
     { onRequest: [requireScopes('stock:read')], schema: { body: availabilityBody } },
-    async (request, reply) => {
-      reply.code(200);
+    async (request, res) => {
+      res.status(200);
       return stockReservations.checkAvailability(request.body);
     },
   );
@@ -66,11 +71,11 @@ async function externalApiRoutes(app) {
     app.post(
       `/stock/${path}`,
       { onRequest: [requireScopes(scope)], schema: { body: bodySchema } },
-      async (request, reply) => {
+      async (request, res) => {
         request.auditEntity = 'stock_reservations';
         request.auditEntityId = request.body.reference;
         request.auditAction = verb;
-        reply.code(200);
+        res.status(200);
         return run(request);
       },
     );
@@ -82,7 +87,7 @@ async function externalApiRoutes(app) {
   stockAction('release', 'stock:reserve', 'RELEASE', releaseBody, (request) =>
     stockReservations.release(request.body),
   );
-  stockAction('issue', 'stock:issue', 'ISSUE', reserveBody, (request) => stockReservations.issue(request.body));
+  stockAction('issue', 'stock:issue', 'ISSUE', issueBody, (request) => stockReservations.issue(request.body));
 }
 
 module.exports = externalApiRoutes;

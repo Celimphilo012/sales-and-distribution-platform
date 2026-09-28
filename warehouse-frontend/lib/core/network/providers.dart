@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../auth/auth_provider.dart';
 import '../persistence/secure_storage_provider.dart';
+import '../../shared/widgets/otp_confirm_dialog.dart';
 import 'api_client.dart';
 import 'auth_token_store.dart';
 
@@ -15,5 +16,9 @@ final authTokenStoreProvider = Provider<AuthTokenStore>((ref) {
 /// user to `/login` on its own.
 final apiClientProvider = Provider<ApiClient>((ref) {
   final tokenStore = ref.watch(authTokenStoreProvider);
-  return ApiClient(tokenStore, onRefreshFailed: () => ref.read(authProvider.notifier).handleSessionExpired());
+  return ApiClient(
+    tokenStore,
+    onRefreshFailed: () => ref.read(authProvider.notifier).handleSessionExpired(),
+    otpPrompt: showOtpPrompt,
+  );
 });

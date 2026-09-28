@@ -2,7 +2,7 @@
 
 /**
  * Read-side parity check: replays the same requests against the ORIGINAL NestJS API and this
- * Fastify port (same warehouse_db) and diffs status + body.
+ * Express port (same warehouse_db) and diffs status + body.
  *
  *   OLD_URL=http://localhost:3100 NEW_URL=http://localhost:3200 \
  *   PARITY_EMAIL=... PARITY_PASSWORD=... node test/parity.js

@@ -6,12 +6,14 @@ import 'package:go_router/go_router.dart';
 import '../app_shell/responsive_app_shell.dart';
 import '../core/auth/auth_provider.dart';
 import '../core/auth/auth_state.dart';
+import '../core/ui/root_navigator_key.dart';
 import '../features/attribute_types/presentation/attribute_types_screen.dart';
 import '../features/audit/presentation/audit_log_screen.dart';
 import '../features/auth/presentation/login_screen.dart';
 import '../features/categories/presentation/categories_screen.dart';
 import '../features/inventory/presentation/inventory_screen.dart';
 import '../features/locations/presentation/warehouse_structure_screen.dart';
+import '../features/packing/presentation/packing_screen.dart';
 import '../features/dashboard/presentation/dashboard_screen.dart';
 import '../features/product_import/presentation/product_import_screen.dart';
 import '../features/products/presentation/product_detail_screen.dart';
@@ -58,6 +60,7 @@ const _customBuiltPaths = {
   RoutePaths.transfers,
   RoutePaths.stockCounts,
   RoutePaths.stockAdjustments,
+  RoutePaths.packing,
   RoutePaths.users,
   RoutePaths.roles,
   RoutePaths.audit,
@@ -91,6 +94,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   final refreshListenable = _AuthRefreshListenable(ref);
 
   return GoRouter(
+    navigatorKey: rootNavigatorKey,
     initialLocation: RoutePaths.splash,
     refreshListenable: refreshListenable,
     redirect: (context, state) {
@@ -178,6 +182,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (context, state) => StockCountDetailScreen(countId: state.pathParameters['id']!),
           ),
           GoRoute(path: RoutePaths.stockAdjustments, builder: (context, state) => const StockAdjustmentsScreen()),
+          GoRoute(path: RoutePaths.packing, builder: (context, state) => const PackingScreen()),
           GoRoute(path: RoutePaths.users, builder: (context, state) => const UsersScreen()),
           GoRoute(path: RoutePaths.roles, builder: (context, state) => const RolesScreen()),
           GoRoute(

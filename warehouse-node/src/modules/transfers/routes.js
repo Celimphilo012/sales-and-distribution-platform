@@ -15,7 +15,7 @@ const body = obj(
 );
 
 // Mounted at /inventory/transfers
-async function transfersRoutes(app) {
+function transfersRoutes(app) {
   const { transfers } = app.services;
 
   app.post(

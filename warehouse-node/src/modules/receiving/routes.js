@@ -19,7 +19,7 @@ const body = obj(
 );
 
 // Mounted at /inventory/receiving
-async function receivingRoutes(app) {
+function receivingRoutes(app) {
   const { receiving } = app.services;
 
   app.post(

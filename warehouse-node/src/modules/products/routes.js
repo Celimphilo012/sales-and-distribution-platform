@@ -1,6 +1,6 @@
 'use strict';
 
-const { ProductStatus } = require('@prisma/client');
+const { ProductStatus } = require('../../core/enums');
 const { obj, nonEmpty, str, num, uuid, opt, arrayOf, enumOf, boolQuery, uuidParams } = require('../../core/schema');
 
 // Money/quantity fields: at most 2 decimal places (handled by Ajv's multipleOf precision option).
@@ -50,11 +50,12 @@ const updateBody = obj({
   attributes: opt(arrayOf(attributeInput)),
 });
 
-async function productsRoutes(app) {
-  const { products } = app.services;
+function productsRoutes(app) {
+  const { products, otp } = app.services;
   const view = [app.authenticate, app.requirePermissions('catalogue.view')];
   const manage = [app.authenticate, app.requirePermissions('products.manage')];
   const idParams = { params: uuidParams('id') };
+  const deactivateOtp = otp.requireOtp('product.deactivate', { when: (req) => req.body.status === 'INACTIVE' });
 
   app.get('/', { onRequest: view, schema: { querystring: listQuery } }, async (request) =>
     products.findAll(request.query, request.user.id),
@@ -68,16 +69,24 @@ async function productsRoutes(app) {
     products.create(request.body, request.user.id),
   );
 
-  app.patch('/:id', { onRequest: manage, schema: { ...idParams, body: updateBody } }, async (request) => {
-    request.auditOldValue = await products.getExisting(request.params.id);
-    return products.update(request.params.id, request.body, request.user.id);
-  });
+  app.patch(
+    '/:id',
+    { onRequest: manage, preHandler: [deactivateOtp], schema: { ...idParams, body: updateBody } },
+    async (request) => {
+      request.auditOldValue = await products.getExisting(request.params.id);
+      return products.update(request.params.id, request.body, request.user.id);
+    },
+  );
 
-  app.delete('/:id', { onRequest: manage, schema: idParams }, async (request) => {
-    request.auditOldValue = await products.getExisting(request.params.id);
-    request.auditAction = 'DEACTIVATE';
-    return products.remove(request.params.id, request.user.id);
-  });
+  app.delete(
+    '/:id',
+    { onRequest: manage, preHandler: [otp.requireOtp('product.deactivate')], schema: idParams },
+    async (request) => {
+      request.auditOldValue = await products.getExisting(request.params.id);
+      request.auditAction = 'DEACTIVATE';
+      return products.remove(request.params.id, request.user.id);
+    },
+  );
 }
 
 module.exports = productsRoutes;

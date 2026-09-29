@@ -112,7 +112,7 @@ async function main() {
       });
       console.log('');
       console.log('=================================================================');
-      console.log(' BACK-OFFICE API KEY (raw — shown once, configure it into /backend now):');
+      console.log(' BACK-OFFICE API KEY (raw — shown once, configure it into /ordering-backend (WAREHOUSE_API_KEY) now):');
       console.log(` ${rawKey}`);
       console.log(` key id: ${created.id}`);
       console.log('=================================================================');

@@ -2,8 +2,8 @@
 
 The Back-Office / Ordering System API (customers, orders, fulfilment, reports, users/roles) — plain
 JavaScript on **Node.js + Express**, **no ORM**: every query is parameterised SQL through `mysql2`.
-It replaces the NestJS + Prisma `/backend` with the **same routes, request/response shapes,
-permissions and `distribution_platform` schema**; `/ordering-frontend` talks only to it.
+It replaced the NestJS + Prisma `/backend` (since deleted — it is in git history) with the **same
+routes, request/response shapes, permissions and `distribution_platform` schema**; `/ordering-frontend` talks only to it.
 
 Like every part of this platform it follows CLAUDE.md: permissions not roles, the order state machine
 in config (`src/modules/order-status-transitions.js`), payment status independent of order status,
@@ -42,7 +42,7 @@ src/modules/           auth, users, roles (+permissions), audit, customers, orde
                        warehouse-location relays), reports (+dashboard)
 src/catalog/           the permission catalog and default role grants
 db/                    schema.sql, seed.js
-test/                  integration suite (fake warehouse, throwaway DB) + parity.js
+test/                  integration suite (fake warehouse, throwaway DB)
 ```
 
 ## Differences from the NestJS `/backend`
@@ -63,8 +63,8 @@ npm test
 ```
 
 The suite runs the whole order lifecycle against an in-process fake warehouse (no real stock is
-touched). `test/parity.js` replays every read endpoint against the legacy `/backend` and this port on
-the same database and diffs the results (33/33 identical at the switch).
+touched). Before the old `/backend` was deleted, a parity script replayed every read endpoint against
+both on the same database: 33/33 identical.
 
 ## Deploying on cPanel (Phusion Passenger)
 

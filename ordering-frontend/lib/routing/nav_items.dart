@@ -9,8 +9,8 @@ import 'route_paths.dart';
 /// is always visible (e.g. Dashboard, Settings); a non-empty list means the
 /// signed-in user must hold at least one of those permission strings —
 /// mirroring the ORDERING backend's permission catalog
-/// (`backend/src/permissions/constants/permission-catalog.ts`), never a role
-/// name (rule 1). This app is a standalone client of `/backend` only; it
+/// (`ordering-backend/src/catalog/permission-catalog.js`), never a role
+/// name (rule 1). This app is a standalone client of `/ordering-backend` only; it
 /// never sees warehouse-side permissions like `catalogue.view`/
 /// `inventory.*`/`warehouse.structure.*` — those don't exist on this system
 /// (step R1 removed products/categories/warehouses/inventory, which used

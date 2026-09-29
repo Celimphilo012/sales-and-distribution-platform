@@ -1,39 +1,36 @@
 # Sales & Distribution Platform
 
-Monorepo for the Inventory, Sales and Distribution Management Platform — one
-backend/API, one central database, two front-end interfaces (Back Office
-first, Consultant Portal second). See `CLAUDE.md` and `ARCHITECTURE.md` for
-the full design and non-negotiable rules; they govern the whole repo and
-stay at this root regardless of which app you're working in.
+Monorepo for the Inventory, Sales and Distribution Management Platform: **two independent
+systems with two separate databases** — the Warehouse System and the Back-Office / Ordering
+System — each with its own API, its own auth and its own Flutter front end. See `CLAUDE.md` and
+`ARCHITECTURE.md` for the full design and non-negotiable rules; they govern the whole repo.
 
 ## Layout
 
 ```
 sales-and-distribution-platform/
-├── CLAUDE.md          Rules and current phase — read first
-├── ARCHITECTURE.md    Full system design
-├── backend/           NestJS API (TypeScript, MySQL/MariaDB via Prisma)
-│                       — see backend/README.md for setup + run steps
-└── frontend/           Flutter app (Back Office UI) — not started yet
+├── CLAUDE.md              Rules and current phase — read first
+├── ARCHITECTURE.md        Full system design
+├── warehouse-node/        Warehouse API — Node.js + Express + raw SQL (mysql2), port 3200, db warehouse_db
+├── warehouse-frontend/    Warehouse Flutter app (talks only to warehouse-node), web port 8090
+├── ordering-backend/      Ordering API — Node.js + Express + raw SQL (mysql2), port 3300,
+│                          db distribution_platform; calls warehouse-node's API-key API for stock
+├── ordering-frontend/     Ordering Flutter app (talks only to ordering-backend), web port 8080
+├── warehouse/             LEGACY NestJS + Prisma warehouse API (3100) — reference only
+└── edms-prototype-flutter/  UI design prototype the warehouse app's look follows
 ```
 
-## Backend
+No ORM and no migration tool: each API's `db/schema.sql` is its whole schema. Setup, tests and
+deployment steps are in each app's own `README.md`.
 
-The API is complete through Phase 1 (auth, catalogue, warehouses, inventory
-ledger, orders + full fulfilment lifecycle, reports/audit/dashboard). Setup,
-scripts, and the full endpoint list live in `backend/README.md` — everything
-there runs from inside `backend/`:
+## Run locally
 
 ```bash
-cd backend
-npm install
-npx prisma migrate dev
-npm run seed
-npm run start:dev
+# Warehouse API
+cd warehouse-node && npm install && npm start                 # :3200
+# Ordering API
+cd ordering-backend && npm install && npm start               # :3300
+# Front ends
+cd warehouse-frontend && flutter run -d web-server --web-port=8090
+cd ordering-frontend  && flutter run -d web-server --web-port=8080
 ```
-
-## Frontend
-
-Not started. Will be a Flutter app (web/Android/iOS/desktop, Riverpod for
-state) living in `frontend/`, reusing one Back Office codebase first and a
-Consultant Portal second, per `ARCHITECTURE.md` §K–§L.

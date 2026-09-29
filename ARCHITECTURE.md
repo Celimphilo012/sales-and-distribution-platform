@@ -20,7 +20,8 @@ Inventory, Sales and Distribution Management Platform.
   own auth/users/roles (warehouse staff log in here). Exposes an **API-key-protected
   external API** for other systems to read the catalogue and check/reserve/release/issue
   stock. **Built first.**
-- **Back-Office / Ordering System** (`/backend`, port 3000, db `distribution_platform`)
+- **Back-Office / Ordering System** (`/ordering-backend`, port 3300, db `distribution_platform`;
+  originally `/backend` on 3000, replaced and deleted 2026-09-29)
   — the existing system: its own auth/users/roles, customers, orders, order lifecycle,
   sales batches, payments, order-side reports, dashboard. Owns NO inventory tables. Calls
   the Warehouse API (with the shared key) whenever it needs stock. Stores product id +

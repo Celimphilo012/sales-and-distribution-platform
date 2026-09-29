@@ -1,4 +1,4 @@
-/// Mirrors the backend's `CustomerStatus` enum (`backend/prisma/schema.prisma`)
+/// Mirrors the backend's `customers.status` enum (`ordering-backend/db/schema.sql`)
 /// — two states only (unlike `UserStatus`'s three). `DELETE /customers/:id`
 /// always lands on INACTIVE (soft-delete, rule 10); `PATCH` can also set
 /// `status` directly, which is how a deactivated customer gets reactivated.

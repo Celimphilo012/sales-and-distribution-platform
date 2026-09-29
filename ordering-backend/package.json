@@ -1,7 +1,7 @@
 {
   "name": "ordering-backend",
   "version": "1.0.0",
-  "description": "Back-Office / Ordering System API — plain JavaScript on Node.js + Express with raw SQL (mysql2). Same API contract and distribution_platform schema as the legacy /backend.",
+  "description": "Back-Office / Ordering System API — plain JavaScript on Node.js + Express with raw SQL (mysql2). Same API contract and distribution_platform schema as the NestJS /backend it replaced.",
   "private": true,
   "license": "UNLICENSED",
   "main": "app.js",

@@ -12,11 +12,13 @@ import '../../roles/domain/role.dart';
 import '../data/users_providers.dart';
 import '../domain/user.dart';
 
-/// Create (no [user]) or edit (pass [user]) a warehouse user: email is
+/// Create (no [user]) or edit (pass [user]) a user: email is
 /// create-only (`CreateUserDto` has no counterpart field on `UpdateUserDto`
 /// — the backend never supports changing it), password is required on
 /// create and an optional reset field on edit, and role assignment is a
-/// FULL REPLACE of the user's role set either way (`roleIds`).
+/// FULL REPLACE of the user's role set either way (`roleIds`). The phone
+/// number and notification channel are set here too, and an admin can reset
+/// a user's sign-in verification (lost device).
 Future<void> showUserFormDialog(BuildContext context, {WarehouseUser? user}) {
   return showDialog<void>(context: context, builder: (context) => _UserFormDialog(user: user));
 }
@@ -35,8 +37,11 @@ class _UserFormDialogState extends ConsumerState<_UserFormDialog> {
   late final TextEditingController _emailController;
   late final TextEditingController _fullNameController;
   late final TextEditingController _passwordController;
+  late final TextEditingController _phoneController;
   late UserStatus _status;
+  late String _notifyChannel;
   late Set<String> _selectedRoleIds;
+  late String _mfaMethod;
   bool _saving = false;
   String? _error;
 
@@ -48,8 +53,11 @@ class _UserFormDialogState extends ConsumerState<_UserFormDialog> {
     _emailController = TextEditingController(text: widget.user?.email ?? '');
     _fullNameController = TextEditingController(text: widget.user?.fullName ?? '');
     _passwordController = TextEditingController();
+    _phoneController = TextEditingController(text: widget.user?.phone ?? '');
     _status = widget.user?.status ?? UserStatus.active;
+    _notifyChannel = widget.user?.notifyChannel ?? 'EMAIL';
     _selectedRoleIds = (widget.user?.roles ?? const []).map((r) => r.id).toSet();
+    _mfaMethod = widget.user?.mfaMethod ?? 'NONE';
   }
 
   @override
@@ -57,6 +65,7 @@ class _UserFormDialogState extends ConsumerState<_UserFormDialog> {
     _emailController.dispose();
     _fullNameController.dispose();
     _passwordController.dispose();
+    _phoneController.dispose();
     super.dispose();
   }
 
@@ -71,6 +80,7 @@ class _UserFormDialogState extends ConsumerState<_UserFormDialog> {
     final api = ref.read(usersApiProvider);
     final fullName = _fullNameController.text.trim();
     final password = _passwordController.text.trim();
+    final phone = _phoneController.text.trim();
     try {
       if (_isEditing) {
         await api.update(
@@ -78,6 +88,8 @@ class _UserFormDialogState extends ConsumerState<_UserFormDialog> {
           fullName: fullName,
           password: password.isEmpty ? null : password,
           status: _status,
+          phone: phone, // '' clears it
+          notifyChannel: _notifyChannel,
           roleIds: _selectedRoleIds.toList(),
         );
       } else {
@@ -85,11 +97,29 @@ class _UserFormDialogState extends ConsumerState<_UserFormDialog> {
           email: _emailController.text.trim(),
           password: password,
           fullName: fullName,
+          phone: phone.isEmpty ? null : phone,
+          notifyChannel: _notifyChannel,
           roleIds: _selectedRoleIds.toList(),
         );
       }
       ref.invalidate(usersListProvider);
       if (mounted) Navigator.of(context, rootNavigator: true).pop();
+    } on AppError catch (e) {
+      setState(() => _error = e.message);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _resetMfa() async {
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      final updated = await ref.read(usersApiProvider).resetMfa(widget.user!.id);
+      ref.invalidate(usersListProvider);
+      setState(() => _mfaMethod = updated.mfaMethod);
     } on AppError catch (e) {
       setState(() => _error = e.message);
     } finally {
@@ -136,6 +166,39 @@ class _UserFormDialogState extends ConsumerState<_UserFormDialog> {
                   return null;
                 },
               ),
+              const SizedBox(height: AppSpacing.md),
+              AppTextField(
+                label: 'Mobile number (optional)',
+                controller: _phoneController,
+                keyboardType: TextInputType.phone,
+                hintText: '+268 7612 3456',
+                helperText: 'International format — used for SMS codes and SMS notifications',
+              ),
+              const SizedBox(height: AppSpacing.md),
+              AppDropdownField<String>(
+                label: 'Notifications',
+                value: _notifyChannel,
+                items: kNotifyChannelLabels.keys.toList(),
+                itemLabel: (c) => kNotifyChannelLabels[c]!,
+                onChanged: (value) {
+                  if (value != null) setState(() => _notifyChannel = value);
+                },
+              ),
+              if (_isEditing) ...[
+                const SizedBox(height: AppSpacing.md),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Sign-in verification: ${kMfaMethodLabels[_mfaMethod] ?? _mfaMethod}',
+                        style: theme.textTheme.bodyMedium,
+                      ),
+                    ),
+                    if (_mfaMethod != 'NONE')
+                      TextButton(onPressed: _saving ? null : _resetMfa, child: const Text('Reset (lost device)')),
+                  ],
+                ),
+              ],
               if (_isEditing) ...[
                 const SizedBox(height: AppSpacing.md),
                 AppDropdownField<UserStatus>(

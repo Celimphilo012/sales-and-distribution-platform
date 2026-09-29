@@ -47,6 +47,9 @@ function customersRoutes(app) {
   // Every write is gated customers.create (there is no separate edit/delete key).
   const write = [app.authenticate, app.requirePermissions('customers.create')];
   const idParams = { params: uuidParams('id') };
+  const confirmDeactivate = app.services.otp.requireOtp('customer.deactivate', {
+    when: (req) => req.method === 'DELETE' || (req.body.status != null && req.body.status !== 'ACTIVE'),
+  });
 
   app.get(
     '/',
@@ -63,6 +66,7 @@ function customersRoutes(app) {
     '/:id',
     {
       onRequest: write,
+      preHandler: [confirmDeactivate],
       schema: { ...idParams, body: obj({ name: opt(str({ minLength: 1 })), ...optional, status: opt(enumOf(CustomerStatus)) }) },
     },
     async (request) => {
@@ -70,7 +74,7 @@ function customersRoutes(app) {
       return customers.update(request.params.id, request.body);
     },
   );
-  app.delete('/:id', { onRequest: write, schema: idParams }, async (request) => {
+  app.delete('/:id', { onRequest: write, preHandler: [confirmDeactivate], schema: idParams }, async (request) => {
     request.auditOldValue = await customers.getExisting(request.params.id);
     request.auditAction = 'DEACTIVATE';
     return customers.remove(request.params.id);

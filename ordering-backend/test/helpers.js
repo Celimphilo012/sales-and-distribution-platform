@@ -97,15 +97,27 @@ async function createFakeWarehouse() {
   return { state, url: `http://127.0.0.1:${server.address().port}`, close: () => new Promise((r) => server.close(r)) };
 }
 
+/**
+ * Email and SMS always go to the in-memory `outbox`. One-time-code confirmation is OFF unless a
+ * suite asks for it with { otp: { enabled: true } } — suites that are not about OTP stay readable.
+ */
 async function createTestApp(configOverrides = {}) {
   const base = loadConfig();
-  const config = { ...base, ...configOverrides, warehouseApi: { ...base.warehouseApi, ...(configOverrides.warehouseApi ?? {}) } };
+  const config = {
+    ...base,
+    ...configOverrides,
+    warehouseApi: { ...base.warehouseApi, ...(configOverrides.warehouseApi ?? {}) },
+    otp: { ...base.otp, enabled: false, ...(configOverrides.otp ?? {}) },
+    email: { ...base.email, transport: 'memory' },
+    sms: { ...base.sms, transport: 'memory' },
+  };
   const app = buildApp({ config });
   const server = await listen(app);
   const origin = `http://127.0.0.1:${server.address().port}`;
   return {
     origin,
     db: app.locals.db,
+    outbox: app.locals.services.notifier.outbox,
     close: async () => {
       await new Promise((r) => server.close(r));
       await app.close();
@@ -113,10 +125,10 @@ async function createTestApp(configOverrides = {}) {
   };
 }
 
-/** Tiny JSON client: c.get/post/patch/delete(path, body?) -> { status, json }. */
+/** Tiny JSON client: c.get/post/patch/delete(path, body?, headers?) -> { status, json }. */
 function client(origin, token) {
-  const request = async (method, path, body) => {
-    const headers = token ? { authorization: `Bearer ${token}` } : {};
+  const request = async (method, path, body, extraHeaders = {}) => {
+    const headers = { ...(token ? { authorization: `Bearer ${token}` } : {}), ...extraHeaders };
     if (body !== undefined) headers['content-type'] = 'application/json';
     const res = await fetch(origin + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
     const text = await res.text();
@@ -129,11 +141,11 @@ function client(origin, token) {
     return { status: res.status, json, body: text };
   };
   return {
-    get: (p) => request('GET', p),
-    post: (p, b) => request('POST', p, b ?? {}),
-    patch: (p, b) => request('PATCH', p, b),
-    put: (p, b) => request('PUT', p, b),
-    delete: (p) => request('DELETE', p),
+    get: (p, h) => request('GET', p, undefined, h),
+    post: (p, b, h) => request('POST', p, b ?? {}, h),
+    patch: (p, b, h) => request('PATCH', p, b, h),
+    put: (p, b, h) => request('PUT', p, b, h),
+    delete: (p, h) => request('DELETE', p, undefined, h),
   };
 }
 

@@ -207,6 +207,7 @@ class Order {
     required this.orderDate,
     this.deliveryInfo,
     required this.total,
+    this.amountPaid = 0,
     required this.createdAt,
     required this.updatedAt,
     required this.customer,
@@ -224,6 +225,9 @@ class Order {
   final DateTime orderDate;
   final String? deliveryInfo;
   final double total;
+
+  /// Sum of the order's RECORDED payments (server-computed; voided ones excluded).
+  final double amountPaid;
   final DateTime createdAt;
   final DateTime updatedAt;
   final OrderCustomerRef customer;
@@ -241,6 +245,7 @@ class Order {
     orderDate: DateTime.parse(json['orderDate'] as String),
     deliveryInfo: json['deliveryInfo'] as String?,
     total: _num(json['total']),
+    amountPaid: _num(json['amountPaid']),
     createdAt: DateTime.parse(json['createdAt'] as String),
     updatedAt: DateTime.parse(json['updatedAt'] as String),
     customer: OrderCustomerRef.fromJson(json['customer'] as Map<String, dynamic>),

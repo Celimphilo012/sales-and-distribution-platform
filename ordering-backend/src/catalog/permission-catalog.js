@@ -21,11 +21,19 @@ const PERMISSION_CATALOG = [
   { key: 'fulfilment.pack', description: 'Pack orders', module: 'fulfilment' },
   { key: 'fulfilment.dispatch', description: 'Dispatch orders', module: 'fulfilment' },
 
+  { key: 'payments.record', description: 'Record payments against orders', module: 'payments' },
+  { key: 'payments.void', description: 'Void a recorded payment (kept on record, with a reason)', module: 'payments' },
+
   { key: 'users.manage', description: 'Manage users', module: 'users' },
   { key: 'roles.manage', description: 'Manage roles and role permissions', module: 'roles' },
 
   { key: 'audit.view', description: 'View audit logs', module: 'audit' },
   { key: 'reports.view', description: 'View reports and the manager dashboard', module: 'reports' },
+  {
+    key: 'settings.manage',
+    description: 'Configure system settings such as email (SMTP) and SMS (httpSMS) delivery',
+    module: 'settings',
+  },
 ];
 
 const ROLE_PERMISSION_MAP = {
@@ -39,6 +47,8 @@ const ROLE_PERMISSION_MAP = {
     'orders.reject',
     'orders.view_team',
     'orders.view_own',
+    'payments.record',
+    'payments.void',
     'audit.view',
     'reports.view',
   ],

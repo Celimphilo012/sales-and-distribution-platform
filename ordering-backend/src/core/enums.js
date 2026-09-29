@@ -5,6 +5,9 @@ const values = (...keys) => Object.freeze(Object.fromEntries(keys.map((k) => [k,
 
 module.exports = {
   UserStatus: values('ACTIVE', 'INACTIVE', 'SUSPENDED'),
+  NotifyChannel: values('EMAIL', 'SMS', 'NONE'),
+  MfaMethod: values('NONE', 'EMAIL', 'SMS', 'TOTP'),
+  OtpChannel: values('EMAIL', 'SMS', 'TOTP'),
   CustomerStatus: values('ACTIVE', 'INACTIVE'),
   OrderStatus: values(
     'DRAFT',
@@ -23,4 +26,6 @@ module.exports = {
     'COMPLETED',
   ),
   PaymentStatus: values('UNPAID', 'PARTIAL', 'PAID'),
+  PaymentMethod: values('CASH', 'MOBILE_MONEY', 'BANK_TRANSFER', 'CARD'),
+  PaymentRecordStatus: values('RECORDED', 'VOIDED'),
 };

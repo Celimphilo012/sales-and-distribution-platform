@@ -62,6 +62,9 @@ class _DesktopTable<T> extends StatelessWidget {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: DataTable(
+        // Tappable rows use onSelectChanged; without this Flutter also draws a
+        // selection checkbox column nobody asked for.
+        showCheckboxColumn: false,
         columns: [for (final column in columns) DataColumn(label: Text(column.label), numeric: column.numeric)],
         rows: [
           for (final row in rows)
@@ -115,9 +118,7 @@ class _MobileCardList<T> extends StatelessWidget {
                           width: 120,
                           child: Text(
                             column.label,
-                            style: theme.textTheme.labelMedium?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
+                            style: theme.textTheme.labelMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                           ),
                         ),
                         Expanded(child: column.cellBuilder(row)),

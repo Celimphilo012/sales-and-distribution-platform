@@ -51,6 +51,11 @@ class ErrorMapper {
         return NotFoundError(message ?? const NotFoundError().message);
       case 409:
         return ConflictError(message ?? const ConflictError().message);
+      case 428:
+        // Reaches a screen only when the user dismissed the code prompt.
+        return const ConfirmationRequiredError();
+      case 429:
+        return TooManyRequestsError(message ?? const TooManyRequestsError().message);
       case 503:
         return ServiceUnavailableError(message ?? const ServiceUnavailableError().message);
       default:

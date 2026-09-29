@@ -37,6 +37,17 @@ class WarehouseUserRoleRef {
       WarehouseUserRoleRef(id: json['id'] as String, name: json['name'] as String);
 }
 
+/// How a user receives order notifications / default one-time codes.
+const Map<String, String> kNotifyChannelLabels = {'EMAIL': 'Email', 'SMS': 'SMS', 'NONE': 'Off'};
+
+/// Sign-in verification methods.
+const Map<String, String> kMfaMethodLabels = {
+  'NONE': 'Off',
+  'EMAIL': 'Email code',
+  'SMS': 'SMS code',
+  'TOTP': 'Authenticator app',
+};
+
 /// Mirrors `GET/POST/PATCH/DELETE /users` (`UsersService`). `roleIds` on
 /// write is a FULL REPLACE of the user's role set (`UpdateUserDto.roleIds` /
 /// `CreateUserDto.roleIds`) — there is no separate assign/unassign-one-role
@@ -53,6 +64,9 @@ class WarehouseUser {
     required this.createdAt,
     required this.updatedAt,
     required this.roles,
+    this.phone,
+    this.notifyChannel = 'EMAIL',
+    this.mfaMethod = 'NONE',
   });
 
   final String id;
@@ -62,6 +76,9 @@ class WarehouseUser {
   final DateTime createdAt;
   final DateTime updatedAt;
   final List<WarehouseUserRoleRef> roles;
+  final String? phone;
+  final String notifyChannel;
+  final String mfaMethod;
 
   factory WarehouseUser.fromJson(Map<String, dynamic> json) => WarehouseUser(
     id: json['id'] as String,
@@ -73,5 +90,8 @@ class WarehouseUser {
     roles: (json['roles'] as List<dynamic>)
         .map((e) => WarehouseUserRoleRef.fromJson(e as Map<String, dynamic>))
         .toList(),
+    phone: json['phone'] as String?,
+    notifyChannel: json['notifyChannel'] as String? ?? 'EMAIL',
+    mfaMethod: json['mfaMethod'] as String? ?? 'NONE',
   );
 }

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../app_shell/responsive_app_shell.dart';
+import '../core/ui/root_navigator_key.dart';
 import '../core/auth/auth_provider.dart';
 import '../core/auth/auth_state.dart';
 import '../features/audit/presentation/audit_log_screen.dart';
@@ -11,6 +12,7 @@ import '../features/auth/presentation/login_screen.dart';
 import '../features/customers/presentation/customer_detail_screen.dart';
 import '../features/customers/presentation/customers_screen.dart';
 import '../features/dashboard/presentation/dashboard_screen.dart';
+import '../features/reports/presentation/reports_screen.dart';
 import '../features/orders/presentation/order_detail_screen.dart';
 import '../features/orders/presentation/order_form_screen.dart';
 import '../features/orders/presentation/orders_screen.dart';
@@ -42,6 +44,7 @@ const _customBuiltPaths = {
   RoutePaths.roles,
   RoutePaths.audit,
   RoutePaths.settings,
+  RoutePaths.reports,
 };
 
 /// The app's single [GoRouter], keyed off [authProvider] for the splash
@@ -70,6 +73,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   final refreshListenable = _AuthRefreshListenable(ref);
 
   return GoRouter(
+    // The one-time-code prompt (raised from a network interceptor) shows above whatever is open.
+    navigatorKey: rootNavigatorKey,
     initialLocation: RoutePaths.splash,
     refreshListenable: refreshListenable,
     redirect: (context, state) {
@@ -132,6 +137,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '${RoutePaths.orders}/:id',
             builder: (context, state) => OrderDetailScreen(orderId: state.pathParameters['id']!),
           ),
+          GoRoute(path: RoutePaths.reports, builder: (context, state) => const ReportsScreen()),
           GoRoute(path: RoutePaths.users, builder: (context, state) => const UsersScreen()),
           GoRoute(path: RoutePaths.roles, builder: (context, state) => const RolesScreen()),
           GoRoute(

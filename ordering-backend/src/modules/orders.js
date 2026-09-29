@@ -16,19 +16,21 @@ function generateOrderNumberCandidate() {
 }
 
 /**
- * An order read: the order + customer { id, name, phone } + consultant { id, fullName, email } |
+ * An order read: the order + amountPaid (its RECORDED payments) + customer { id, name, phone } + consultant { id, fullName, email } |
  * null + items (each carrying its own catalogue snapshot — the product lives in warehouse_db, no FK
  * across the boundary) + statusHistory (oldest first, each with changedByUser { id, fullName }).
  */
 const ORDER_SELECT = `
   SELECT ${cols('order', 'o')},
+         (SELECT COALESCE(SUM(pay.amount), 0) FROM payments pay
+           WHERE pay.order_id = o.id AND pay.status = 'RECORDED') AS amountPaid,
          ${cols('customer', 'c', ['id', 'name', 'phone'], 'customer.')},
          ${cols('user', 'u', ['id', 'fullName', 'email'], 'consultant.')}
     FROM orders o
     JOIN customers c ON c.id = o.customer_id
     LEFT JOIN users u ON u.id = o.consultant_id`;
 
-function createOrdersService({ db, models, auth, customers, warehouseApi }) {
+function createOrdersService({ db, models, auth, customers, warehouseApi, notifications }) {
   async function loadOrders(where = new Where(), orderBy = 'ORDER BY o.created_at DESC', executor) {
     const orders = (await db.query(`${ORDER_SELECT} ${where.sql} ${orderBy}`, where.params, executor)).map(nest);
     if (orders.length === 0) return orders;
@@ -150,7 +152,9 @@ function createOrdersService({ db, models, auth, customers, warehouseApi }) {
   async function simpleTransition(id, to, changedBy, note) {
     const order = await getExisting(id);
     await db.transaction((tx) => applyTransition(tx, order.id, order.status, to, changedBy, note));
-    return getExisting(id);
+    const updated = await getExisting(id);
+    notifications?.orderStatusChanged(updated, to, changedBy, note);
+    return updated;
   }
 
   /** DRAFT -> SUBMITTED -> PENDING_APPROVAL: one user action, two history rows. */
@@ -160,7 +164,9 @@ function createOrdersService({ db, models, auth, customers, warehouseApi }) {
       await applyTransition(tx, order.id, order.status, 'SUBMITTED', changedBy, note);
       await applyTransition(tx, order.id, 'SUBMITTED', 'PENDING_APPROVAL', changedBy, note);
     });
-    return getExisting(id);
+    const updated = await getExisting(id);
+    notifications?.orderSubmitted(updated, changedBy);
+    return updated;
   }
 
   function assertItemCoverage(orderItems, providedIds, label = 'Items') {
@@ -218,9 +224,18 @@ function createOrdersService({ db, models, auth, customers, warehouseApi }) {
    */
   async function cancel(id, changedBy, note) {
     const order = await getExisting(id);
+    // Money recorded against an order must be dealt with (returned, then voided) before it is
+    // cancelled — a cancelled order never silently keeps a customer's payment (rule 6).
+    if (Number(order.amountPaid) > 0) {
+      throw conflict(
+        `Order ${order.orderNumber} has payments recorded (E ${Number(order.amountPaid).toFixed(2)}) — void them before cancelling`,
+      );
+    }
     if (ORDER_STATUSES_WITH_ACTIVE_RESERVATION.includes(order.status)) await warehouseApi.release(order.id);
     await db.transaction((tx) => applyTransition(tx, order.id, order.status, 'CANCELLED', changedBy, note));
-    return getExisting(id);
+    const updated = await getExisting(id);
+    notifications?.orderStatusChanged(updated, 'CANCELLED', changedBy, note);
+    return updated;
   }
 
   /** Picking/packing are physical confirmations — no stock effect. */
@@ -293,7 +308,9 @@ function createOrdersService({ db, models, auth, customers, warehouseApi }) {
       }
       await applyTransition(tx, order.id, order.status, finalStatus, changedBy, note);
     });
-    return getExisting(id);
+    const updated = await getExisting(id);
+    notifications?.orderStatusChanged(updated, finalStatus, changedBy, note);
+    return updated;
   }
 
   return {
@@ -367,11 +384,21 @@ function ordersRoutes(app) {
     },
   );
 
+  // Approve / reject / cancel are confirmed with a one-time code (catalog/otp-actions.js).
+  const OTP_BY_PATH = { approve: 'order.approve', reject: 'order.reject', cancel: 'order.cancel' };
   const action = (path, permission, verb, bodySchema, run) =>
-    app.post(`/:id/${path}`, { onRequest: guard(permission), schema: { ...idParams, body: bodySchema } }, async (request) => {
-      request.auditAction = verb;
-      return run(request.params.id, request.body, request.user.id);
-    });
+    app.post(
+      `/:id/${path}`,
+      {
+        onRequest: guard(permission),
+        preHandler: OTP_BY_PATH[path] ? [app.services.otp.requireOtp(OTP_BY_PATH[path])] : [],
+        schema: { ...idParams, body: bodySchema },
+      },
+      async (request) => {
+        request.auditAction = verb;
+        return run(request.params.id, request.body, request.user.id);
+      },
+    );
 
   action('submit', 'orders.submit', 'SUBMIT', noteBody, (id, b, by) => orders.submit(id, by, b.note ?? undefined));
   action('approve', 'orders.approve', 'APPROVE', noteBody, (id, b, by) => orders.approve(id, by, b.note ?? undefined));

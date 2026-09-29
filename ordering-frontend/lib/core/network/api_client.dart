@@ -5,6 +5,7 @@ import '../error/app_error.dart';
 import '../error/error_mapper.dart';
 import 'auth_interceptor.dart';
 import 'auth_token_store.dart';
+import 'otp_interceptor.dart';
 import 'refresh_interceptor.dart';
 
 BaseOptions _baseOptions() => BaseOptions(
@@ -15,10 +16,15 @@ BaseOptions _baseOptions() => BaseOptions(
 );
 
 /// Thin wrapper around a configured [Dio] instance: attaches the bearer
-/// token, silently refreshes it on a 401 and retries once, and maps every
-/// failure into a typed [AppError].
+/// token, silently refreshes it on a 401 and retries once, asks for a
+/// one-time code when an action needs one (428) and retries with it, and
+/// maps every failure into a typed [AppError].
 class ApiClient {
-  ApiClient(AuthTokenStore tokenStore, {required Future<void> Function() onRefreshFailed})
+  ApiClient(
+    AuthTokenStore tokenStore, {
+    required Future<void> Function() onRefreshFailed,
+    required OtpPrompt otpPrompt,
+  })
     : dio = Dio(_baseOptions()),
       _refreshDio = Dio(_baseOptions()) {
     dio.interceptors.addAll([
@@ -29,6 +35,7 @@ class ApiClient {
         refreshDio: _refreshDio,
         onRefreshFailed: onRefreshFailed,
       ),
+      OtpInterceptor(mainDio: dio, prompt: otpPrompt),
     ]);
   }
 

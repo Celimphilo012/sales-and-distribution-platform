@@ -57,6 +57,19 @@ class UnknownError extends AppError {
   const UnknownError([super.message = 'An unexpected error occurred.']);
 }
 
+/// 428 — the action needs a one-time code and the user closed the code
+/// prompt without confirming (see `OtpInterceptor`). Nothing was changed.
+class ConfirmationRequiredError extends AppError {
+  const ConfirmationRequiredError([
+    super.message = 'Not done — this action needs a one-time code to confirm it.',
+  ]);
+}
+
+/// 429 — too many requests (e.g. one-time codes asked for too often).
+class TooManyRequestsError extends AppError {
+  const TooManyRequestsError([super.message = 'Too many attempts — wait a few minutes and try again.']);
+}
+
 /// 503 — a dependency (for the ordering app: the WAREHOUSE) could not be
 /// reached at all. The backend guarantees nothing was attempted on the far
 /// side, so the caller can always retry safely. Deliberately its own type

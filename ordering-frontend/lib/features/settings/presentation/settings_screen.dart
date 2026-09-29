@@ -9,12 +9,14 @@ import '../../../shared/widgets/app_card.dart';
 import '../../../shared/widgets/app_text_field.dart';
 import '../../../shared/widgets/status_badge.dart';
 import '../../users/data/users_providers.dart';
+import 'widgets/account_sections.dart';
+import 'widgets/delivery_settings_section.dart';
 
-/// STEP R1 — SETTINGS: profile (any logged-in user, from the now-extended
-/// `AppUser.roles/status`) and a password section. Ported from the
-/// warehouse app's admin template MINUS the API-key section — the ordering
-/// system has no such concept (that's a warehouse-specific, external-API
-/// mechanism, ARCHITECTURE.md §A2 step 3).
+/// SETTINGS: profile, own contact details + notification channel, sign-in
+/// verification (MFA), and password — for any logged-in user — plus the
+/// email/SMS delivery settings for holders of `settings.manage`. Ported from
+/// the warehouse app's admin template MINUS the API-key and "my warehouses"
+/// sections — the ordering system has neither (ARCHITECTURE.md §A2).
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
@@ -33,11 +35,25 @@ class SettingsScreen extends ConsumerWidget {
             constraints: const BoxConstraints(maxWidth: 720),
             child: _ProfileSection(user: user),
           ),
+          if (user != null) ...[
+            const SizedBox(height: AppSpacing.md),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 720),
+              // Keyed on the saved values so the form re-seeds after a save/refresh.
+              child: ContactSection(key: ValueKey('${user.phone}|${user.notifyChannel}'), user: user),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 720),
+              child: MfaSection(user: user),
+            ),
+          ],
           const SizedBox(height: AppSpacing.md),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 720),
-            child: const _PasswordSection(),
-          ),
+          ConstrainedBox(constraints: const BoxConstraints(maxWidth: 720), child: const _PasswordSection()),
+          if (user?.can('settings.manage') ?? false) ...[
+            const SizedBox(height: AppSpacing.lg),
+            ConstrainedBox(constraints: const BoxConstraints(maxWidth: 720), child: const DeliverySettingsSection()),
+          ],
         ],
       ),
     );
@@ -79,8 +95,7 @@ class _ProfileSection extends StatelessWidget {
                           spacing: AppSpacing.xs,
                           runSpacing: AppSpacing.xs,
                           children: [
-                            for (final role in user!.roles)
-                              StatusBadge(label: role.name, tone: StatusTone.info),
+                            for (final role in user!.roles) StatusBadge(label: role.name, tone: StatusTone.info),
                           ],
                         ),
                 ),
@@ -108,10 +123,7 @@ class _ProfileRow extends StatelessWidget {
         children: [
           SizedBox(
             width: 120,
-            child: Text(
-              label,
-              style: theme.textTheme.labelMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-            ),
+            child: Text(label, style: theme.textTheme.labelMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
           ),
           Expanded(child: Text(value, style: theme.textTheme.bodyMedium)),
         ],
@@ -161,9 +173,7 @@ class _PasswordSectionState extends ConsumerState<_PasswordSection> {
       _newController.clear();
       _confirmController.clear();
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Password changed.')));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Password changed.')));
       }
     } on AppError catch (e) {
       setState(() => _error = e.message);

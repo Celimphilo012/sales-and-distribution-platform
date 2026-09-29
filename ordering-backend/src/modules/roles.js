@@ -97,7 +97,7 @@ function rolesRoutes(app) {
       return roles.assignPermissions(request.params.id, request.body);
     },
   );
-  app.delete('/:id', { onRequest: guard, schema: idParams }, async (request) => {
+  app.delete('/:id', { onRequest: guard, preHandler: [app.services.otp.requireOtp('role.delete')], schema: idParams }, async (request) => {
     request.auditOldValue = await roles.getExisting(request.params.id);
     return roles.remove(request.params.id);
   });

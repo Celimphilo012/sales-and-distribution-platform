@@ -18,6 +18,8 @@ class AppSemanticColors extends ThemeExtension<AppSemanticColors> {
     required this.onInfo,
     required this.infoContainer,
     required this.onInfoContainer,
+    required this.qrForeground,
+    required this.qrBackground,
   });
 
   final Color success;
@@ -35,6 +37,11 @@ class AppSemanticColors extends ThemeExtension<AppSemanticColors> {
   final Color infoContainer;
   final Color onInfoContainer;
 
+  /// The authenticator-app QR code. Scanners need dark-on-light to read it
+  /// reliably, so both themes use the same pair rather than inverting.
+  final Color qrForeground;
+  final Color qrBackground;
+
   static const light = AppSemanticColors(
     success: Color(0xFF2E7D32),
     onSuccess: Color(0xFFFFFFFF),
@@ -51,6 +58,8 @@ class AppSemanticColors extends ThemeExtension<AppSemanticColors> {
     onInfo: Color(0xFFFFFFFF),
     infoContainer: Color(0xFFB3E5FC),
     onInfoContainer: Color(0xFF01579B),
+    qrForeground: Color(0xFF111111),
+    qrBackground: Color(0xFFFFFFFF),
   );
 
   static const dark = AppSemanticColors(
@@ -66,6 +75,8 @@ class AppSemanticColors extends ThemeExtension<AppSemanticColors> {
     onInfo: Color(0xFF00344A),
     infoContainer: Color(0xFF0B4F73),
     onInfoContainer: Color(0xFFB3E5FC),
+    qrForeground: Color(0xFF111111),
+    qrBackground: Color(0xFFFFFFFF),
   );
 
   @override
@@ -82,6 +93,8 @@ class AppSemanticColors extends ThemeExtension<AppSemanticColors> {
     Color? onInfo,
     Color? infoContainer,
     Color? onInfoContainer,
+    Color? qrForeground,
+    Color? qrBackground,
   }) {
     return AppSemanticColors(
       success: success ?? this.success,
@@ -96,6 +109,8 @@ class AppSemanticColors extends ThemeExtension<AppSemanticColors> {
       onInfo: onInfo ?? this.onInfo,
       infoContainer: infoContainer ?? this.infoContainer,
       onInfoContainer: onInfoContainer ?? this.onInfoContainer,
+      qrForeground: qrForeground ?? this.qrForeground,
+      qrBackground: qrBackground ?? this.qrBackground,
     );
   }
 
@@ -115,6 +130,8 @@ class AppSemanticColors extends ThemeExtension<AppSemanticColors> {
       onInfo: Color.lerp(onInfo, other.onInfo, t)!,
       infoContainer: Color.lerp(infoContainer, other.infoContainer, t)!,
       onInfoContainer: Color.lerp(onInfoContainer, other.onInfoContainer, t)!,
+      qrForeground: Color.lerp(qrForeground, other.qrForeground, t)!,
+      qrBackground: Color.lerp(qrBackground, other.qrBackground, t)!,
     );
   }
 }

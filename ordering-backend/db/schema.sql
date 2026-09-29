@@ -18,6 +18,17 @@
 SET NAMES utf8mb4;
 SET FOREIGN_KEY_CHECKS = 0;
 
+CREATE TABLE `app_settings` (
+  `key` varchar(100) NOT NULL,
+  `value` text DEFAULT NULL,
+  `is_secret` tinyint(1) NOT NULL DEFAULT 0,
+  `updated_by` varchar(191) DEFAULT NULL,
+  `updated_at` datetime(3) NOT NULL DEFAULT current_timestamp(3),
+  PRIMARY KEY (`key`),
+  KEY `app_settings_updated_by_fkey` (`updated_by`),
+  CONSTRAINT `app_settings_updated_by_fkey` FOREIGN KEY (`updated_by`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE `audit_logs` (
   `id` varchar(191) NOT NULL,
   `user_id` varchar(191) DEFAULT NULL,
@@ -44,6 +55,23 @@ CREATE TABLE `customers` (
   `created_at` datetime(3) NOT NULL DEFAULT current_timestamp(3),
   `updated_at` datetime(3) NOT NULL,
   PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE `notifications` (
+  `id` varchar(191) NOT NULL,
+  `user_id` varchar(191) DEFAULT NULL,
+  `event` varchar(191) NOT NULL,
+  `channel` enum('EMAIL','SMS') NOT NULL,
+  `destination` varchar(191) NOT NULL,
+  `subject` varchar(191) DEFAULT NULL,
+  `body` text NOT NULL,
+  `status` enum('SENT','LOGGED','FAILED') NOT NULL,
+  `error` text DEFAULT NULL,
+  `created_at` datetime(3) NOT NULL DEFAULT current_timestamp(3),
+  PRIMARY KEY (`id`),
+  KEY `notifications_user_id_idx` (`user_id`),
+  KEY `notifications_created_at_idx` (`created_at`),
+  CONSTRAINT `notifications_user_id_fkey` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE `order_items` (
@@ -99,6 +127,50 @@ CREATE TABLE `orders` (
   KEY `orders_status_idx` (`status`),
   CONSTRAINT `orders_consultant_id_fkey` FOREIGN KEY (`consultant_id`) REFERENCES `users` (`id`) ON UPDATE CASCADE,
   CONSTRAINT `orders_customer_id_fkey` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE `otp_challenges` (
+  `id` varchar(191) NOT NULL,
+  `user_id` varchar(191) NOT NULL,
+  `purpose` enum('LOGIN','ACTION','MFA_SETUP') NOT NULL,
+  `channel` enum('EMAIL','SMS','TOTP') NOT NULL,
+  `action` varchar(191) DEFAULT NULL,
+  `target_id` varchar(191) DEFAULT NULL,
+  `code_hash` varchar(191) DEFAULT NULL,
+  `pending_secret` varchar(255) DEFAULT NULL,
+  `attempts` int(11) NOT NULL DEFAULT 0,
+  `expires_at` datetime(3) NOT NULL,
+  `consumed_at` datetime(3) DEFAULT NULL,
+  `created_at` datetime(3) NOT NULL DEFAULT current_timestamp(3),
+  PRIMARY KEY (`id`),
+  KEY `otp_challenges_user_id_created_at_idx` (`user_id`,`created_at`),
+  CONSTRAINT `otp_challenges_user_id_fkey` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE `payments` (
+  `id` varchar(191) NOT NULL,
+  `order_id` varchar(191) NOT NULL,
+  `amount` decimal(12,2) NOT NULL,
+  `method` enum('CASH','MOBILE_MONEY','BANK_TRANSFER','CARD') NOT NULL,
+  `reference` varchar(191) DEFAULT NULL,
+  `notes` varchar(500) DEFAULT NULL,
+  `paid_at` datetime(3) NOT NULL,
+  `status` enum('RECORDED','VOIDED') NOT NULL DEFAULT 'RECORDED',
+  `recorded_by` varchar(191) NOT NULL,
+  `voided_by` varchar(191) DEFAULT NULL,
+  `voided_at` datetime(3) DEFAULT NULL,
+  `void_reason` varchar(500) DEFAULT NULL,
+  `created_at` datetime(3) NOT NULL DEFAULT current_timestamp(3),
+  `updated_at` datetime(3) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `payments_order_id_idx` (`order_id`),
+  KEY `payments_paid_at_idx` (`paid_at`),
+  KEY `payments_recorded_by_fkey` (`recorded_by`),
+  KEY `payments_voided_by_fkey` (`voided_by`),
+  CONSTRAINT `payments_order_id_fkey` FOREIGN KEY (`order_id`) REFERENCES `orders` (`id`) ON UPDATE CASCADE,
+  CONSTRAINT `payments_recorded_by_fkey` FOREIGN KEY (`recorded_by`) REFERENCES `users` (`id`) ON UPDATE CASCADE,
+  CONSTRAINT `payments_voided_by_fkey` FOREIGN KEY (`voided_by`) REFERENCES `users` (`id`) ON UPDATE CASCADE,
+  CONSTRAINT `payments_amount_positive` CHECK (`amount` > 0)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE `permissions` (
@@ -157,6 +229,10 @@ CREATE TABLE `users` (
   `email` varchar(191) NOT NULL,
   `password_hash` varchar(191) NOT NULL,
   `full_name` varchar(191) NOT NULL,
+  `phone` varchar(32) DEFAULT NULL,
+  `notify_channel` enum('EMAIL','SMS','NONE') NOT NULL DEFAULT 'EMAIL',
+  `mfa_method` enum('NONE','EMAIL','SMS','TOTP') NOT NULL DEFAULT 'NONE',
+  `totp_secret` varchar(255) DEFAULT NULL,
   `status` enum('ACTIVE','INACTIVE','SUSPENDED') NOT NULL DEFAULT 'ACTIVE',
   `created_at` datetime(3) NOT NULL DEFAULT current_timestamp(3),
   `updated_at` datetime(3) NOT NULL,

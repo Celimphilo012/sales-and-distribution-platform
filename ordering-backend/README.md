@@ -30,6 +30,44 @@ the scopes `catalogue:read`, `stock:read`, `stock:reserve`, `stock:issue`, `loca
 `db/schema.sql` is the whole schema. To change a live database, write the `ALTER`, run it once on each
 database, and make the same edit in `schema.sql` in the same commit.
 
+**Upgrading an existing database** (one created before 2026-09-29): back it up, then run
+`db/upgrades/2026-09-29-payments-security-notifications.sql` once (see the header in that file). Checked
+by upgrading the previous `schema.sql` and diffing it against a fresh load of the current one: identical.
+
+## Payments
+
+Orders and payments are separate lifecycles (rule 6). `POST /payments` (`payments.record`) records one
+payment against an order: `CASH`, `MOBILE_MONEY`, `BANK_TRANSFER` or `CARD` (non-cash needs the provider's
+`reference`), optional `paidAt` (never in the future) and `notes`. Rules:
+
+* No payments on `DRAFT`, `REJECTED` or `CANCELLED` orders; the RECORDED total may never exceed the order
+  total (overpayment is a 409 carrying `balanceDue`).
+* A mistake is never edited or deleted: `POST /payments/:id/void` (`payments.void`, one-time code, reason
+  required) marks it `VOIDED`, keeping who/when/why.
+* `orders.payment_status` (UNPAID / PARTIAL / PAID) is derived from the recorded payments and rewritten
+  in the same transaction as every payment write, under a row lock on the order (no double-paying race).
+* An order with payments recorded cannot be cancelled until they are voided.
+* `GET /payments?orderId=` — the order's payments + `{ total, amountPaid, balanceDue, paymentStatus }`
+  (anyone who can see the order); without `orderId` every payment in a period (`reports.view`). Order
+  reads carry `amountPaid`. `GET /reports/payments` — collected by method, voided, and what is still owed.
+
+## One-time codes, MFA, notifications
+
+Ported from `/warehouse-node` (copied — no shared code across systems), same contract:
+
+* **Step-up codes** (428 → `POST /auth/otp` → retry with `X-OTP-Challenge` / `X-OTP-Code`) on order
+  approve / reject / cancel, payment void, customer and user deactivation, role delete, MFA off. The list
+  is `src/catalog/otp-actions.js`.
+* **Sign-in MFA**, optional per user: email / SMS code or an authenticator app (TOTP). Users have
+  `phone`, `notify_channel` (EMAIL | SMS | NONE) and `mfa_method`; admins can reset a lost device
+  (`POST /users/:id/mfa/reset`).
+* **Notifications**: a submitted order goes to everyone holding `orders.approve`; the order's consultant
+  hears when it is approved, rejected, cancelled, dispatched (or partly) and when it becomes fully paid.
+  Branded HTML emails (`src/core/email-template.js`) + short SMS; set `APP_URL` for "View order" buttons.
+* **Delivery settings** are set by an administrator in the app (`settings.manage`; `GET/PUT
+  /settings/delivery`, `POST /settings/delivery/test`) — this system's own SMTP / httpSMS settings,
+  separate from the warehouse's, stored encrypted in `app_settings`. `.env` is only the fallback.
+
 ## Layout
 
 ```
@@ -38,10 +76,11 @@ src/app.js             buildApp(): middleware, services, route table
 src/config.js          env -> config
 src/core/              db pool, table metadata + SQL helpers, auth guards, audit middleware,
                        error handling + route wrapper, warehouse API client
-src/modules/           auth, users, roles (+permissions), audit, customers, orders (+catalogue and
-                       warehouse-location relays), reports (+dashboard)
+src/modules/           auth (+MFA), users, roles (+permissions), audit, customers, orders (+catalogue and
+                       warehouse-location relays), payments, reports (+dashboard), otp, notifications,
+                       delivery-settings
 src/catalog/           the permission catalog and default role grants
-db/                    schema.sql, seed.js
+db/                    schema.sql, seed.js, upgrades/ (one-off SQL for databases older than schema.sql)
 test/                  integration suite (fake warehouse, throwaway DB)
 ```
 

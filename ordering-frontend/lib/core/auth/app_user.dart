@@ -31,6 +31,9 @@ class AppUser {
     required this.permissions,
     this.roles = const [],
     this.status,
+    this.phone,
+    this.notifyChannel = 'EMAIL',
+    this.mfaMethod = 'NONE',
   });
 
   final String id;
@@ -39,6 +42,15 @@ class AppUser {
   final Set<String> permissions;
   final List<AppUserRoleRef> roles;
   final String? status;
+
+  /// International format (+268…), or null. Needed for SMS codes/notifications.
+  final String? phone;
+
+  /// How order notifications reach this user: `EMAIL`, `SMS` or `NONE`.
+  final String notifyChannel;
+
+  /// Sign-in verification: `NONE`, `EMAIL`, `SMS` or `TOTP` (authenticator app).
+  final String mfaMethod;
 
   bool can(String permission) => permissions.contains(permission);
 

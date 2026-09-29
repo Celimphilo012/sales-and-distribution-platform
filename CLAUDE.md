@@ -64,6 +64,26 @@ against an in-process fake warehouse); `/ordering-frontend` repointed to 3300 (a
 tests, live orders/dashboard load). Also fixed two R3b follow-ons there: 409 insufficient-stock now
 carries structured `shortLines`; whitespace-only reject notes are refused. `_prisma_migrations`
 dropped from `distribution_platform` (backup taken first).
+
+**ORDERING SIDE COMPLETE (2026-09-29)** — `/ordering-backend` + `/ordering-frontend`:
+- **Payments** (user's decisions): methods CASH / MOBILE_MONEY / BANK_TRANSFER / CARD (non-cash needs a
+  reference); a mistake is VOIDED (kept, reason + one-time code), never edited/deleted; overpayment
+  refused (409 + `balanceDue`); no refunds entry type. `payment_status` is DERIVED from RECORDED payments,
+  rewritten in the same transaction under a row lock on the order. No payments on DRAFT/REJECTED/
+  CANCELLED; an order with payments can't be cancelled until they are voided. Permissions
+  `payments.record` / `payments.void` (ADMIN + MANAGER). Order screen has a Payments panel.
+- **Security parity with the warehouse** (copied, not shared): OTP step-up on order approve/reject/
+  cancel, payment void, customer/user deactivation, role delete, MFA-off; optional sign-in MFA
+  (email/SMS/TOTP); users have phone / notify_channel / mfa_method; notifications (submitted order ->
+  `orders.approve` holders; consultant hears approved/rejected/cancelled/dispatched/fully paid);
+  admin-set SMTP + httpSMS (`settings.manage`, its own `app_settings`); branded HTML emails.
+- **R4 DONE:** Reports screen (orders + payments tabs, period selector) and a real Dashboard (manager
+  KPIs incl. collected / still owed / awaiting approval; users without `reports.view` see their own
+  latest orders).
+- Schema: `db/upgrades/2026-09-29-payments-security-notifications.sql` (verified: old schema + upgrade ==
+  fresh schema.sql); applied to local `distribution_platform` (backup taken first).
+- Verified: ordering-backend 29 tests, ordering-frontend 63 tests + analyze clean, live endpoints on real
+  data, browser pass (dashboard, order payments panel + record dialog validation, reports, settings).
 - **Auth:** JWT access token (short-lived) + rotating refresh token (stored hashed); passwords hashed with argon2
 - **Frontend:** Flutter (web / Android / iOS / desktop), Riverpod for state
 
@@ -256,9 +276,7 @@ across the boundary (reserve/release/issue, pricing hole closed).
   - `/warehouse-frontend` onInfoContainer `006B8C` → `005F7F` on infoContainer (4.29 → 5.12:1).
   Token-level in each app's `AppSemanticColors`. Dark mode untouched.
 
-- **Next: R4 — Order reports + dashboard** in `/ordering-frontend` (the final
-  ordering feature phase). Reports/dashboard endpoints already exist on
-  `/backend` from step 1G — pure UI phase.
+- ~~R4 — Order reports + dashboard~~ DONE 2026-09-29 (see "ORDERING SIDE COMPLETE" above).
 
 **Housekeeping status (2a COMPLETE):**
 - ~~Test-artifact cleanup across both databases~~ DONE: 21 R3b orders + 6 test

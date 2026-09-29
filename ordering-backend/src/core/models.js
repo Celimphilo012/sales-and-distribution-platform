@@ -18,8 +18,23 @@ const { notFound } = require('./errors');
 const MODELS = {
   user: {
     table: 'users',
-    fields: ['id', 'email', 'passwordHash', 'fullName', 'status', 'createdAt', 'updatedAt'],
-    defaults: { status: 'ACTIVE' },
+    fields: [
+      'id', 'email', 'passwordHash', 'fullName', 'phone', 'notifyChannel', 'mfaMethod', 'totpSecret', 'status',
+      'createdAt', 'updatedAt',
+    ],
+    defaults: { status: 'ACTIVE', notifyChannel: 'EMAIL', mfaMethod: 'NONE' },
+  },
+  otpChallenge: {
+    table: 'otp_challenges',
+    fields: [
+      'id', 'userId', 'purpose', 'channel', 'action', 'targetId', 'codeHash', 'pendingSecret', 'attempts',
+      'expiresAt', 'consumedAt', 'createdAt',
+    ],
+    defaults: { attempts: 0 },
+  },
+  notification: {
+    table: 'notifications',
+    fields: ['id', 'userId', 'event', 'channel', 'destination', 'subject', 'body', 'status', 'error', 'createdAt'],
   },
   role: { table: 'roles', fields: ['id', 'name', 'description', 'isSystem', 'createdAt', 'updatedAt'], defaults: { isSystem: false } },
   permission: { table: 'permissions', fields: ['id', 'key', 'description', 'module'] },
@@ -55,6 +70,14 @@ const MODELS = {
       'quantityPacked', 'unitPrice', 'lineTotal', 'reservedLocationId',
     ],
     defaults: { quantityFulfilled: 0, quantityPicked: 0, quantityPacked: 0 },
+  },
+  payment: {
+    table: 'payments',
+    fields: [
+      'id', 'orderId', 'amount', 'method', 'reference', 'notes', 'paidAt', 'status', 'recordedBy', 'voidedBy',
+      'voidedAt', 'voidReason', 'createdAt', 'updatedAt',
+    ],
+    defaults: { status: 'RECORDED' },
   },
   orderStatusHistory: {
     table: 'order_status_history',

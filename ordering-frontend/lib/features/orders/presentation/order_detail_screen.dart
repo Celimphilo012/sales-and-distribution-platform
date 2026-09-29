@@ -12,6 +12,7 @@ import '../../../shared/quantity_format.dart';
 import '../../../shared/widgets/app_card.dart';
 import '../../../shared/widgets/empty_loading_error_states.dart';
 import '../../../shared/widgets/status_badge.dart';
+import '../../payments/presentation/order_payments_card.dart';
 import '../data/orders_providers.dart';
 import '../domain/order.dart';
 import 'order_status_tone.dart';
@@ -111,6 +112,8 @@ class _OrderDetailBody extends ConsumerWidget {
         ),
         const SizedBox(height: AppSpacing.md),
         OrderActionsCard(order: order),
+        const SizedBox(height: AppSpacing.md),
+        OrderPaymentsCard(order: order),
         const SizedBox(height: AppSpacing.md),
         AppCard(
           title: 'Lines',

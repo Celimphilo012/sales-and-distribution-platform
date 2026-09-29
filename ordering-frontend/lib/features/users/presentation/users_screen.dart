@@ -157,6 +157,10 @@ class _UsersScreenState extends ConsumerState<UsersScreen> {
                       cellBuilder: (u) => Text(u.roles.isEmpty ? '—' : u.roles.map((r) => r.name).join(', ')),
                     ),
                     AppDataColumn(
+                      label: 'Sign-in check',
+                      cellBuilder: (u) => Text(kMfaMethodLabels[u.mfaMethod] ?? u.mfaMethod),
+                    ),
+                    AppDataColumn(
                       label: 'Status',
                       cellBuilder: (u) => StatusBadge(
                         label: u.status.label,

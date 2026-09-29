@@ -10,6 +10,7 @@ const SENSITIVE_KEYS = new Set([
   'refreshToken',
   'accessToken',
   'token',
+  'totpSecret',
 ]);
 
 function redact(body) {

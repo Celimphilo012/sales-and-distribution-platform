@@ -1,13 +1,27 @@
 'use strict';
 
 const argon2 = require('argon2');
-const { conflict, notFound, unauthorized } = require('../core/errors');
+const { badRequest, conflict, notFound, unauthorized } = require('../core/errors');
 const { cols, groupBy } = require('../core/models');
-const { UserStatus } = require('../core/enums');
+const { UserStatus, NotifyChannel } = require('../core/enums');
 const { obj, str, opt, arrayOf, enumOf, uuidParams } = require('../core/schema');
 
-// The password hash never leaves this service.
-const USER_FIELDS = ['id', 'email', 'fullName', 'status', 'createdAt', 'updatedAt'];
+// The password hash and the authenticator secret never leave this service.
+const USER_FIELDS = ['id', 'email', 'fullName', 'phone', 'notifyChannel', 'mfaMethod', 'status', 'createdAt', 'updatedAt'];
+
+/**
+ * Phone numbers are stored in international (E.164) form, "+26876123456" — what httpSMS needs.
+ * Spaces, dashes, dots and brackets are dropped; null/'' clears the number.
+ */
+function normalizePhone(raw) {
+  if (raw === undefined) return undefined;
+  if (raw === null || String(raw).trim() === '') return null;
+  const phone = String(raw).replace(/[\s().-]/g, '');
+  if (!/^\+[1-9]\d{6,14}$/.test(phone)) {
+    throw badRequest('phone must be in international format with a country code, e.g. +268 7612 3456');
+  }
+  return phone;
+}
 
 function createUsersService({ db, models }) {
   async function withRoles(users) {
@@ -30,13 +44,24 @@ function createUsersService({ db, models }) {
     return (await withRoles([user]))[0];
   }
 
+  /** notifyChannel SMS needs a phone; SMS sign-in codes need a phone. Shared by admin + self edits. */
+  function assertContactRules(next) {
+    if (next.notifyChannel === 'SMS' && !next.phone) throw badRequest('Add a phone number to receive notifications by SMS');
+    if (next.mfaMethod === 'SMS' && !next.phone) {
+      throw conflict('This user signs in with SMS codes — switch their sign-in verification off or to another method before removing the phone number');
+    }
+  }
+
   async function create(dto) {
     if (await db.one('SELECT id FROM users WHERE email = ?', [dto.email])) {
       throw conflict('A user with this email already exists');
     }
+    const phone = normalizePhone(dto.phone) ?? null;
+    const notifyChannel = dto.notifyChannel ?? 'EMAIL';
+    assertContactRules({ phone, notifyChannel, mfaMethod: 'NONE' });
     const passwordHash = await argon2.hash(dto.password);
     const id = await db.transaction(async (tx) => {
-      const user = await models.insert('user', { email: dto.email, passwordHash, fullName: dto.fullName }, tx);
+      const user = await models.insert('user', { email: dto.email, passwordHash, fullName: dto.fullName, phone, notifyChannel }, tx);
       if (dto.roleIds?.length) {
         await models.insertMany('userRole', dto.roleIds.map((roleId) => ({ userId: user.id, roleId })), tx);
       }
@@ -46,14 +71,26 @@ function createUsersService({ db, models }) {
   }
 
   async function update(id, dto) {
-    await getExisting(id);
+    const current = await getExisting(id);
+    const phone = normalizePhone(dto.phone);
+    assertContactRules({
+      phone: phone === undefined ? current.phone : phone,
+      notifyChannel: dto.notifyChannel ?? current.notifyChannel,
+      mfaMethod: current.mfaMethod,
+    });
     const passwordHash = dto.password ? await argon2.hash(dto.password) : undefined;
     await db.transaction(async (tx) => {
       if (dto.roleIds) await db.exec('DELETE FROM user_roles WHERE user_id = ?', [id], tx);
       await models.update(
         'user',
         id,
-        { fullName: dto.fullName ?? undefined, status: dto.status ?? undefined, passwordHash },
+        {
+          fullName: dto.fullName ?? undefined,
+          status: dto.status ?? undefined,
+          phone,
+          notifyChannel: dto.notifyChannel ?? undefined,
+          passwordHash,
+        },
         'User',
         tx,
       );
@@ -62,6 +99,22 @@ function createUsersService({ db, models }) {
       }
     });
     return getExisting(id);
+  }
+
+  /** Self-service profile: name, phone, how to receive notifications. */
+  async function updateOwnProfile(userId, dto) {
+    const current = await getExisting(userId);
+    const phone = normalizePhone(dto.phone);
+    if (current.mfaMethod === 'SMS' && phone !== undefined && phone !== current.phone) {
+      throw conflict('You sign in with SMS codes — turn sign-in verification off (or switch method) before changing your phone number');
+    }
+    assertContactRules({
+      phone: phone === undefined ? current.phone : phone,
+      notifyChannel: dto.notifyChannel ?? current.notifyChannel,
+      mfaMethod: current.mfaMethod,
+    });
+    await models.update('user', userId, { fullName: dto.fullName ?? undefined, phone, notifyChannel: dto.notifyChannel ?? undefined }, 'User');
+    return getExisting(userId);
   }
 
   /** Self-service change-password: gated by proving the current one, not by a permission. */
@@ -73,6 +126,13 @@ function createUsersService({ db, models }) {
     return { success: true };
   }
 
+  /** Admin: turns a user's sign-in verification off (lost phone / new device). They can re-enrol. */
+  async function resetMfa(id) {
+    await getExisting(id);
+    await models.update('user', id, { mfaMethod: 'NONE', totpSecret: null }, 'User');
+    return getExisting(id);
+  }
+
   async function remove(id) {
     await getExisting(id);
     // Never hard-deleted: audit_logs / orders keep a valid author (rule 10).
@@ -80,17 +140,35 @@ function createUsersService({ db, models }) {
     return getExisting(id);
   }
 
-  return { findAll, findOne: getExisting, getExisting, create, update, changeOwnPassword, remove };
+  return { findAll, findOne: getExisting, getExisting, create, update, updateOwnProfile, changeOwnPassword, resetMfa, remove };
 }
 
 const roleIds = arrayOf({ type: 'string', format: 'uuid' }, { uniqueItems: true });
+// Loosely shaped here; the service normalises to +E.164 and gives a friendly error.
+const phone = opt(str({ maxLength: 32 }));
 
 function usersRoutes(app) {
-  const { users } = app.services;
+  const { users, otp } = app.services;
   const manage = [app.authenticate, app.requirePermissions('users.manage')];
   const idParams = { params: uuidParams('id') };
+  // Setting a user INACTIVE/SUSPENDED is a deactivation, same as DELETE.
+  const deactivating = (req) => req.body.status != null && req.body.status !== 'ACTIVE';
 
   app.get('/me', { onRequest: [app.authenticate] }, async (request) => users.findOne(request.user.id));
+
+  // Self-service profile: name, phone number, notification channel.
+  app.patch(
+    '/me',
+    {
+      onRequest: [app.authenticate],
+      schema: { body: obj({ fullName: opt(str({ minLength: 1 })), phone, notifyChannel: opt(enumOf(NotifyChannel)) }) },
+    },
+    async (request) => {
+      request.auditEntity = 'users';
+      request.auditEntityId = request.user.id;
+      return users.updateOwnProfile(request.user.id, request.body);
+    },
+  );
 
   app.patch(
     '/me/password',
@@ -116,7 +194,14 @@ function usersRoutes(app) {
       onRequest: manage,
       schema: {
         body: obj(
-          { email: str({ format: 'email' }), password: str({ minLength: 8 }), fullName: str(), roleIds: opt(roleIds) },
+          {
+            email: str({ format: 'email' }),
+            password: str({ minLength: 8 }),
+            fullName: str(),
+            phone,
+            notifyChannel: opt(enumOf(NotifyChannel)),
+            roleIds: opt(roleIds),
+          },
           ['email', 'password', 'fullName'],
         ),
       },
@@ -128,12 +213,15 @@ function usersRoutes(app) {
     '/:id',
     {
       onRequest: manage,
+      preHandler: [otp.requireOtp('user.deactivate', { when: deactivating })],
       schema: {
         ...idParams,
         body: obj({
           fullName: opt(str()),
           password: opt(str({ minLength: 8 })),
           status: opt(enumOf(UserStatus)),
+          phone,
+          notifyChannel: opt(enumOf(NotifyChannel)),
           roleIds: opt(roleIds),
         }),
       },
@@ -144,11 +232,22 @@ function usersRoutes(app) {
     },
   );
 
-  app.delete('/:id', { onRequest: manage, schema: idParams }, async (request) => {
+  app.post('/:id/mfa/reset', { onRequest: manage, schema: idParams }, async (request, res) => {
     request.auditOldValue = await users.getExisting(request.params.id);
-    request.auditAction = 'DEACTIVATE';
-    return users.remove(request.params.id);
+    request.auditAction = 'MFA_RESET';
+    res.status(200);
+    return users.resetMfa(request.params.id);
   });
+
+  app.delete(
+    '/:id',
+    { onRequest: manage, preHandler: [otp.requireOtp('user.deactivate')], schema: idParams },
+    async (request) => {
+      request.auditOldValue = await users.getExisting(request.params.id);
+      request.auditAction = 'DEACTIVATE';
+      return users.remove(request.params.id);
+    },
+  );
 }
 
 module.exports = { createUsersService, usersRoutes };

@@ -16,7 +16,8 @@ ordering/back-office side must not share a database with the warehouse):
   orders, payments. Owns NO inventory; calls the Warehouse API (shared key) for stock.
   **Active implementation: `/ordering-backend`** (port 3300) — plain JavaScript on Node.js +
   Express + mysql2, NO ORM, same API contract. `/ordering-frontend` talks ONLY to it. The
-  NestJS/Prisma `/backend` (3000) is the legacy original, kept for parity checks.
+  NestJS/Prisma `/backend` (3000) it replaced was DELETED on 2026-09-29 (in git history before
+  that date). Mentions of `/backend` in the phase log below are historical.
 
 Each system is standalone: its own database, its own auth, no shared code, no
 cross-imports, no foreign keys across the boundary, no shared DB transaction. See
@@ -31,7 +32,7 @@ cross-imports, no foreign keys across the boundary, no shared DB transaction. Se
 - **ORM: none** (user's decision, 2026-09-28). Both active backends (`/warehouse-node`,
   `/ordering-backend`) are Express + mysql2 raw SQL (`src/core/db.js` + `src/core/models.js`,
   deliberately duplicated — no shared code across systems). Prisma survives only in the legacy
-  `/warehouse` and `/backend`. NO migration tool and no migration-tracking table in either
+  `/warehouse` (`/backend` deleted 2026-09-29). NO migration tool and no migration-tracking table in either
   database: each app's `db/schema.sql` is its whole schema (fresh install = load it, then
   `npm run seed`); a schema change = a hand-run ALTER on each database + the same change edited
   into `schema.sql` in one commit.
@@ -57,7 +58,7 @@ cross-imports, no foreign keys across the boundary, no shared DB transaction. Se
   (MFA setup dialog, OTP prompt → code → retry on a test API key, Users, Packing).
 
 **Ordering port DONE (2026-09-28):** `/ordering-backend` — 33/33 read endpoints + error shapes
-byte-identical to `/backend` on real data (`test/parity.js`); 14 integration tests (full lifecycle
+byte-identical to `/backend` on real data (parity script, removed with `/backend`); 14 integration tests (full lifecycle
 against an in-process fake warehouse); `/ordering-frontend` repointed to 3300 (analyze clean, 51
 tests, live orders/dashboard load). Also fixed two R3b follow-ons there: 409 insufficient-stock now
 carries structured `shortLines`; whitespace-only reject notes are refused. `_prisma_migrations`

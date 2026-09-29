@@ -1,8 +1,7 @@
 /// Static, compile-time app configuration.
 ///
 /// This app talks only to the ordering system's own API. The default points at
-/// `/ordering-backend` (Node.js + Express, port 3300) — not the older NestJS
-/// `/backend` on 3000. Override with `--dart-define=API_BASE_URL=...` for
+/// `/ordering-backend` (Node.js + Express, port 3300). Override with `--dart-define=API_BASE_URL=...` for
 /// other environments without changing any call sites.
 class AppConfig {
   const AppConfig._();

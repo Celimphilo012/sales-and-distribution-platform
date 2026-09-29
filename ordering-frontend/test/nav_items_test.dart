@@ -22,7 +22,7 @@ void main() {
   });
 
   test('CONSULTANT-role permission set (real backend role) sees exactly its ordering sections', () {
-    // Mirrors backend/src/permissions/constants/permission-catalog.ts's
+    // Mirrors ordering-backend/src/catalog/permission-catalog.js's
     // ROLE_PERMISSION_MAP.CONSULTANT exactly.
     final user = AppUser(
       id: '1',

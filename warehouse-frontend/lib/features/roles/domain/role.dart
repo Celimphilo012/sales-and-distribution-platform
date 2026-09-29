@@ -2,7 +2,7 @@ import 'permission.dart';
 
 /// Mirrors `GET/POST/PATCH /roles` and `PUT /roles/:id/permissions`
 /// (`RolesService`). `isSystem` roles (ADMIN/MANAGER/WAREHOUSE — seeded, see
-/// `warehouse/prisma/seed.ts`) can't be renamed or deleted
+/// `warehouse-node/db/seed.js`) can't be renamed or deleted
 /// (`RolesService.update`/`.remove`), though their PERMISSIONS can still be
 /// reassigned. `remove` is a real hard delete, blocked (409) if the role is
 /// still assigned to any user or is a system role.

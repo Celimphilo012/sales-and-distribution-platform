@@ -1,6 +1,5 @@
 /// The fixed, backend-defined scope set an API key can hold
-/// (`warehouse/src/common/decorators/require-scopes.decorator.ts`'s
-/// `API_KEY_SCOPES`) — the external `/api/v1/*` boundary the back-office
+/// (`warehouse-node/src/core/scopes.js`'s `API_KEY_SCOPES`) — the external `/api/v1/*` boundary the back-office
 /// consumes (ARCHITECTURE.md §A2's step-3 API-key mechanism).
 const List<String> kApiKeyScopes = ['catalogue:read', 'stock:read', 'stock:reserve', 'stock:issue'];
 

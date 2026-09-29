@@ -1,6 +1,6 @@
 import '../../../shared/json_utils.dart';
 
-/// Mirrors the backend's `StockCountStatus` enum (`warehouse/prisma/schema.prisma`).
+/// Mirrors the backend's `stock_counts.status` enum (`warehouse-node/db/schema.sql`).
 /// Only two states — there is no CANCELLED/VOID state on the real API.
 enum StockCountStatus { open, submitted }
 

@@ -5,13 +5,14 @@ The full design lives in `ARCHITECTURE.md` — **read it before writing any code
 
 **TWO independent systems, TWO separate databases** (business requirement — the
 ordering/back-office side must not share a database with the warehouse):
-- **Warehouse System** (`/warehouse`, port 3100, db `warehouse_db`) — owns the
+- **Warehouse System** (`/warehouse-node`, port 3200, db `warehouse_db`) — owns the
   catalogue (products/categories/images), warehouses, locations, and the inventory
   ledger; has its own auth; exposes an API-key-protected API. **Built first.**
   **Active implementation: `/warehouse-node`** (port 3200, same db + API contract) —
   plain JavaScript on Node.js + Express with raw parameterised SQL via mysql2, NO
   ORM. `/warehouse-frontend` talks ONLY to it. The NestJS/Prisma `/warehouse`
-  (3100) is the legacy original, kept for reference and parity checks.
+  (3100) it replaced was DELETED on 2026-09-29 (in git history before that date). Mentions of
+  `/warehouse` in the phase log below are historical.
 - **Back-Office / Ordering System** (db `distribution_platform`) — own auth, customers,
   orders, payments. Owns NO inventory; calls the Warehouse API (shared key) for stock.
   **Active implementation: `/ordering-backend`** (port 3300) — plain JavaScript on Node.js +
@@ -31,8 +32,8 @@ cross-imports, no foreign keys across the boundary, no shared DB transaction. Se
 - **Database:** MySQL / MariaDB (XAMPP local; requires MySQL 8.0+ or MariaDB 10.2.2+ for recursive location-tree CTEs)
 - **ORM: none** (user's decision, 2026-09-28). Both active backends (`/warehouse-node`,
   `/ordering-backend`) are Express + mysql2 raw SQL (`src/core/db.js` + `src/core/models.js`,
-  deliberately duplicated — no shared code across systems). Prisma survives only in the legacy
-  `/warehouse` (`/backend` deleted 2026-09-29). NO migration tool and no migration-tracking table in either
+  deliberately duplicated — no shared code across systems). No Prisma remains
+  anywhere in the repo (legacy `/warehouse` and `/backend` deleted 2026-09-29). NO migration tool and no migration-tracking table in either
   database: each app's `db/schema.sql` is its whole schema (fresh install = load it, then
   `npm run seed`); a schema change = a hand-run ALTER on each database + the same change edited
   into `schema.sql` in one commit.
@@ -266,8 +267,8 @@ across the boundary (reserve/release/issue, pricing hole closed).
   and 13 phase-seed-looking users KEPT and reported (review yourself).
 - ~~WCAG contrast fails~~ DONE (see above).
 - Stale dev-server processes: 2a hit real memory pressure (Windows killed 5 dev
-  servers during it). Keep only what you need running: backend 3000 + warehouse
-  3100 + one Flutter app.
+  servers during it). Keep only what you need running: MySQL + warehouse-node 3200
+  (+ ordering-backend 3300 if needed) + one Flutter app.
 - ~~Personal browser click-through of R2/R3a/R3b~~ DONE (limited-user click-through
   confirmed permissions hiding cleanly).
 

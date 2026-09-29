@@ -92,6 +92,69 @@ class StockReservationsService {
     return { items };
   }
 
+  /**
+   * Where each product can be reserved from: every ACTIVE location in an ACTIVE warehouse that holds
+   * available stock (on_hand - reserved > 0), with `oldestStockAt` — the arrival date of the oldest
+   * units still there — so a consumer can reserve oldest stock first (FIFO).
+   *
+   * `oldestStockAt` is estimated from the ledger the standard FIFO way: walk the location's inbound
+   * movements for the product newest-first until they add up to what is on hand now; the movement that
+   * gets there is the oldest stock still present (assuming each location is itself picked oldest-first).
+   * If the recorded inbound movements don't add up to the balance (e.g. opening stock loaded directly),
+   * the earliest inbound date is used; with none at all it is null (treated as newest).
+   * Never cached — it reads the live balances.
+   */
+  async allocationOptions({ productIds }) {
+    const ids = [...new Set(productIds)];
+    const balances = await this.db.query(
+      `SELECT ib.product_id AS productId, ib.location_id AS locationId, l.warehouse_id AS warehouseId,
+              ib.on_hand AS onHand, ib.on_hand - ib.reserved AS available
+         FROM inventory_balances ib
+         JOIN locations l ON l.id = ib.location_id AND l.is_active = true
+         JOIN warehouses w ON w.id = l.warehouse_id AND w.is_active = true
+        WHERE ib.product_id IN (?) AND ib.on_hand - ib.reserved > 0`,
+      [ids],
+    );
+    const inbound = balances.length
+      ? await this.db.query(
+          `SELECT product_id AS productId, to_location_id AS locationId, quantity, created_at AS createdAt
+             FROM inventory_transactions
+            WHERE product_id IN (?) AND to_location_id IN (?)
+              AND type IN ('RECEIVE', 'RETURN', 'TRANSFER', 'ADJUSTMENT', 'STOCK_COUNT')
+            ORDER BY created_at DESC`,
+          [ids, [...new Set(balances.map((b) => b.locationId))]],
+        )
+      : [];
+    const inboundByKey = new Map();
+    for (const row of inbound) {
+      const key = `${row.productId}:${row.locationId}`;
+      if (!inboundByKey.has(key)) inboundByKey.set(key, []);
+      inboundByKey.get(key).push(row);
+    }
+    const oldestStockAt = (balance) => {
+      const rows = inboundByKey.get(`${balance.productId}:${balance.locationId}`) ?? [];
+      let covered = 0;
+      for (const row of rows) {
+        covered += Number(row.quantity);
+        if (covered >= Number(balance.onHand)) return row.createdAt;
+      }
+      return rows.length ? rows[rows.length - 1].createdAt : null;
+    };
+    return {
+      products: ids.map((productId) => ({
+        productId,
+        locations: balances
+          .filter((b) => b.productId === productId)
+          .map((b) => ({
+            locationId: b.locationId,
+            warehouseId: b.warehouseId,
+            available: Number(b.available),
+            oldestStockAt: oldestStockAt(b),
+          })),
+      })),
+    };
+  }
+
   async reserve(dto, apiKeyId) {
     const existing = await this.findReservation(dto.reference);
     if (existing) {

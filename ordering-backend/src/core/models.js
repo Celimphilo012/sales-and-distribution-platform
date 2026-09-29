@@ -79,6 +79,11 @@ const MODELS = {
     ],
     defaults: { status: 'RECORDED' },
   },
+  orderItemAllocation: {
+    table: 'order_item_allocations',
+    fields: ['id', 'orderItemId', 'locationId', 'locationLabel', 'quantity', 'position', 'createdAt'],
+    defaults: { position: 0 },
+  },
   orderStatusHistory: {
     table: 'order_status_history',
     fields: ['id', 'orderId', 'fromStatus', 'toStatus', 'changedBy', 'note', 'createdAt'],

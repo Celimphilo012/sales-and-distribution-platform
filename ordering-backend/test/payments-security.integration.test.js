@@ -195,7 +195,8 @@ describe('payments', () => {
 describe('one-time codes, MFA, notifications and delivery settings', () => {
   let fx;
   before(async () => {
-    fx = await setup({ otp: { enabled: true } });
+    // A high code allowance: the rate limit is per user over 10 minutes, and repeated test runs reuse the admin.
+    fx = await setup({ otp: { enabled: true, maxPerWindow: 1000 } });
   });
   after(() => fx.close());
 

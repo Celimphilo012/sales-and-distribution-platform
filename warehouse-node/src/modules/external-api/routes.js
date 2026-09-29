@@ -67,6 +67,20 @@ function externalApiRoutes(app) {
     },
   );
 
+  // Where each product can be reserved from (active locations with available stock + stock age), so the
+  // ordering system can propose FIFO allocations. Read-only, same scope as availability.
+  app.post(
+    '/stock/allocation-options',
+    {
+      onRequest: [requireScopes('stock:read')],
+      schema: { body: obj({ productIds: arrayOf(uuid, { minItems: 1, maxItems: 500 }) }, ['productIds']) },
+    },
+    async (request, res) => {
+      res.status(200);
+      return stockReservations.allocationOptions(request.body);
+    },
+  );
+
   const stockAction = (path, scope, verb, bodySchema, run) => {
     app.post(
       `/stock/${path}`,

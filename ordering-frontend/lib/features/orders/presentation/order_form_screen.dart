@@ -26,7 +26,12 @@ import 'widgets/customer_picker_dialog.dart';
 /// why saving always lands on the read-only detail screen showing the
 /// server's own numbers, never this draft's.
 class _DraftLine {
-  _DraftLine({required this.productId, required this.productName, required this.estimatedUnitPrice, required this.quantity});
+  _DraftLine({
+    required this.productId,
+    required this.productName,
+    required this.estimatedUnitPrice,
+    required this.quantity,
+  });
 
   final String productId;
   final String productName;
@@ -174,7 +179,12 @@ class _OrderFormBodyState extends ConsumerState<_OrderFormBody> {
         _quantityControllers[product.id]?.text = formatQuantity(_lines[existing].quantity);
       } else {
         _lines.add(
-          _DraftLine(productId: product.id, productName: product.name, estimatedUnitPrice: product.sellingPrice, quantity: 1),
+          _DraftLine(
+            productId: product.id,
+            productName: product.name,
+            estimatedUnitPrice: product.sellingPrice,
+            quantity: 1,
+          ),
         );
       }
     });
@@ -245,9 +255,8 @@ class _OrderFormBodyState extends ConsumerState<_OrderFormBody> {
             IconButton(
               icon: const Icon(Icons.arrow_back),
               tooltip: 'Back',
-              onPressed: () => context.go(
-                _isEditing ? RoutePaths.orderDetail(widget.initialOrder!.id) : RoutePaths.orders,
-              ),
+              onPressed: () =>
+                  context.go(_isEditing ? RoutePaths.orderDetail(widget.initialOrder!.id) : RoutePaths.orders),
             ),
             const SizedBox(width: AppSpacing.sm),
             Text(_isEditing ? 'Edit draft order' : 'New order', style: theme.textTheme.headlineSmall),
@@ -292,7 +301,8 @@ class _OrderFormBodyState extends ConsumerState<_OrderFormBody> {
           constraints: const BoxConstraints(maxWidth: 720),
           child: AppCard(
             title: 'Order lines',
-            subtitle: 'Prices shown are an estimate from the catalogue — the server snapshots the exact '
+            subtitle:
+                'Prices shown are an estimate from the catalogue — the server snapshots the exact '
                 'price for each line when you save.',
             trailing: TextButton.icon(
               onPressed: _addProduct,
@@ -369,7 +379,13 @@ class _OrderFormBodyState extends ConsumerState<_OrderFormBody> {
 }
 
 class _OrderLineRow extends StatelessWidget {
-  const _OrderLineRow({super.key, required this.line, required this.controller, required this.onQuantityChanged, required this.onRemove});
+  const _OrderLineRow({
+    super.key,
+    required this.line,
+    required this.controller,
+    required this.onQuantityChanged,
+    required this.onRemove,
+  });
 
   final _DraftLine line;
   final TextEditingController controller;

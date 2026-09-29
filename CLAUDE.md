@@ -359,7 +359,13 @@ locations.
 - Is a sales batch mandatory, or can consultants submit single orders? (Phase 2)
 - Partial fulfilment / backorders? DECIDED: yes — order items track
   quantity_ordered vs quantity_fulfilled; orders can be PARTIALLY_FULFILLED. Phase 1E.
-- Can one order pull from multiple warehouses?
+- Can one order pull from multiple warehouses? DECIDED (2026-09-29): NO — one warehouse per order.
+  Reserving is AUTOMATIC: `GET /orders/:id/reservation-proposal` plans it (oldest stock first — FIFO
+  by the warehouse's `oldestStockAt` estimate — splitting a line across locations when needed, only
+  active locations with available stock); the manager reserves it as is, switches warehouse, or
+  adjusts a line. Per-line allocations live in `order_item_allocations` (location name snapshotted);
+  dispatch ships from them in plan order. The warehouse still refuses atomically if a location lacks
+  the stock. Warehouse endpoint: `POST /api/v1/stock/allocation-options` (scope stock:read).
 - Currency/tax: SZL (E) only? Any VAT lines on orders?
 - Product image storage: DECIDED for now — URL-only. Backend stores an opaque
   URL string (no file upload, no static serving). Frontend uses a URL field;

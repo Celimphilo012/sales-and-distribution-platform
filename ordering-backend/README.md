@@ -34,6 +34,22 @@ database, and make the same edit in `schema.sql` in the same commit.
 `db/upgrades/2026-09-29-payments-security-notifications.sql` once (see the header in that file). Checked
 by upgrading the previous `schema.sql` and diffing it against a fresh load of the current one: identical.
 
+## Reserving stock (automatic, one warehouse, oldest stock first)
+
+`GET /orders/:id/reservation-proposal` (`orders.approve`) plans where an APPROVED order's stock comes
+from (`src/modules/stock-allocation.js`): ONE warehouse per order; within it the oldest stock first (the
+warehouse's `oldestStockAt`), then fuller locations; a line is split across locations when no single one
+holds enough. It returns the chosen warehouse, the alternatives (and whether each could fill the order),
+and per line the planned `{ locationId, label, quantity }` plus every location holding the product (for
+an override). `?warehouseId=` plans in a specific warehouse.
+
+`POST /orders/:id/reserve` with no `allocations` reserves per the plan (409 with `shortLines` when no
+single warehouse can fill the order); with `allocations: [{ orderItemId, locationId, quantity? }]` it
+reserves exactly that (every line covered exactly, one warehouse). The warehouse re-checks availability
+atomically, so a location without the stock fails the whole reservation and nothing changes. Where each
+line is held is stored in `order_item_allocations` (with the location name at the time) and returned on
+order reads as `items[].allocations`; dispatch ships the packed quantity from those locations in order.
+
 ## Payments
 
 Orders and payments are separate lifecycles (rule 6). `POST /payments` (`payments.record`) records one

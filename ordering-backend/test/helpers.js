@@ -33,22 +33,43 @@ const listen = (handler) =>
   });
 
 /**
- * A stand-in for the warehouse's external API: a two-product catalogue, one leaf location, and
- * real reserve/release/issue bookkeeping (idempotent on reference, shortfall as HTTP 200
- * success:false) — the contract the ordering system relies on. `calls` records every request.
+ * A stand-in for the warehouse's external API: a two-product catalogue, two warehouses of leaf
+ * locations (stock tracked per product + location, each with a stock age for FIFO), and real
+ * reserve/release/issue bookkeeping (idempotent on reference, shortfall as HTTP 200 success:false) —
+ * the contract the ordering system relies on. `calls` records every request. Soap starts with 100 at
+ * `locationId` (warehouse W1); tests put stock elsewhere with `state.setStock(productId, locationId, qty, age)`.
  */
 async function createFakeWarehouse() {
+  const SOAP = '11111111-1111-4111-8111-111111111111';
+  const locations = [
+    { id: '33333333-3333-4333-8333-333333333333', warehouseId: 'w1', name: 'Bin', parentId: null },
+    { id: '44444444-4444-4444-8444-444444444444', warehouseId: 'w1', name: 'Shelf B', parentId: null },
+    { id: '55555555-5555-4555-8555-555555555555', warehouseId: 'w1', name: 'Shelf C', parentId: null },
+    { id: '66666666-6666-4666-8666-666666666666', warehouseId: 'w2', name: 'Far Bin', parentId: null },
+  ];
   const state = {
     products: [
-      { id: '11111111-1111-4111-8111-111111111111', sku: 'SOAP-1', name: 'Bar Soap', status: 'ACTIVE', sellingPrice: '12.5', category: { id: 'c', name: 'Soap' } },
+      { id: SOAP, sku: 'SOAP-1', name: 'Bar Soap', status: 'ACTIVE', sellingPrice: '12.5', category: { id: 'c', name: 'Soap' } },
       { id: '22222222-2222-4222-8222-222222222222', sku: 'OLD-1', name: 'Old Line', status: 'INACTIVE', sellingPrice: '9', category: { id: 'c', name: 'Soap' } },
     ],
-    locationId: '33333333-3333-4333-8333-333333333333',
-    available: new Map([['11111111-1111-4111-8111-111111111111', 100]]),
+    locationId: locations[0].id,
+    locations,
+    stock: new Map(), // productId:locationId -> { available, oldestStockAt }
     reservations: new Map(),
     calls: [],
     down: false,
+    setStock(productId, locationId, available, oldestStockAt = '2026-01-01T00:00:00.000Z') {
+      state.stock.set(`${productId}:${locationId}`, { available, oldestStockAt });
+    },
+    availableAt: (productId, locationId) => state.stock.get(`${productId}:${locationId}`)?.available ?? 0,
+    adjust(productId, locationId, delta) {
+      const entry = state.stock.get(`${productId}:${locationId}`) ?? { available: 0, oldestStockAt: null };
+      entry.available += delta;
+      state.stock.set(`${productId}:${locationId}`, entry);
+    },
   };
+  state.setStock(SOAP, state.locationId, 100);
+
   const app = express();
   app.use(express.json());
   app.use((req, res, next) => {
@@ -61,23 +82,40 @@ async function createFakeWarehouse() {
     res.json({ categories: [], products });
   });
   app.get('/api/v1/locations', (req, res) =>
-    res.json({ warehouses: [{ id: 'w', name: 'WH', code: 'WH', isActive: true }], locations: [{ id: state.locationId, name: 'Bin', parentId: null }] }),
+    res.json({
+      warehouses: [
+        { id: 'w1', name: 'Main WH', code: 'W1', isActive: true },
+        { id: 'w2', name: 'Far WH', code: 'W2', isActive: true },
+      ],
+      locations: state.locations,
+    }),
   );
+  app.post('/api/v1/stock/allocation-options', (req, res) => {
+    res.json({
+      products: req.body.productIds.map((productId) => ({
+        productId,
+        locations: state.locations
+          .map((l) => ({ l, entry: state.stock.get(`${productId}:${l.id}`) }))
+          .filter(({ entry }) => entry && entry.available > 0)
+          .map(({ l, entry }) => ({ locationId: l.id, warehouseId: l.warehouseId, available: entry.available, oldestStockAt: entry.oldestStockAt })),
+      })),
+    });
+  });
   app.post('/api/v1/stock/reserve', (req, res) => {
     const { reference, lines, label } = req.body;
     if (state.reservations.has(reference)) return res.json({ success: true, reference, status: 'RESERVED', reserved: lines });
     const shortLines = lines
-      .filter((l) => (state.available.get(l.productId) ?? 0) < l.quantity)
-      .map((l) => ({ productId: l.productId, locationId: l.locationId, requested: l.quantity, available: state.available.get(l.productId) ?? 0 }));
+      .filter((l) => state.availableAt(l.productId, l.locationId) < l.quantity)
+      .map((l) => ({ productId: l.productId, locationId: l.locationId, requested: l.quantity, available: state.availableAt(l.productId, l.locationId) }));
     if (shortLines.length) return res.json({ success: false, reference, shortLines });
-    for (const l of lines) state.available.set(l.productId, state.available.get(l.productId) - l.quantity);
+    for (const l of lines) state.adjust(l.productId, l.locationId, -l.quantity);
     state.reservations.set(reference, { lines, label, status: 'RESERVED' });
     res.json({ success: true, reference, status: 'RESERVED', reserved: lines });
   });
   app.post('/api/v1/stock/release', (req, res) => {
     const r = state.reservations.get(req.body.reference);
     if (r && r.status === 'RESERVED') {
-      for (const l of r.lines) state.available.set(l.productId, state.available.get(l.productId) + l.quantity);
+      for (const l of r.lines) state.adjust(l.productId, l.locationId, l.quantity);
       r.status = 'RELEASED';
     }
     res.json({ success: true, reference: req.body.reference, alreadyReleased: false, released: [] });
@@ -87,7 +125,7 @@ async function createFakeWarehouse() {
     const issued = r.lines.map((l) => {
       const line = req.body.lines.find((x) => x.productId === l.productId && x.locationId === l.locationId);
       const qty = line?.quantity ?? 0;
-      state.available.set(l.productId, state.available.get(l.productId) + l.quantity - qty); // release all, issue qty
+      state.adjust(l.productId, l.locationId, l.quantity - qty); // release all, issue qty (on hand leaves)
       return { productId: l.productId, locationId: l.locationId, reserved: l.quantity, issued: qty };
     });
     r.status = 'ISSUED';

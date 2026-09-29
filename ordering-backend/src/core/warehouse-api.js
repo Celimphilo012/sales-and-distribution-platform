@@ -70,6 +70,8 @@ function createWarehouseApi({ config }) {
     getProduct,
     getLocations: () => request('GET', '/api/v1/locations'),
     checkAvailability: (items) => request('POST', '/api/v1/stock/availability', { items }),
+    /** Per product: active locations with available stock, each with its warehouse and stock age (FIFO). */
+    allocationOptions: (productIds) => request('POST', '/api/v1/stock/allocation-options', { productIds }),
     /** `label` is human text the warehouse shows its packers (e.g. "ORD-0012 · Customer name"). */
     reserve: (reference, lines, label) => request('POST', '/api/v1/stock/reserve', { reference, label, lines }),
     release: (reference) => request('POST', '/api/v1/stock/release', { reference }),

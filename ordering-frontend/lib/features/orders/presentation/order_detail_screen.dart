@@ -83,7 +83,8 @@ class _OrderDetailBody extends ConsumerWidget {
       children: [
         AppCard(
           title: order.orderNumber,
-          subtitle: 'Customer: ${order.customer.name}${order.customer.phone != null ? ' · ${order.customer.phone}' : ''}',
+          subtitle:
+              'Customer: ${order.customer.name}${order.customer.phone != null ? ' · ${order.customer.phone}' : ''}',
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -127,7 +128,18 @@ class _OrderDetailBody extends ConsumerWidget {
                     children: [
                       Expanded(
                         flex: 3,
-                        child: Text(item.productName ?? '(unknown product)', style: theme.textTheme.bodyMedium),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(item.productName ?? '(unknown product)', style: theme.textTheme.bodyMedium),
+                            // Where the stock is held for this order — what pickers need.
+                            if (item.allocations.isNotEmpty)
+                              Text(
+                                'Reserved at: ${item.allocations.map((a) => '${a.locationLabel ?? 'location'} × ${formatQuantity(a.quantity)}').join(' · ')}',
+                                style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                              ),
+                          ],
+                        ),
                       ),
                       _Stat(label: 'Qty', value: formatQuantity(item.quantityOrdered)),
                       // Fulfilment progress appears as each step records it.
@@ -210,10 +222,7 @@ class _DetailRow extends StatelessWidget {
         children: [
           SizedBox(
             width: 120,
-            child: Text(
-              label,
-              style: theme.textTheme.labelMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-            ),
+            child: Text(label, style: theme.textTheme.labelMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
           ),
           Expanded(child: Text((value?.isEmpty ?? true) ? '—' : value!, style: theme.textTheme.bodyMedium)),
         ],
@@ -274,10 +283,7 @@ class _PartialFulfilmentNote extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Partially fulfilled',
-            style: theme.textTheme.titleSmall?.copyWith(color: semantic.onWarningContainer),
-          ),
+          Text('Partially fulfilled', style: theme.textTheme.titleSmall?.copyWith(color: semantic.onWarningContainer)),
           Text(
             'Some lines shipped less than ordered. The shortfall was released back to available stock.',
             style: theme.textTheme.bodyMedium?.copyWith(color: semantic.onWarningContainer),

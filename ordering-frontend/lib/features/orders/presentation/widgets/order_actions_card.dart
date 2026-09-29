@@ -42,7 +42,9 @@ class OrderActionsCard extends ConsumerWidget {
           : Wrap(
               spacing: AppSpacing.sm,
               runSpacing: AppSpacing.sm,
-              children: [for (final action in actions) _ActionButton(order: order, action: action, primary: action == forward)],
+              children: [
+                for (final action in actions) _ActionButton(order: order, action: action, primary: action == forward),
+              ],
             ),
     );
   }

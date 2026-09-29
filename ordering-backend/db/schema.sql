@@ -74,6 +74,20 @@ CREATE TABLE `notifications` (
   CONSTRAINT `notifications_user_id_fkey` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE `order_item_allocations` (
+  `id` varchar(191) NOT NULL,
+  `order_item_id` varchar(191) NOT NULL,
+  `location_id` varchar(191) NOT NULL,
+  `location_label` varchar(191) DEFAULT NULL,
+  `quantity` decimal(14,3) NOT NULL,
+  `position` int(11) NOT NULL DEFAULT 0,
+  `created_at` datetime(3) NOT NULL DEFAULT current_timestamp(3),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `order_item_allocations_item_location_key` (`order_item_id`,`location_id`),
+  CONSTRAINT `order_item_allocations_order_item_id_fkey` FOREIGN KEY (`order_item_id`) REFERENCES `order_items` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `order_item_allocations_quantity_positive` CHECK (`quantity` > 0)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE `order_items` (
   `id` varchar(191) NOT NULL,
   `order_id` varchar(191) NOT NULL,

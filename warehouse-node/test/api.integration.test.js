@@ -527,6 +527,46 @@ describe('warehouse API (Express port)', () => {
       assert.equal(res.json.items[0].available, a);
     });
 
+    it('allocation options: every location with available stock, and the age of its oldest stock', async () => {
+      const created = await api.post('/products', {
+        sku: `FIFO-${run}`,
+        name: `Fifo ${run}`,
+        categoryId: fx.category.id,
+        sellingPrice: 1,
+        costPrice: 1,
+        uom: 'EACH',
+      });
+      assert.equal(created.status, 201, created.body);
+      const product = created.json;
+      const receive = async (locationId, quantity) => {
+        const r = await api.post('/inventory/receiving', { supplier: 'Acme', productId: product.id, quantity, toLocationId: locationId, reference: `FIFO-${run}` });
+        assert.equal(r.status, 201, r.body);
+      };
+      await receive(fx.locB.id, 4); // older stock in B
+      await new Promise((r) => setTimeout(r, 20));
+      await receive(fx.locA.id, 6); // newer stock in A
+      await new Promise((r) => setTimeout(r, 20));
+      await receive(fx.locB.id, 2); // B topped up: B still holds its older units too
+
+      const res = await ext.post('/api/v1/stock/allocation-options', { productIds: [product.id] });
+      assert.equal(res.status, 200);
+      const [entry] = res.json.products;
+      const byLoc = new Map(entry.locations.map((l) => [l.locationId, l]));
+      assert.equal(byLoc.get(fx.locA.id).available, 6);
+      assert.equal(byLoc.get(fx.locB.id).available, 6);
+      assert.equal(byLoc.get(fx.locB.id).warehouseId, fx.warehouseId);
+      assert.ok(
+        new Date(byLoc.get(fx.locB.id).oldestStockAt) < new Date(byLoc.get(fx.locA.id).oldestStockAt),
+        "B's oldest units arrived before A's",
+      );
+
+      // Reserved stock is not available; a location with nothing available is not listed.
+      await ext.post('/api/v1/stock/reserve', { reference: `FIFO-${run}`, lines: [{ productId: product.id, locationId: fx.locA.id, quantity: 6 }] });
+      const after = (await ext.post('/api/v1/stock/allocation-options', { productIds: [product.id] })).json.products[0];
+      assert.deepEqual(after.locations.map((l) => l.locationId), [fx.locB.id]);
+      await ext.post('/api/v1/stock/release', { reference: `FIFO-${run}` });
+    });
+
     it('a shortfall is HTTP 200 with success:false and structured shortLines', async () => {
       const res = await ext.post('/api/v1/stock/reserve', { reference: `SHORT-${run}`, lines: [{ productId: fx.product.id, locationId: fx.locA.id, quantity: 100000 }] });
       assert.equal(res.status, 200);

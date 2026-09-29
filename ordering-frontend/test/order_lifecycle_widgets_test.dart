@@ -11,6 +11,7 @@ import 'package:ordering_frontend/features/orders/data/orders_api.dart';
 import 'package:ordering_frontend/features/orders/data/orders_providers.dart';
 import 'package:ordering_frontend/features/orders/domain/order.dart';
 import 'package:ordering_frontend/features/orders/domain/order_lifecycle.dart';
+import 'package:ordering_frontend/features/orders/domain/reservation_proposal.dart';
 import 'package:ordering_frontend/features/orders/presentation/widgets/dispatch_order_dialog.dart';
 import 'package:ordering_frontend/features/orders/presentation/widgets/order_actions_card.dart';
 import 'package:ordering_frontend/features/orders/presentation/widgets/quantity_entry_dialog.dart';
@@ -63,7 +64,9 @@ Order _order(OrderStatus status, List<OrderItem> items) => Order(
 class _FakeOrdersApi extends Fake implements OrdersApi {
   final calls = <String>[];
   Map<String, double>? lastQuantities;
-  Map<String, String>? lastAllocations;
+  List<ReserveAllocation>? lastAllocations;
+  ReservationProposal? proposal;
+  String? proposalWarehouseId;
   Object? failWith;
   Order? dispatchResult;
 
@@ -92,7 +95,13 @@ class _FakeOrdersApi extends Fake implements OrdersApi {
   }
 
   @override
-  Future<Order> reserve(String id, {required Map<String, String> allocations}) async {
+  Future<ReservationProposal> reservationProposal(String id, {String? warehouseId}) async {
+    proposalWarehouseId = warehouseId;
+    return proposal!;
+  }
+
+  @override
+  Future<Order> reserve(String id, {List<ReserveAllocation>? allocations}) async {
     calls.add('reserve');
     lastAllocations = allocations;
     _maybeFail();
@@ -113,16 +122,31 @@ class _FakeUser extends AuthNotifier {
   final Set<String> permissions;
 
   @override
-  Future<AuthState> build() async => AuthState.authenticated(
-    AppUser(id: 'u1', name: 'Tester', email: 't@example.com', permissions: permissions),
-  );
+  Future<AuthState> build() async =>
+      AuthState.authenticated(AppUser(id: 'u1', name: 'Tester', email: 't@example.com', permissions: permissions));
 }
 
 final _locations = WarehouseLocations(
   warehouses: const [WarehouseRef(id: 'w1', name: 'Main WH', code: 'MW', isActive: true)],
   locations: const [
-    WarehouseLocation(id: _locA, warehouseId: 'w1', parentId: null, name: 'Shelf A', code: 'A', locationType: 'SHELF', isActive: true),
-    WarehouseLocation(id: _locB, warehouseId: 'w1', parentId: null, name: 'Shelf B', code: 'B', locationType: 'SHELF', isActive: true),
+    WarehouseLocation(
+      id: _locA,
+      warehouseId: 'w1',
+      parentId: null,
+      name: 'Shelf A',
+      code: 'A',
+      locationType: 'SHELF',
+      isActive: true,
+    ),
+    WarehouseLocation(
+      id: _locB,
+      warehouseId: 'w1',
+      parentId: null,
+      name: 'Shelf B',
+      code: 'B',
+      locationType: 'SHELF',
+      isActive: true,
+    ),
   ],
 );
 
@@ -148,9 +172,7 @@ Future<void> _pump(
       ],
       child: MaterialApp(
         theme: brightness == Brightness.dark ? AppTheme.dark() : AppTheme.light(),
-        home: Scaffold(
-          body: Builder(builder: (context) => launcher(context, (_) {})),
-        ),
+        home: Scaffold(body: Builder(builder: (context) => launcher(context, (_) {}))),
       ),
     ),
   );
@@ -243,10 +265,44 @@ void main() {
     });
   });
 
-  group('reserve — the three outcomes', () {
+  group('reserve — the automatic plan, adjusting it, and the outcomes', () {
     final order = _order(OrderStatus.approved, [_item('i1', _pShampoo, 'Shampoo', ordered: 12)]);
+    const mainWh = WarehouseChoice(id: 'w1', name: 'Main WH', complete: true);
+
+    /// The plan: 12 shampoo = 8 from Shelf A (oldest) + 4 from Shelf B.
+    ReservationProposal plan({bool complete = true, double shortBy = 0, List<WarehouseChoice>? alternatives}) =>
+        ReservationProposal(
+          complete: complete,
+          warehouse: mainWh,
+          alternatives: alternatives ?? const [mainWh],
+          lines: [
+            ProposalLine(
+              orderItemId: 'i1',
+              productName: 'Shampoo',
+              quantity: 12,
+              allocations: complete ? {_locA: 8, _locB: 4} : {_locA: 8},
+              shortBy: shortBy,
+              options: [
+                LocationOption(
+                  locationId: _locA,
+                  label: 'Shelf A',
+                  available: 8,
+                  oldestStockAt: DateTime.utc(2026, 1, 5),
+                ),
+                if (complete)
+                  LocationOption(
+                    locationId: _locB,
+                    label: 'Shelf B',
+                    available: 10,
+                    oldestStockAt: DateTime.utc(2026, 3, 1),
+                  ),
+              ],
+            ),
+          ],
+        );
 
     Future<void> open(WidgetTester tester, _FakeOrdersApi api, {void Function(bool)? onResult}) async {
+      api.proposal ??= plan();
       await _pump(
         tester,
         api: api,
@@ -265,57 +321,100 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    Future<void> chooseLocation(WidgetTester tester, String label) async {
-      await tester.tap(find.byType(DropdownButtonFormField<String>).first);
-      await tester.pumpAndSettle();
-      await tester.tap(find.text(label).last);
-      await tester.pumpAndSettle();
-    }
+    FilledButton reserveButton(WidgetTester tester) =>
+        tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Reserve stock'));
 
-    testWidgets('reserve is disabled until every line has a location', (tester) async {
-      await open(tester, _FakeOrdersApi());
-      expect(tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Reserve stock')).onPressed, isNull);
+    List<(String, String, double)> sent(_FakeOrdersApi api) => [
+      for (final a in api.lastAllocations!) (a.orderItemId, a.locationId, a.quantity),
+    ];
 
-      await chooseLocation(tester, 'Shelf A (A)');
-      expect(tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Reserve stock')).onPressed, isNotNull);
-    });
-
-    testWidgets('SUCCESS sends the chosen location per line and closes with true', (tester) async {
+    testWidgets('shows the plan (oldest stock first, split) and reserves exactly it', (tester) async {
       final api = _FakeOrdersApi();
       bool? result;
       await open(tester, api, onResult: (r) => result = r);
 
-      await chooseLocation(tester, 'Shelf B (B)');
+      expect(find.text('Warehouse: Main WH'), findsOneWidget);
+      expect(find.text('from Shelf A'), findsOneWidget);
+      expect(find.text('from Shelf B'), findsOneWidget);
+      expect(find.textContaining('oldest from 2026-01-05'), findsOneWidget);
+      expect(reserveButton(tester).onPressed, isNotNull);
+
       await tester.tap(find.widgetWithText(FilledButton, 'Reserve stock'));
       await tester.pumpAndSettle();
-
-      expect(api.calls, ['reserve']);
-      expect(api.lastAllocations, {'i1': _locB});
+      expect(sent(api), [('i1', _locA, 8.0), ('i1', _locB, 4.0)]);
       expect(result, isTrue);
-      expect(find.byType(ReserveStockDialog), findsNothing); // dialog closed
+      expect(find.byType(ReserveStockDialog), findsNothing);
     });
 
-    testWidgets('INSUFFICIENT STOCK shows which line is short and by how much, and stays open', (tester) async {
+    testWidgets('a plan that cannot cover the order shows the shortfall, and Reserve stays off', (tester) async {
+      final api = _FakeOrdersApi()..proposal = plan(complete: false, shortBy: 4);
+      await open(tester, api);
+      expect(find.text('Short by 4 in Main WH'), findsOneWidget);
+      expect(find.textContaining('No single warehouse holds enough'), findsOneWidget);
+      expect(reserveButton(tester).onPressed, isNull);
+    });
+
+    testWidgets('adjusting a line: more than a location holds, or a wrong total, blocks Reserve', (tester) async {
+      final api = _FakeOrdersApi();
+      await open(tester, api);
+      await tester.tap(find.text('Adjust'));
+      await tester.pumpAndSettle();
+
+      final fields = find.byType(TextFormField);
+      await tester.enterText(fields.at(0), '12'); // Shelf A holds only 8
+      await tester.pumpAndSettle();
+      expect(find.text('Shelf A has only 8'), findsOneWidget);
+      expect(reserveButton(tester).onPressed, isNull);
+
+      await tester.enterText(fields.at(0), '2');
+      await tester.pumpAndSettle();
+      expect(find.text('Locations add up to 6 of 12'), findsOneWidget);
+      expect(reserveButton(tester).onPressed, isNull);
+
+      await tester.enterText(fields.at(1), '10');
+      await tester.pumpAndSettle();
+      expect(reserveButton(tester).onPressed, isNotNull);
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Reserve stock'));
+      await tester.pumpAndSettle();
+      expect(sent(api), [('i1', _locA, 2.0), ('i1', _locB, 10.0)]);
+    });
+
+    testWidgets('choosing another warehouse asks for the plan there', (tester) async {
+      final api = _FakeOrdersApi()
+        ..proposal = plan(
+          alternatives: const [
+            mainWh,
+            WarehouseChoice(id: 'w2', name: 'Far WH', complete: false),
+          ],
+        );
+      await open(tester, api);
+      await tester.tap(find.byType(DropdownButtonFormField<String>));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Far WH — not enough for the whole order').last);
+      await tester.pumpAndSettle();
+      expect(api.proposalWarehouseId, 'w2');
+    });
+
+    testWidgets('INSUFFICIENT STOCK (stock moved since the plan) shows the short line and stays open', (tester) async {
       final api = _FakeOrdersApi()
         ..failWith = const ConflictError(
-          'Cannot reserve — insufficient available stock for: product $_pShampoo at location $_locA: need 12, only 4 available',
+          'Cannot reserve — insufficient available stock for: product $_pShampoo at location $_locA: need 8, only 4 available',
         );
       bool? result;
       await open(tester, api, onResult: (r) => result = r);
 
-      await chooseLocation(tester, 'Shelf A (A)');
       await tester.tap(find.widgetWithText(FilledButton, 'Reserve stock'));
       await tester.pumpAndSettle();
 
       expect(find.text('Not enough stock — nothing was reserved'), findsOneWidget);
-      expect(find.text('Shampoo'), findsWidgets); // product NAME, not the id
       expect(find.text('Main WH › Shelf A'), findsWidgets); // location PATH, not the id
-      expect(find.text('Requested: 12'), findsOneWidget);
+      expect(find.text('Requested: 8'), findsOneWidget);
       expect(find.text('Available: 4'), findsOneWidget);
-      expect(find.text('Short by: 8'), findsOneWidget);
-      expect(find.textContaining('The order stays Approved'), findsOneWidget);
+      expect(find.text('Short by: 4'), findsOneWidget);
       expect(find.textContaining('product $_pShampoo'), findsNothing); // never the raw message
-      expect(result, isNull); // dialog still open — order did not advance
+      expect(find.text('Re-check stock and plan again'), findsOneWidget);
+      expect(result, isNull);
       expect(find.text('Try again'), findsOneWidget);
     });
 
@@ -324,12 +423,10 @@ void main() {
       bool? result;
       await open(tester, api, onResult: (r) => result = r);
 
-      await chooseLocation(tester, 'Shelf A (A)');
       await tester.tap(find.widgetWithText(FilledButton, 'Reserve stock'));
       await tester.pumpAndSettle();
-
       expect(find.text('Warehouse temporarily unavailable'), findsOneWidget);
-      expect(find.textContaining("safe to try again"), findsOneWidget);
+      expect(find.textContaining('safe to try again'), findsOneWidget);
       expect(result, isNull);
 
       await tester.tap(find.text('Retry'));
@@ -339,25 +436,31 @@ void main() {
     });
 
     testWidgets('an unrelated failure is shown verbatim', (tester) async {
-      final api = _FakeOrdersApi()..failWith = const ConflictError('Cannot transition order from DRAFT to STOCK_RESERVED');
+      final api = _FakeOrdersApi()
+        ..failWith = const ConflictError('Cannot transition order from DRAFT to STOCK_RESERVED');
       await open(tester, api);
-
-      await chooseLocation(tester, 'Shelf A (A)');
       await tester.tap(find.widgetWithText(FilledButton, 'Reserve stock'));
       await tester.pumpAndSettle();
-
       expect(find.text('Cannot transition order from DRAFT to STOCK_RESERVED'), findsOneWidget);
     });
   });
 
   group('dispatch preview', () {
-    Future<void> open(WidgetTester tester, Order order, {_FakeOrdersApi? api, Brightness brightness = Brightness.light}) async {
+    Future<void> open(
+      WidgetTester tester,
+      Order order, {
+      _FakeOrdersApi? api,
+      Brightness brightness = Brightness.light,
+    }) async {
       await _pump(
         tester,
         api: api ?? _FakeOrdersApi(),
         brightness: brightness,
         launcher: (context, _) => Center(
-          child: TextButton(onPressed: () => showDispatchOrderDialog(context, order: order), child: const Text('open')),
+          child: TextButton(
+            onPressed: () => showDispatchOrderDialog(context, order: order),
+            child: const Text('open'),
+          ),
         ),
       );
       await tester.tap(find.text('open'));
@@ -365,13 +468,19 @@ void main() {
     }
 
     testWidgets('everything packed → expects DISPATCHED', (tester) async {
-      await open(tester, _order(OrderStatus.readyForDispatch, [_item('i1', _pShampoo, 'Shampoo', ordered: 10, packed: 10)]));
+      await open(
+        tester,
+        _order(OrderStatus.readyForDispatch, [_item('i1', _pShampoo, 'Shampoo', ordered: 10, packed: 10)]),
+      );
       expect(find.text('ships 10 of 10'), findsOneWidget);
       expect(find.textContaining('the order becomes Dispatched'), findsOneWidget);
     });
 
     testWidgets('packed short → warns it will be PARTIALLY FULFILLED and names the shortfall', (tester) async {
-      await open(tester, _order(OrderStatus.readyForDispatch, [_item('i1', _pShampoo, 'Shampoo', ordered: 10, packed: 6)]));
+      await open(
+        tester,
+        _order(OrderStatus.readyForDispatch, [_item('i1', _pShampoo, 'Shampoo', ordered: 10, packed: 6)]),
+      );
       expect(find.text('ships 6 of 10'), findsOneWidget);
       expect(find.textContaining('Partially fulfilled'), findsOneWidget);
       expect(find.textContaining('released back to available'), findsWidgets);
@@ -379,7 +488,11 @@ void main() {
 
     testWidgets('warehouse unavailable on dispatch → retry note, dialog stays', (tester) async {
       final api = _FakeOrdersApi()..failWith = const ServiceUnavailableError('down');
-      await open(tester, _order(OrderStatus.readyForDispatch, [_item('i1', _pShampoo, 'Shampoo', packed: 10)]), api: api);
+      await open(
+        tester,
+        _order(OrderStatus.readyForDispatch, [_item('i1', _pShampoo, 'Shampoo', packed: 10)]),
+        api: api,
+      );
       await tester.tap(find.widgetWithText(FilledButton, 'Dispatch'));
       await tester.pumpAndSettle();
       expect(find.text('Warehouse temporarily unavailable'), findsOneWidget);

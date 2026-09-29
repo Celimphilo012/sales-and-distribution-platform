@@ -76,11 +76,7 @@ class OrdersScreen extends ConsumerWidget {
                   AppDataColumn(label: 'Order #', cellBuilder: (o) => Text(o.orderNumber)),
                   AppDataColumn(label: 'Customer', cellBuilder: (o) => Text(o.customer.name)),
                   AppDataColumn(label: 'Date', cellBuilder: (o) => Text(formatDateTime(o.orderDate))),
-                  AppDataColumn(
-                    label: 'Total',
-                    numeric: true,
-                    cellBuilder: (o) => Text(formatQuantity(o.total)),
-                  ),
+                  AppDataColumn(label: 'Total', numeric: true, cellBuilder: (o) => Text(formatQuantity(o.total))),
                   AppDataColumn(
                     label: 'Status',
                     cellBuilder: (o) => StatusBadge(label: o.status.label, tone: orderStatusTone(o.status)),

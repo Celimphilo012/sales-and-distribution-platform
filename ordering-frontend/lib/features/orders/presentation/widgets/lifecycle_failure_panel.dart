@@ -15,13 +15,7 @@ import '../../domain/order_lifecycle.dart';
 ///  * warehouse unreachable → a calm "safe to retry" note with a Retry button;
 ///  * anything else → the backend's message, verbatim.
 class LifecycleFailurePanel extends StatelessWidget {
-  const LifecycleFailurePanel({
-    super.key,
-    required this.failure,
-    required this.order,
-    this.locations,
-    this.onRetry,
-  });
+  const LifecycleFailurePanel({super.key, required this.failure, required this.order, this.locations, this.onRetry});
 
   final LifecycleFailure failure;
   final Order order;
@@ -42,7 +36,8 @@ class LifecycleFailurePanel extends StatelessWidget {
           foreground: semantic.onWarningContainer,
           icon: Icons.inventory_2_outlined,
           title: 'Not enough stock — nothing was reserved',
-          subtitle: 'The order stays ${order.status.label}. Choose another location or reduce the quantity, then try again.',
+          subtitle:
+              'The order stays ${order.status.label}. Choose another location or reduce the quantity, then try again.',
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [

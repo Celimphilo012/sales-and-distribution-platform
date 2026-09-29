@@ -89,9 +89,7 @@ class _QuantityEntryDialogState extends ConsumerState<QuantityEntryDialog> {
       _busy = true;
       _failure = null;
     });
-    final quantities = {
-      for (final item in widget.order.items) item.id: double.parse(_controllerFor(item).text.trim()),
-    };
+    final quantities = {for (final item in widget.order.items) item.id: double.parse(_controllerFor(item).text.trim())};
     try {
       final api = ref.read(ordersApiProvider);
       if (widget.step == QuantityStep.pick) {

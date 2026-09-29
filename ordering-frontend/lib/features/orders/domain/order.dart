@@ -137,6 +137,7 @@ class OrderItem {
     required this.unitPrice,
     required this.lineTotal,
     this.reservedLocationId,
+    this.allocations = const [],
   });
 
   final String id;
@@ -151,6 +152,10 @@ class OrderItem {
   final double lineTotal;
   final String? reservedLocationId;
 
+  /// Where this line's stock is reserved, in plan order (oldest stock
+  /// first). Several entries when a line was split across locations.
+  final List<ItemAllocation> allocations;
+
   factory OrderItem.fromJson(Map<String, dynamic> json) => OrderItem(
     id: json['id'] as String,
     orderId: json['orderId'] as String,
@@ -163,6 +168,27 @@ class OrderItem {
     unitPrice: _num(json['unitPrice']),
     lineTotal: _num(json['lineTotal']),
     reservedLocationId: json['reservedLocationId'] as String?,
+    allocations: (json['allocations'] as List<dynamic>? ?? const [])
+        .map((e) => ItemAllocation.fromJson(e as Map<String, dynamic>))
+        .toList(),
+  );
+}
+
+/// Part of a line's reservation: [quantity] held at one warehouse location.
+/// [locationLabel] is the location's name as it was when reserved (a
+/// snapshot, like the line's product name) — null for lines reserved before
+/// names were recorded.
+class ItemAllocation {
+  const ItemAllocation({required this.locationId, this.locationLabel, required this.quantity});
+
+  final String locationId;
+  final String? locationLabel;
+  final double quantity;
+
+  factory ItemAllocation.fromJson(Map<String, dynamic> json) => ItemAllocation(
+    locationId: json['locationId'] as String,
+    locationLabel: json['locationLabel'] as String?,
+    quantity: _num(json['quantity']),
   );
 }
 

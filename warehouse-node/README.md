@@ -102,6 +102,11 @@ port, TLS, user, password and from-address; httpSMS API key and phone number. Th
 by the API), take effect on the next message, and override `.env`, which is only the fallback. Until
 real sending is switched on, emails/SMS are printed to the server log.
 
+**Allocation options** (`POST /api/v1/stock/allocation-options`, scope `stock:read`): for each product,
+every active location (in an active warehouse) with available stock, its warehouse, and `oldestStockAt`
+— the arrival date of the oldest units still there, estimated FIFO-style from the ledger's inbound
+movements. The ordering system uses it to reserve oldest stock first.
+
 **Packing** (`GET /packing`, permission `packing.view`): every open order (a reservation the ordering
 system made that is not yet dispatched), oldest first, showing only the lines in the viewer's
 warehouses — and, for workstream managers, only their workstreams' products. The ordering system sends

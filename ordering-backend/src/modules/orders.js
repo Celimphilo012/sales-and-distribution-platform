@@ -5,6 +5,7 @@ const { cols, nest, groupBy, Where } = require('../core/models');
 const { OrderStatus } = require('../core/enums');
 const { obj, str, num, uuid, opt, arrayOf, enumOf, uuidParams } = require('../core/schema');
 const { assertValidOrderTransition, ORDER_STATUSES_WITH_ACTIVE_RESERVATION } = require('./order-status-transitions');
+const { planAllocation, byFifo } = require('./stock-allocation');
 
 const round2 = (n) => Math.round(n * 100) / 100;
 const round3 = (n) => Math.round(n * 1000) / 1000;
@@ -35,7 +36,7 @@ function createOrdersService({ db, models, auth, customers, warehouseApi, notifi
     const orders = (await db.query(`${ORDER_SELECT} ${where.sql} ${orderBy}`, where.params, executor)).map(nest);
     if (orders.length === 0) return orders;
     const ids = orders.map((o) => o.id);
-    const [items, history] = await Promise.all([
+    const [items, history, allocations] = await Promise.all([
       db.query(`SELECT ${cols('orderItem', 'i')} FROM order_items i WHERE i.order_id IN (?) ORDER BY i.order_id, i.id`, [ids], executor),
       db.query(
         `SELECT ${cols('orderStatusHistory', 'h')}, ${cols('user', 'u', ['id', 'fullName'], 'changedByUser.')}
@@ -45,7 +46,24 @@ function createOrdersService({ db, models, auth, customers, warehouseApi, notifi
         [ids],
         executor,
       ),
+      db.query(
+        `SELECT a.order_item_id AS orderItemId, a.location_id AS locationId, a.location_label AS locationLabel, a.quantity
+           FROM order_item_allocations a JOIN order_items i ON i.id = a.order_item_id
+          WHERE i.order_id IN (?)
+          ORDER BY a.order_item_id, a.position`,
+        [ids],
+        executor,
+      ),
     ]);
+    // Where each line's stock is reserved (several locations when a line was split).
+    const allocationsByItem = groupBy(allocations, 'orderItemId');
+    for (const item of items) {
+      item.allocations = (allocationsByItem.get(item.id) ?? []).map(({ locationId, locationLabel, quantity }) => ({
+        locationId,
+        locationLabel,
+        quantity,
+      }));
+    }
     const itemsByOrder = groupBy(items, 'orderId');
     const historyByOrder = groupBy(history.map(nest), 'orderId');
     return orders.map((o) => ({ ...o, items: itemsByOrder.get(o.id) ?? [], statusHistory: historyByOrder.get(o.id) ?? [] }));
@@ -183,25 +201,161 @@ function createOrdersService({ db, models, auth, customers, warehouseApi, notifi
     }
   }
 
+  /** Human names for warehouse locations: "Rack A › Shelf 2", from the warehouse's flat parentId list. */
+  function locationDirectory({ warehouses = [], locations = [] }) {
+    const byId = new Map(locations.map((l) => [l.id, l]));
+    const warehouseById = new Map(warehouses.map((w) => [w.id, w]));
+    const path = (id) => {
+      const names = [];
+      for (let l = byId.get(id), guard = 0; l && guard < 50; l = byId.get(l.parentId), guard++) names.unshift(l.name);
+      return names.join(' › ');
+    };
+    return {
+      has: (id) => byId.has(id),
+      warehouseOf: (id) => byId.get(id)?.warehouseId ?? null,
+      label: (id) => (byId.has(id) ? path(id) : id),
+      warehouse: (id) => {
+        const w = warehouseById.get(id);
+        return w ? { id: w.id, name: w.name, code: w.code } : { id, name: id, code: null };
+      },
+    };
+  }
+
+  /**
+   * The automatic reservation plan for an APPROVED order (modules/stock-allocation.js): one warehouse,
+   * oldest stock first, lines split across locations when needed. Each line also lists every location
+   * in that warehouse holding the product, so a manager can override the plan. `warehouseId` asks for
+   * the plan in a specific warehouse instead of the best one.
+   */
+  async function proposeReservation(id, { warehouseId } = {}) {
+    const order = await getExisting(id);
+    assertValidOrderTransition(order.status, 'STOCK_RESERVED');
+    const productIds = [...new Set(order.items.map((i) => i.productId))];
+    const [options, directory] = await Promise.all([
+      warehouseApi.allocationOptions(productIds),
+      warehouseApi.getLocations().then(locationDirectory),
+    ]);
+    const plan = planAllocation(
+      order.items.map((i) => ({ id: i.id, productId: i.productId, quantity: Number(i.quantityOrdered) })),
+      options.products,
+      { warehouseId },
+    );
+    const optionsByProduct = new Map(options.products.map((p) => [p.productId, p.locations]));
+    const planByItem = new Map(plan.lines.map((l) => [l.orderItemId, l]));
+    const describe = (loc) => ({
+      locationId: loc.locationId,
+      label: directory.label(loc.locationId),
+      available: loc.available,
+      oldestStockAt: loc.oldestStockAt,
+    });
+
+    return {
+      orderId: order.id,
+      complete: plan.complete,
+      warehouse: plan.warehouseId ? directory.warehouse(plan.warehouseId) : null,
+      alternatives: plan.alternatives.map((a) => ({ ...directory.warehouse(a.warehouseId), complete: a.complete })),
+      lines: order.items.map((item) => {
+        const planned = planByItem.get(item.id);
+        const here = (optionsByProduct.get(item.productId) ?? []).filter((l) => l.warehouseId === plan.warehouseId).sort(byFifo);
+        const hereById = new Map(here.map((l) => [l.locationId, l]));
+        return {
+          orderItemId: item.id,
+          productId: item.productId,
+          productName: item.productName,
+          quantity: Number(item.quantityOrdered),
+          allocations: planned.allocations.map((a) => ({ ...describe(hereById.get(a.locationId)), quantity: a.quantity })),
+          shortBy: planned.shortBy,
+          options: here.map(describe),
+        };
+      }),
+    };
+  }
+
   /**
    * APPROVED -> STOCK_RESERVED via the warehouse's idempotent reserve (reference = order id, so a
-   * retry replays rather than doubles). A shortfall is a business outcome: nothing is written
-   * locally, the order stays APPROVED, and the short lines come back in the 409.
+   * retry replays rather than doubles).
+   *
+   * With no `allocations`, the automatic plan is used (proposeReservation) — refused with the short
+   * lines when no single warehouse can fill the order. With `allocations` (a manager's override), each
+   * entry is { orderItemId, locationId, quantity? }: every line must be covered exactly (quantity may be
+   * omitted when a line comes from one location), and all locations must be in ONE warehouse.
+   * Either way the warehouse checks availability atomically: a location without enough stock makes the
+   * whole reservation fail — nothing is written locally, the order stays APPROVED, and the short lines
+   * come back in the 409.
    */
   async function reserve(id, dto, changedBy) {
     const order = await getExisting(id);
     assertValidOrderTransition(order.status, 'STOCK_RESERVED');
-    assertItemCoverage(order.items, dto.allocations.map((a) => a.orderItemId), 'Allocations');
-
     const itemById = new Map(order.items.map((i) => [i.id, i]));
-    const lines = dto.allocations.map((a) => ({
-      productId: itemById.get(a.orderItemId).productId,
-      locationId: a.locationId,
-      quantity: Number(itemById.get(a.orderItemId).quantityOrdered),
-    }));
+
+    let allocations; // [{ orderItemId, locationId, quantity }]
+    let directory; // location names, snapshotted onto the allocations
+    if (!dto.allocations?.length) {
+      const plan = await proposeReservation(id, { warehouseId: dto.warehouseId ?? undefined });
+      if (!plan.complete) {
+        const short = plan.lines.filter((l) => l.shortBy > 0);
+        throw conflict(
+          plan.warehouse
+            ? `Cannot reserve — no single warehouse has enough stock for this whole order (closest: ${plan.warehouse.name}). Short: ` +
+                short.map((l) => `${l.productName ?? l.productId} by ${l.shortBy}`).join('; ')
+            : 'Cannot reserve — none of the products on this order is in stock in any warehouse',
+          {
+            shortLines: short.map((l) => ({
+              orderItemId: l.orderItemId,
+              productId: l.productId,
+              requested: l.quantity,
+              available: round3(l.quantity - l.shortBy),
+            })),
+          },
+        );
+      }
+      allocations = plan.lines.flatMap((l) =>
+        l.allocations.map((a) => ({ orderItemId: l.orderItemId, locationId: a.locationId, quantity: a.quantity })),
+      );
+    } else {
+      assertItemCoverage(order.items, [...new Set(dto.allocations.map((a) => a.orderItemId))], 'Allocations');
+      const merged = new Map(); // orderItemId:locationId -> entry
+      for (const a of dto.allocations) {
+        const item = itemById.get(a.orderItemId);
+        const entriesForItem = dto.allocations.filter((x) => x.orderItemId === a.orderItemId).length;
+        if (a.quantity == null && entriesForItem > 1) {
+          throw badRequest('When a line is split across locations, give each location its quantity');
+        }
+        const quantity = round3(a.quantity ?? Number(item.quantityOrdered));
+        const key = `${a.orderItemId}:${a.locationId}`;
+        const prev = merged.get(key);
+        merged.set(key, { orderItemId: a.orderItemId, locationId: a.locationId, quantity: round3((prev?.quantity ?? 0) + quantity) });
+      }
+      allocations = [...merged.values()];
+      for (const item of order.items) {
+        const total = round3(allocations.filter((a) => a.orderItemId === item.id).reduce((sum, a) => sum + a.quantity, 0));
+        if (Math.abs(total - Number(item.quantityOrdered)) > 0.0005) {
+          throw badRequest(
+            `The locations for ${item.productName ?? item.productId} add up to ${total}, but the line is for ${Number(item.quantityOrdered)}`,
+          );
+        }
+      }
+      directory = locationDirectory(await warehouseApi.getLocations());
+      const unknown = allocations.find((a) => !directory.has(a.locationId));
+      if (unknown) throw badRequest(`Location ${unknown.locationId} is not an active warehouse location`);
+      if (new Set(allocations.map((a) => directory.warehouseOf(a.locationId))).size > 1) {
+        throw badRequest("All of an order's stock must come from one warehouse");
+      }
+    }
+
+    // The warehouse holds one reservation line per product + location: lines of the same product
+    // reserved at the same location are sent together.
+    const warehouseLines = new Map();
+    for (const a of allocations) {
+      const productId = itemById.get(a.orderItemId).productId;
+      const key = `${productId}:${a.locationId}`;
+      const line = warehouseLines.get(key) ?? { productId, locationId: a.locationId, quantity: 0 };
+      line.quantity = round3(line.quantity + a.quantity);
+      warehouseLines.set(key, line);
+    }
 
     // The label is what warehouse packers see on their packing list.
-    const result = await warehouseApi.reserve(order.id, lines, `${order.orderNumber} · ${order.customer.name}`);
+    const result = await warehouseApi.reserve(order.id, [...warehouseLines.values()], `${order.orderNumber} · ${order.customer.name}`);
     if (!result.success) {
       const detail = result.shortLines
         .map((l) => `product ${l.productId} at location ${l.locationId}: need ${l.requested}, only ${l.available} available`)
@@ -209,9 +363,27 @@ function createOrdersService({ db, models, auth, customers, warehouseApi, notifi
       throw conflict(`Cannot reserve — insufficient available stock for: ${detail}`, { shortLines: result.shortLines });
     }
 
+    directory ??= locationDirectory(await warehouseApi.getLocations());
     await db.transaction(async (tx) => {
-      for (const a of dto.allocations) {
-        await models.update('orderItem', a.orderItemId, { reservedLocationId: a.locationId }, 'Order item', tx);
+      await db.exec(
+        'DELETE a FROM order_item_allocations a JOIN order_items i ON i.id = a.order_item_id WHERE i.order_id = ?',
+        [order.id],
+        tx,
+      );
+      await models.insertMany(
+        'orderItemAllocation',
+        allocations.map((a, position) => ({
+          orderItemId: a.orderItemId,
+          locationId: a.locationId,
+          locationLabel: directory.label(a.locationId),
+          quantity: a.quantity,
+          position,
+        })),
+        tx,
+      );
+      for (const item of order.items) {
+        const first = allocations.find((a) => a.orderItemId === item.id);
+        await models.update('orderItem', item.id, { reservedLocationId: first.locationId }, 'Order item', tx);
       }
       await applyTransition(tx, order.id, 'APPROVED', 'STOCK_RESERVED', changedBy, undefined);
     });
@@ -277,26 +449,61 @@ function createOrdersService({ db, models, auth, customers, warehouseApi, notifi
   async function dispatch(id, changedBy, note) {
     const order = await getExisting(id);
     if (order.status !== 'READY_FOR_DISPATCH') throw conflict(`Cannot transition order from ${order.status} to DISPATCHED`);
+
+    // Where each line was reserved, in the order it was planned (oldest stock first). A line reserved
+    // before per-location allocations existed has just its reservedLocationId, for its whole quantity.
+    const plannedByItem = new Map(
+      order.items.map((item) => {
+        const planned = item.allocations.length
+          ? item.allocations.map((a) => ({ locationId: a.locationId, quantity: Number(a.quantity) }))
+          : item.reservedLocationId
+            ? [{ locationId: item.reservedLocationId, quantity: Number(item.quantityOrdered) }]
+            : [];
+        if (!planned.length) {
+          throw conflict(`No reservation location recorded for product ${item.productId} on this order — cannot dispatch`);
+        }
+        return [item.id, planned];
+      }),
+    );
+
+    // Ship exactly what was packed, taken from each line's locations in plan order. The warehouse
+    // releases whatever was reserved but not shipped.
+    const issueByKey = new Map(); // productId:locationId -> { productId, locationId, quantity }
+    const takesByItem = new Map(); // orderItemId -> [{ key, quantity }]
     for (const item of order.items) {
-      if (!item.reservedLocationId) {
-        throw conflict(`No reservation location recorded for product ${item.productId} on this order — cannot dispatch`);
+      let toShip = Number(item.quantityPacked);
+      const takes = [];
+      for (const planned of plannedByItem.get(item.id)) {
+        if (toShip <= 0) break;
+        const take = round3(Math.min(toShip, planned.quantity));
+        const key = `${item.productId}:${planned.locationId}`;
+        const line = issueByKey.get(key) ?? { productId: item.productId, locationId: planned.locationId, quantity: 0 };
+        line.quantity = round3(line.quantity + take);
+        issueByKey.set(key, line);
+        takes.push({ key, quantity: take });
+        toShip = round3(toShip - take);
       }
+      takesByItem.set(item.id, takes);
     }
+    const issueLines = [...issueByKey.values()].filter((l) => l.quantity > 0);
 
-    const issueLines = order.items
-      .filter((item) => Number(item.quantityPacked) > 0)
-      .map((item) => ({ productId: item.productId, locationId: item.reservedLocationId, quantity: Number(item.quantityPacked) }));
-
-    let issuedByLine = new Map();
+    let issuedByKey = new Map();
     if (issueLines.length > 0) {
       const result = await warehouseApi.issue(order.id, issueLines);
-      issuedByLine = new Map(result.issued.map((l) => [`${l.productId}|${l.locationId}`, l.issued]));
+      issuedByKey = new Map(result.issued.map((l) => [`${l.productId}:${l.locationId}`, Number(l.issued)]));
     } else {
       await warehouseApi.release(order.id);
     }
 
+    // quantityFulfilled comes ONLY from what the warehouse says it issued, shared back to the lines.
     const operations = order.items.map((item) => {
-      const fulfilledQty = issuedByLine.get(`${item.productId}|${item.reservedLocationId}`) ?? 0;
+      let fulfilledQty = 0;
+      for (const take of takesByItem.get(item.id)) {
+        const left = issuedByKey.get(take.key) ?? 0;
+        const got = round3(Math.min(left, take.quantity));
+        issuedByKey.set(take.key, round3(left - got));
+        fulfilledQty = round3(fulfilledQty + got);
+      }
       return { orderItemId: item.id, fulfilledQty, remainder: round3(Number(item.quantityOrdered) - fulfilledQty) };
     });
     const finalStatus = operations.some((op) => op.remainder > 0) ? 'PARTIALLY_FULFILLED' : 'DISPATCHED';
@@ -323,6 +530,7 @@ function createOrdersService({ db, models, auth, customers, warehouseApi, notifi
     submit,
     approve: (id, by, note) => simpleTransition(id, 'APPROVED', by, note),
     reject: (id, by, note) => simpleTransition(id, 'REJECTED', by, note),
+    proposeReservation,
     reserve,
     cancel,
     pick,
@@ -407,13 +615,25 @@ function ordersRoutes(app) {
     if (!b.note.trim()) throw badRequest('note should not be empty');
     return orders.reject(id, by, b.note);
   });
+  // The automatic plan (one warehouse, oldest stock first, split lines) a manager can accept or override.
+  app.get(
+    '/:id/reservation-proposal',
+    { onRequest: guard('orders.approve'), schema: { ...idParams, querystring: obj({ warehouseId: uuid }) } },
+    async (request) => orders.proposeReservation(request.params.id, request.query),
+  );
+  // No `allocations` = reserve per the automatic plan; with them = the manager's override.
   action(
     'reserve',
     'orders.approve',
     'RESERVE',
-    obj({ allocations: arrayOf(obj({ orderItemId: uuid, locationId: uuid }, ['orderItemId', 'locationId']), { minItems: 1 }) }, [
-      'allocations',
-    ]),
+    obj({
+      warehouseId: opt(uuid),
+      allocations: opt(
+        arrayOf(obj({ orderItemId: uuid, locationId: uuid, quantity: opt(qty3({ exclusiveMinimum: 0 })) }, ['orderItemId', 'locationId']), {
+          minItems: 1,
+        }),
+      ),
+    }),
     (id, b, by) => orders.reserve(id, b, by),
   );
   action('cancel', 'orders.approve', 'CANCEL', noteBody, (id, b, by) => orders.cancel(id, by, b.note ?? undefined));

@@ -1,5 +1,6 @@
 import '../../../core/network/api_client.dart';
 import '../domain/order.dart';
+import '../domain/reservation_proposal.dart';
 import '../domain/order_item_input.dart';
 import '../domain/order_lifecycle.dart';
 
@@ -17,10 +18,8 @@ class OrdersApi {
 
   Future<List<Order>> list({OrderStatus? status, String? customerId}) async {
     final response = await _apiClient.guard(
-      (dio) => dio.get<List<dynamic>>(
-        '/orders',
-        queryParameters: {'status': ?status?.apiValue, 'customerId': ?customerId},
-      ),
+      (dio) =>
+          dio.get<List<dynamic>>('/orders', queryParameters: {'status': ?status?.apiValue, 'customerId': ?customerId}),
     );
     return response.data!.map((e) => Order.fromJson(e as Map<String, dynamic>)).toList();
   }
@@ -37,11 +36,7 @@ class OrdersApi {
     final response = await _apiClient.guard(
       (dio) => dio.post<Map<String, dynamic>>(
         '/orders',
-        data: {
-          'customerId': customerId,
-          'deliveryInfo': ?deliveryInfo,
-          'items': items.map((i) => i.toJson()).toList(),
-        },
+        data: {'customerId': customerId, 'deliveryInfo': ?deliveryInfo, 'items': items.map((i) => i.toJson()).toList()},
       ),
     );
     return Order.fromJson(response.data!);
@@ -83,21 +78,33 @@ class OrdersApi {
   /// performs DRAFT → SUBMITTED → PENDING_APPROVAL in one call, writing two
   /// history rows.) `dispatch` takes NO quantities — it ships what `pack`
   /// recorded and reads the fulfilled amounts back from the warehouse.
-  Future<Order> transition(String id, OrderAction action, {String? note}) =>
-      _post(id, action, {'note': ?note});
+  Future<Order> transition(String id, OrderAction action, {String? note}) => _post(id, action, {'note': ?note});
 
   /// `note` is mandatory on the backend (400 without one).
   Future<Order> reject(String id, {required String note}) => _post(id, OrderAction.reject, {'note': note});
 
-  /// APPROVED → STOCK_RESERVED. [allocations] maps every order line's id to
-  /// the leaf location to reserve it from — it must cover exactly the
-  /// order's lines. Throws a `ConflictError` (409) carrying the short lines
-  /// when the warehouse lacks stock, and `ServiceUnavailableError` (503) when
-  /// the warehouse can't be reached; the order stays APPROVED either way.
-  Future<Order> reserve(String id, {required Map<String, String> allocations}) => _post(id, OrderAction.reserve, {
-    'allocations': [
-      for (final entry in allocations.entries) {'orderItemId': entry.key, 'locationId': entry.value},
-    ],
+  /// The backend's automatic plan for reserving an APPROVED order: one
+  /// warehouse, oldest stock first, lines split across locations when needed.
+  /// [warehouseId] asks for the plan in that warehouse instead of the best one.
+  Future<ReservationProposal> reservationProposal(String id, {String? warehouseId}) async {
+    final response = await _apiClient.guard(
+      (dio) => dio.get<Map<String, dynamic>>(
+        '/orders/$id/reservation-proposal',
+        queryParameters: {'warehouseId': ?warehouseId},
+      ),
+    );
+    return ReservationProposal.fromJson(response.data!);
+  }
+
+  /// APPROVED → STOCK_RESERVED. [allocations] say exactly which locations
+  /// each line is reserved from (they must cover every line exactly, all in
+  /// one warehouse); omit them to reserve per the backend's automatic plan.
+  /// Throws a `ConflictError` (409) carrying the short lines when a location
+  /// no longer has the stock — nothing is reserved and the order stays
+  /// APPROVED — and `ServiceUnavailableError` (503) when the warehouse can't
+  /// be reached.
+  Future<Order> reserve(String id, {List<ReserveAllocation>? allocations}) => _post(id, OrderAction.reserve, {
+    if (allocations != null) 'allocations': [for (final a in allocations) a.toJson()],
   });
 
   /// STOCK_RESERVED → PICKING. [pickedQty] maps every line id to the quantity

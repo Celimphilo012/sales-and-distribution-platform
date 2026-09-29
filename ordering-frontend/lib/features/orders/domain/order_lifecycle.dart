@@ -50,7 +50,11 @@ const Map<OrderAction, OrderActionSpec> kOrderActionSpecs = {
   ),
   OrderAction.pick: OrderActionSpec(label: 'Record picking', path: 'pick', permission: 'fulfilment.pick'),
   OrderAction.pack: OrderActionSpec(label: 'Record packing', path: 'pack', permission: 'fulfilment.pack'),
-  OrderAction.ready: OrderActionSpec(label: 'Mark ready for dispatch', path: 'ready', permission: 'fulfilment.dispatch'),
+  OrderAction.ready: OrderActionSpec(
+    label: 'Mark ready for dispatch',
+    path: 'ready',
+    permission: 'fulfilment.dispatch',
+  ),
   OrderAction.dispatch: OrderActionSpec(
     label: 'Dispatch',
     path: 'dispatch',

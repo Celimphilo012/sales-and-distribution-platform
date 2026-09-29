@@ -1,4 +1,4 @@
-/// Mirrors the backend's `UserStatus` enum (`warehouse/prisma/schema.prisma`)
+/// Mirrors the backend's `users.status` enum (`warehouse-node/db/schema.sql`)
 /// — three states, not just active/inactive. `remove` (`DELETE /users/:id`)
 /// only ever sets INACTIVE; SUSPENDED is reachable via `PATCH /users/:id`'s
 /// `status` field.

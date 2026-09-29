@@ -1,10 +1,9 @@
 # warehouse-node
 
-Plain-JavaScript port of the `/warehouse` NestJS API on **Node.js + Express**, with **no ORM** —
-every query is parameterised SQL through `mysql2`. It is a **drop-in replacement**: same routes, same request/response shapes, same permissions, same `warehouse_db`
-schema — both Flutter apps and the ordering back-office work against it unchanged. The original
-`/warehouse` is untouched and still works; run either one (never both against one production
-database expecting separate caches — see *Caching → multiple processes*).
+The Warehouse System API: plain JavaScript on **Node.js + Express**, with **no ORM** —
+every query is parameterised SQL through `mysql2`. It replaced the original NestJS/Prisma `/warehouse`
+(since deleted — it is in git history) with the same routes, request/response shapes, permissions and
+`warehouse_db` schema; `/warehouse-frontend` and `/ordering-backend` work against it.
 
 Everything CLAUDE.md requires still holds: permissions not roles, the inventory ledger written only via
 `InventoryService.applyTransaction()` (with the DB trigger as backstop), location-aware buckets,
@@ -27,7 +26,7 @@ npm start                     # or: npm run dev  (node --watch)
 `db/upgrades/2026-09-28-security-notifications-packing.sql` once (see the header in that file). It was
 checked by upgrading a pre-change backup and diffing it against a fresh `db/schema.sql`: identical.
 
-Default port is 3200 so it can run beside the original on 3100. `/warehouse-frontend` points here by
+Default port is 3200. `/warehouse-frontend` points here by
 default (`AppConfig.apiBaseUrl`). Point the back-office at it by changing `WAREHOUSE_API_URL`; nothing
 else changes.
 
@@ -44,7 +43,7 @@ src/core/                 db pool (db.js), table metadata + SQL helpers (models.
 src/modules/<name>/       service.js (business logic) + routes.js (HTTP + JSON-Schema validation)
 src/catalog/              permission + attribute-type seed catalogs
 db/                       schema.sql (the schema), seed.js, seed-inventory-demo.js
-test/                     unit + integration tests, plus parity.js and bench.js
+test/                     unit + integration tests
 ```
 
 Cross-module calls go through services (rule 9). `routes.js` files declare their guards with
@@ -158,7 +157,7 @@ invalidation, implement the Redis store.
 * Report queries got a deterministic tiebreaker (`ORDER BY … , sku`); the original's order for ties was
   arbitrary.
 
-## Deliberate differences from `/warehouse`
+## Deliberate differences from the original NestJS `/warehouse` (deleted 2026-09-29; in git history)
 
 * Validation messages are class-validator-style (`property x should not exist`,
   `email must be a valid email`) but not word-for-word identical for every rule.
@@ -181,8 +180,8 @@ DATABASE_URL=mysql://root:@localhost:3306/warehouse_db_test SEED_ADMIN_EMAIL=adm
 npm test                      # cache unit tests + full API integration suite (real HTTP on a random port)
 ```
 
-`test/parity.js` replays every read endpoint (and the error shapes) against the original API and this
-port on the same database and diffs the results; `test/bench.js` compares throughput.
+Before the original NestJS API was deleted, a parity script replayed every read endpoint (and the error
+shapes) against both on the same database: 58/58 identical.
 
 ## Deploying on cPanel (Phusion Passenger)
 

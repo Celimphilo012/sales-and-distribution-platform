@@ -16,7 +16,6 @@ sales-and-distribution-platform/
 ├── ordering-backend/      Ordering API — Node.js + Express + raw SQL (mysql2), port 3300,
 │                          db distribution_platform; calls warehouse-node's API-key API for stock
 ├── ordering-frontend/     Ordering Flutter app (talks only to ordering-backend), web port 8080
-├── warehouse/             LEGACY NestJS + Prisma warehouse API (3100) — reference only
 └── edms-prototype-flutter/  UI design prototype the warehouse app's look follows
 ```
 

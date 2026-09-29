@@ -64,7 +64,7 @@ const _customBuiltPaths = {
 /// even though the backend already supports all of them). Reports is still
 /// a [ComingSoonView] placeholder. Products/Categories/Warehouses/Inventory
 /// (F3-era) were removed entirely in R1; that catalogue's MANAGEMENT lives
-/// in `/warehouse-frontend` talking to `/warehouse` — this app only ever
+/// in `/warehouse-frontend` talking to `/warehouse-node` — this app only ever
 /// READS it, to build an order.
 final appRouterProvider = Provider<GoRouter>((ref) {
   final refreshListenable = _AuthRefreshListenable(ref);

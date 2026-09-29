@@ -13,7 +13,8 @@ Inventory, Sales and Distribution Management Platform.
 
 **TWO systems · TWO databases · each its own backend/API and its own auth.**
 
-- **Warehouse System** (`/warehouse`, port 3100, db `warehouse_db`) — owns the physical
+- **Warehouse System** (`/warehouse-node`, port 3200, db `warehouse_db`; originally the NestJS
+  `/warehouse` on 3100, replaced and deleted 2026-09-29) — owns the physical
   stock world AND the product catalogue: products, categories, product-images,
   warehouses, locations (tree), inventory balances, the transaction ledger
   (`applyTransaction`, frozen), receiving, transfers, stock counts, adjustments. Has its
@@ -32,7 +33,7 @@ Inventory, Sales and Distribution Management Platform.
         Warehouse Frontend                Back-Office Frontend (Flutter)
                 |                                    |
         Warehouse System                   Back-Office / Ordering System
-        NestJS · port 3100                 NestJS · port 3000
+   Node+Express · port 3200          Node+Express · port 3300
         db: warehouse_db                   db: distribution_platform
         own auth · the ledger              own auth · orders/customers
                 |                                    |

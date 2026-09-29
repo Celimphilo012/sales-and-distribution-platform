@@ -13,9 +13,9 @@ class AppUserRoleRef {
 /// The signed-in user's identity and permission set.
 ///
 /// Permission strings mirror the WAREHOUSE backend's permission catalog
-/// (`warehouse/src/permissions/constants/permission-catalog.ts`) — the front
+/// (`warehouse-node/src/catalog/permission-catalog.js`) — the front
 /// end never checks a role name, only permission strings, per CLAUDE.md
-/// rule 1. This app is a standalone client of /warehouse only; it never
+/// rule 1. This app is a standalone client of /warehouse-node only; it never
 /// sees ordering-side permissions like `orders.*`/`customers.*`.
 ///
 /// [roles] and [status] mirror the extra fields `GET /auth/me` returns

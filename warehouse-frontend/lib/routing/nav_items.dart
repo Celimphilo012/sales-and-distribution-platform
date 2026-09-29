@@ -55,7 +55,7 @@ class NavGroup {
 
 /// The nav table, grouped. Order here is display order in every layout.
 /// Every permission key below is a real key from the warehouse's own catalog
-/// (warehouse/src/permissions/constants/permission-catalog.ts).
+/// (warehouse-node/src/catalog/permission-catalog.js).
 const List<NavGroup> kNavGroups = [
   NavGroup(
     id: 'overview',

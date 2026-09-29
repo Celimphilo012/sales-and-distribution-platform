@@ -2,9 +2,8 @@
 ///
 /// This app is a standalone client of the WAREHOUSE system only
 /// (ARCHITECTURE.md §A2) — it never talks to the back-office/ordering
-/// backend on port 3000. The default points at the warehouse API's local
-/// dev server, `/warehouse-node` (Node.js + Express, port 3200) — not the
-/// older NestJS `/warehouse` on 3100. Override with
+/// backend. The default points at the warehouse API's local dev server,
+/// `/warehouse-node` (Node.js + Express, port 3200). Override with
 /// `--dart-define=API_BASE_URL=...` for other environments without changing
 /// any call sites.
 class AppConfig {

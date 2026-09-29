@@ -4,7 +4,7 @@
 ///
 /// This is the ORDERING app's nav table (ARCHITECTURE.md §A2) — there is no
 /// products/categories/warehouses/inventory section here; those belong to
-/// the separate `/warehouse-frontend` app talking to `/warehouse`. Step R1
+/// the separate `/warehouse-frontend` app talking to `/warehouse-node`. Step R1
 /// stripped them from here.
 class RoutePaths {
   const RoutePaths._();

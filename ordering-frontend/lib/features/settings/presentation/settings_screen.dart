@@ -1,60 +1,144 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../../../app_shell/responsive_app_shell.dart';
 import '../../../core/auth/app_user.dart';
 import '../../../core/auth/auth_provider.dart';
-import '../../../core/error/app_error.dart';
-import '../../../core/theme/app_spacing.dart';
-import '../../../shared/widgets/app_card.dart';
-import '../../../shared/widgets/app_text_field.dart';
-import '../../../shared/widgets/status_badge.dart';
-import '../../users/data/users_providers.dart';
+import '../../../core/theme/nocturne.dart';
+import '../../../core/theme/theme_mode_provider.dart';
+import '../../../shared/nx/nx_form.dart';
+import '../../../shared/nx/nx_primitives.dart';
 import 'widgets/account_sections.dart';
+import 'widgets/branding_section.dart';
 import 'widgets/delivery_settings_section.dart';
+import 'widgets/settings_head.dart';
 
-/// SETTINGS: profile, own contact details + notification channel, sign-in
-/// verification (MFA), and password — for any logged-in user — plus the
-/// email/SMS delivery settings for holders of `settings.manage`. Ported from
-/// the warehouse app's admin template MINUS the API-key and "my warehouses"
-/// sections — the ordering system has neither (ARCHITECTURE.md §A2).
-class SettingsScreen extends ConsumerWidget {
-  const SettingsScreen({super.key});
+typedef _Sec = (String id, String label, IconData icon);
+
+/// Settings (prototype `settings`): a section list beside one panel —
+/// profile, appearance, report branding, contact & alerts, sign-in check,
+/// password, and (with `settings.manage`) email & SMS delivery.
+/// `/settings?section=<id>` opens a section.
+class SettingsScreen extends ConsumerStatefulWidget {
+  const SettingsScreen({super.key, this.initialSection});
+
+  final String? initialSection;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
-    final user = ref.watch(authProvider.select((s) => s.value?.user));
+  ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
+}
 
-    return Padding(
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      child: ListView(
-        children: [
-          Text('Settings', style: theme.textTheme.headlineSmall),
-          const SizedBox(height: AppSpacing.lg),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 720),
-            child: _ProfileSection(user: user),
+class _SettingsScreenState extends ConsumerState<SettingsScreen> {
+  late String _sec = widget.initialSection ?? 'profile';
+
+  @override
+  void didUpdateWidget(covariant SettingsScreen old) {
+    super.didUpdateWidget(old);
+    if (widget.initialSection != null && widget.initialSection != old.initialSection) _sec = widget.initialSection!;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final n = context.nx;
+    final user = ref.watch(authProvider.select((s) => s.value?.user));
+    final phone = MediaQuery.of(context).size.width < 600;
+    final secs = <_Sec>[
+      ('profile', 'Profile', PhosphorIconsDuotone.user),
+      ('appearance', 'Appearance', PhosphorIconsDuotone.palette),
+      ('branding', 'Report branding', PhosphorIconsDuotone.image),
+      ('contact', 'Contact & alerts', PhosphorIconsDuotone.bellSimple),
+      ('mfa', 'Sign-in check', PhosphorIconsDuotone.shieldCheck),
+      ('password', 'Password', PhosphorIconsDuotone.password),
+      if (user?.can('settings.manage') ?? false) ('delivery', 'Email & SMS delivery', PhosphorIconsDuotone.paperPlaneTilt),
+    ];
+    final current = secs.any((s) => s.$1 == _sec) ? _sec : 'profile';
+
+    final nav = phone
+        ? SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(children: [for (final s in secs) _NavItem(sec: s, selected: s.$1 == current, onTap: () => setState(() => _sec = s.$1))]),
+          )
+        : Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [for (final s in secs) _NavItem(sec: s, selected: s.$1 == current, onTap: () => setState(() => _sec = s.$1))],
+          );
+
+    final Widget panel = user == null
+        ? const SizedBox.shrink()
+        : switch (current) {
+            'appearance' => const _AppearanceSection(),
+            'branding' => BrandingSection(canManage: user.can('settings.manage')),
+            // Keyed on the saved values so the form re-seeds after a save.
+            'contact' => ContactSection(key: ValueKey('${user.phone}|${user.notifyChannel}'), user: user),
+            'mfa' => MfaSection(user: user),
+            'password' => const PasswordSection(),
+            'delivery' => const DeliverySettingsSection(),
+            _ => _ProfileSection(user: user),
+          };
+
+    return NxPageScroll(
+      child: Align(
+        alignment: Alignment.topLeft,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 920),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('Settings', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w500, color: n.text)),
+              const SizedBox(height: 12),
+              if (phone) ...[
+                nav,
+                const SizedBox(height: 12),
+                NxSection(padding: const EdgeInsets.fromLTRB(16, 14, 16, 16), child: panel),
+              ] else
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(width: 200, child: nav),
+                    const SizedBox(width: 14),
+                    Expanded(child: NxSection(padding: const EdgeInsets.fromLTRB(16, 14, 16, 16), child: panel)),
+                  ],
+                ),
+            ],
           ),
-          if (user != null) ...[
-            const SizedBox(height: AppSpacing.md),
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 720),
-              // Keyed on the saved values so the form re-seeds after a save/refresh.
-              child: ContactSection(key: ValueKey('${user.phone}|${user.notifyChannel}'), user: user),
+        ),
+      ),
+    );
+  }
+}
+
+class _NavItem extends StatelessWidget {
+  const _NavItem({required this.sec, required this.selected, required this.onTap});
+
+  final _Sec sec;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final n = context.nx;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 2, right: 2),
+      child: Material(
+        color: selected ? n.a900 : Colors.transparent,
+        borderRadius: BorderRadius.circular(6),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(6),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+            decoration: BoxDecoration(border: Border(left: BorderSide(color: selected ? n.accent : Colors.transparent, width: 2))),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(sec.$3, size: 15, color: selected ? n.text : n.n400),
+                const SizedBox(width: 8),
+                Text(sec.$2, style: TextStyle(fontSize: 13, color: selected ? n.text : n.n400)),
+              ],
             ),
-            const SizedBox(height: AppSpacing.md),
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 720),
-              child: MfaSection(user: user),
-            ),
-          ],
-          const SizedBox(height: AppSpacing.md),
-          ConstrainedBox(constraints: const BoxConstraints(maxWidth: 720), child: const _PasswordSection()),
-          if (user?.can('settings.manage') ?? false) ...[
-            const SizedBox(height: AppSpacing.lg),
-            ConstrainedBox(constraints: const BoxConstraints(maxWidth: 720), child: const DeliverySettingsSection()),
-          ],
-        ],
+          ),
+        ),
       ),
     );
   }
@@ -63,175 +147,68 @@ class SettingsScreen extends ConsumerWidget {
 class _ProfileSection extends StatelessWidget {
   const _ProfileSection({required this.user});
 
-  final AppUser? user;
+  final AppUser user;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    if (user == null) return const SizedBox.shrink();
-
-    return AppCard(
-      title: 'Profile',
-      child: Column(
+    final n = context.nx;
+    Widget row(String label, Widget value) => Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _ProfileRow(label: 'Name', value: user!.name),
-          _ProfileRow(label: 'Email', value: user!.email),
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
-            child: Row(
-              children: [
-                SizedBox(
-                  width: 120,
-                  child: Text(
-                    'Roles',
-                    style: theme.textTheme.labelMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                  ),
-                ),
-                Expanded(
-                  child: user!.roles.isEmpty
-                      ? Text('—', style: theme.textTheme.bodyMedium)
-                      : Wrap(
-                          spacing: AppSpacing.xs,
-                          runSpacing: AppSpacing.xs,
-                          children: [
-                            for (final role in user!.roles) StatusBadge(label: role.name, tone: StatusTone.info),
-                          ],
-                        ),
-                ),
-              ],
-            ),
-          ),
+          SizedBox(width: 110, child: Text(label, style: TextStyle(fontSize: 13, color: n.n400))),
+          Expanded(child: DefaultTextStyle.merge(style: TextStyle(fontSize: 13, color: n.text), child: value)),
         ],
       ),
     );
-  }
-}
-
-class _ProfileRow extends StatelessWidget {
-  const _ProfileRow({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 120,
-            child: Text(label, style: theme.textTheme.labelMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-          ),
-          Expanded(child: Text(value, style: theme.textTheme.bodyMedium)),
-        ],
-      ),
-    );
-  }
-}
-
-/// Self-service change-password (`PATCH /users/me/password` — any
-/// authenticated user, gated only by proving they know the current
-/// password, not a permission). Distinct from the admin reset on the Users
-/// screen, which needs `users.manage` and no current-password check.
-class _PasswordSection extends ConsumerStatefulWidget {
-  const _PasswordSection();
-
-  @override
-  ConsumerState<_PasswordSection> createState() => _PasswordSectionState();
-}
-
-class _PasswordSectionState extends ConsumerState<_PasswordSection> {
-  final _formKey = GlobalKey<FormState>();
-  final _currentController = TextEditingController();
-  final _newController = TextEditingController();
-  final _confirmController = TextEditingController();
-  bool _saving = false;
-  String? _error;
-
-  @override
-  void dispose() {
-    _currentController.dispose();
-    _newController.dispose();
-    _confirmController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _submit() async {
-    if (!(_formKey.currentState?.validate() ?? false)) return;
-    setState(() {
-      _saving = true;
-      _error = null;
-    });
-    try {
-      await ref
-          .read(usersApiProvider)
-          .changeOwnPassword(currentPassword: _currentController.text, newPassword: _newController.text);
-      _currentController.clear();
-      _newController.clear();
-      _confirmController.clear();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Password changed.')));
-      }
-    } on AppError catch (e) {
-      setState(() => _error = e.message);
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return AppCard(
-      title: 'Password',
-      child: Form(
-        key: _formKey,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            AppTextField(
-              label: 'Current password',
-              controller: _currentController,
-              obscureText: true,
-              enabled: !_saving,
-              validator: (v) => (v == null || v.isEmpty) ? 'Enter your current password' : null,
-            ),
-            const SizedBox(height: AppSpacing.md),
-            AppTextField(
-              label: 'New password',
-              controller: _newController,
-              obscureText: true,
-              enabled: !_saving,
-              validator: (v) {
-                if (v == null || v.isEmpty) return 'Enter a new password';
-                if (v.length < 8) return 'Must be at least 8 characters';
-                return null;
-              },
-            ),
-            const SizedBox(height: AppSpacing.md),
-            AppTextField(
-              label: 'Confirm new password',
-              controller: _confirmController,
-              obscureText: true,
-              enabled: !_saving,
-              validator: (v) => v != _newController.text ? 'Passwords do not match' : null,
-            ),
-            if (_error != null) ...[
-              const SizedBox(height: AppSpacing.sm),
-              Text(_error!, style: TextStyle(color: theme.colorScheme.error)),
-            ],
-            const SizedBox(height: AppSpacing.md),
-            FilledButton.icon(
-              onPressed: _saving ? null : _submit,
-              icon: const Icon(Icons.lock_outline),
-              label: Text(_saving ? 'Saving…' : 'Change password'),
-            ),
-          ],
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SettingsHead('Profile'),
+        row('Name', Text(user.name)),
+        row('Email', Text(user.email)),
+        row('Mobile', Text((user.phone ?? '').isEmpty ? '—' : user.phone!)),
+        row(
+          'Roles',
+          user.roles.isEmpty
+              ? const Text('—')
+              : Wrap(spacing: 4, runSpacing: 4, children: [for (final r in user.roles) NxTag(r.name, tone: Tone.accent)]),
         ),
-      ),
+        const SizedBox(height: 6),
+        Text('Your name and roles are managed by an administrator.', style: TextStyle(fontSize: 11, color: n.n500)),
+      ],
+    );
+  }
+}
+
+class _AppearanceSection extends ConsumerWidget {
+  const _AppearanceSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final mode = ref.watch(themeModeProvider);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SettingsHead('Appearance', sub: 'Saved on this device. Also available from the sun/moon button in the top bar.'),
+        NxField(
+          label: 'Theme',
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: NxSeg<ThemeMode>(
+              small: false,
+              options: const [
+                (ThemeMode.dark, 'Dark', PhosphorIconsRegular.moon),
+                (ThemeMode.light, 'Light', PhosphorIconsRegular.sun),
+                (ThemeMode.system, 'System', PhosphorIconsRegular.desktop),
+              ],
+              value: mode,
+              onChanged: (m) => ref.read(themeModeProvider.notifier).setThemeMode(m),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

@@ -73,6 +73,21 @@ carries `summary {locations, slots, capacity, units, workstreams}`, `GET /workst
 `GET /inventory/transactions` carries `performedByUser` + `limit`. Verified: warehouse-node 116 tests,
 warehouse-frontend 84 tests + analyze clean.
 
+**ORDERING CONSOLE REDESIGN (2026-09-30)** — `/ordering-frontend` now has the same console look as the
+warehouse (no ordering prototype exists, so the warehouse design language is applied): the Nocturne theme,
+the `shared/nx/` kit and the grouped shell are COPIED in (no shared code across systems). Nav: Dashboard ·
+Sales (Orders, Customers, Payments) · User management · System (Reports, Audit Log, Settings). Orders is one
+list page (stages Draft/Approval/Fulfilment/Shipped/Closed, value + still-owed stats; `?status=` / `?unpaid=1`
+presets from the bell); order detail is a page with a lifecycle progress strip, lines, history, and a side
+column for the next step (actions), payments and details; the order form has searchable customer (+ quick
+add) and product pickers and "Save & submit". Customers open in a sheet (bought / owes / their orders, new
+order for them). New Payments ledger (`GET /payments` rows now carry `customer`). Reports: 7 sales/money
+reports for a chosen period, PDF + Excel with the company logo — the ordering backend gained its own
+`/settings/branding` (copied from the warehouse; `multer` + `core/uploads.js`). The bell derives
+notifications from the viewer's orders. Every dialog goes through the restyled `AppDialog`/`ConfirmDialog`.
+Kit fixes carried to both apps: icon row-action buttons are exactly 28px and action columns are sized for
+them (52 / 76 / 106). Verified: ordering-backend 40 tests, ordering-frontend 72 tests + analyze clean.
+
 **Ordering port DONE (2026-09-28):** `/ordering-backend` — 33/33 read endpoints + error shapes
 byte-identical to `/backend` on real data (parity script, removed with `/backend`); 14 integration tests (full lifecycle
 against an in-process fake warehouse); `/ordering-frontend` repointed to 3300 (analyze clean, 51

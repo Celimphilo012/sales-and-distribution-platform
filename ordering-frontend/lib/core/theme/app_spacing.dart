@@ -10,7 +10,9 @@ class AppSpacing {
   static const double xl = 32;
   static const double xxl = 48;
 
-  static const double radiusSm = 6;
-  static const double radiusMd = 10;
-  static const double radiusLg = 16;
+  // Nocturne radii (`--radius-sm/md/lg`): soft 8px corners on controls and
+  // cards, 14px on sheets and dialogs.
+  static const double radiusSm = 4;
+  static const double radiusMd = 8;
+  static const double radiusLg = 14;
 }

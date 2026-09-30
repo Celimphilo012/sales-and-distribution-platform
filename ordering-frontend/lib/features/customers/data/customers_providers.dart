@@ -28,12 +28,18 @@ final customersListProvider = FutureProvider.autoDispose<List<Customer>>((ref) {
   return ref.watch(customersApiProvider).list(filter);
 });
 
+/// Every customer, active and inactive — the Customers list filters it client-side.
+final allCustomersProvider = FutureProvider.autoDispose<List<Customer>>((ref) {
+  return ref.watch(customersApiProvider).list(const CustomersFilter(statusFilter: CustomerStatusFilter.all));
+});
+
 final customerDetailProvider = FutureProvider.autoDispose.family<Customer, String>((ref, id) {
   return ref.watch(customersApiProvider).getOne(id);
 });
 
 void invalidateCustomers(WidgetRef ref) {
   ref.invalidate(customersListProvider);
+  ref.invalidate(allCustomersProvider);
 }
 
 void invalidateCustomer(WidgetRef ref, String id) {

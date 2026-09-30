@@ -53,6 +53,9 @@ class Payment {
     this.voidedAt,
     this.voidReason,
     this.orderNumber,
+    this.orderId,
+    this.customerId,
+    this.customerName,
   });
 
   final String id;
@@ -68,6 +71,11 @@ class Payment {
   final String? voidReason;
   final String? orderNumber;
 
+  /// Present on ledger rows (`GET /payments` without an order).
+  final String? orderId;
+  final String? customerId;
+  final String? customerName;
+
   factory Payment.fromJson(Map<String, dynamic> json) => Payment(
     id: json['id'] as String,
     amount: _num(json['amount']),
@@ -81,6 +89,9 @@ class Payment {
     voidedAt: json['voidedAt'] == null ? null : DateTime.parse(json['voidedAt'] as String),
     voidReason: json['voidReason'] as String?,
     orderNumber: (json['order'] as Map<String, dynamic>?)?['orderNumber'] as String?,
+    orderId: (json['order'] as Map<String, dynamic>?)?['id'] as String?,
+    customerId: (json['customer'] as Map<String, dynamic>?)?['id'] as String?,
+    customerName: (json['customer'] as Map<String, dynamic>?)?['name'] as String?,
   );
 }
 

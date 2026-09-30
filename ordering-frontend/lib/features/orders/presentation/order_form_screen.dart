@@ -1,240 +1,166 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../../../app_shell/responsive_app_shell.dart';
 import '../../../core/auth/auth_provider.dart';
 import '../../../core/error/app_error.dart';
-import '../../../core/theme/app_spacing.dart';
+import '../../../core/theme/nocturne.dart';
 import '../../../routing/route_paths.dart';
-import '../../../shared/quantity_format.dart';
-import '../../../shared/widgets/app_card.dart';
-import '../../../shared/widgets/app_number_field.dart';
-import '../../../shared/widgets/app_text_field.dart';
-import '../../../shared/widgets/empty_loading_error_states.dart';
-import '../../catalogue/presentation/widgets/product_picker_dialog.dart';
+import '../../../shared/nx/nx_form.dart';
+import '../../../shared/nx/nx_format.dart';
+import '../../../shared/nx/nx_list_page.dart';
+import '../../../shared/nx/nx_overlays.dart';
+import '../../../shared/nx/nx_primitives.dart';
+import '../../catalogue/data/catalogue_providers.dart';
+import '../../catalogue/domain/warehouse_product.dart';
+import '../../customers/data/customers_providers.dart';
 import '../../customers/domain/customer.dart';
+import '../../customers/presentation/customer_form_dialog.dart';
 import '../data/orders_providers.dart';
 import '../domain/order.dart';
 import '../domain/order_item_input.dart';
-import 'widgets/customer_picker_dialog.dart';
+import '../domain/order_lifecycle.dart';
 
-/// One line while the form is being built — a local, editable draft. Not
-/// the same as [OrderItem]: this is client-side working state, never
-/// treated as authoritative. `estimatedUnitPrice` is exactly that — an
-/// ESTIMATE for the running total shown while composing the order; the real
-/// price is whatever the server snapshots at save time (rule 8), which is
-/// why saving always lands on the read-only detail screen showing the
-/// server's own numbers, never this draft's.
+/// A line while the order is being built — local working state. The unit
+/// price is an ESTIMATE from the catalogue for the running total; the real
+/// price is what the server snapshots on save (rule 8).
 class _DraftLine {
-  _DraftLine({
-    required this.productId,
-    required this.productName,
-    required this.estimatedUnitPrice,
-    required this.quantity,
-  });
+  _DraftLine({required this.productId, required this.name, required this.sku, required this.uom, required this.price, required this.quantity});
 
   final String productId;
-  final String productName;
-  final double estimatedUnitPrice;
+  final String name;
+  final String sku;
+  final String uom;
+  final double price;
   double quantity;
 
-  double get estimatedLineTotal => estimatedUnitPrice * quantity;
+  double get total => price * quantity;
 }
 
-/// Create (no [orderId]) or edit a DRAFT (pass [orderId]) — one routed
-/// screen for both, same split as the warehouse app's ProductFormScreen.
-/// Editing is gated on THREE things per the real backend
-/// (`OrdersService.update`): `orders.edit_own_draft`, the order still being
-/// DRAFT, and the caller being the order's own `consultantId` — a 409/403
-/// otherwise, so this screen checks all three before ever showing an
-/// editable form.
+/// New order (optionally for `?customer=<id>`) or edit a DRAFT ([orderId]).
+/// Editing needs `orders.edit_own_draft`, a DRAFT, and being its consultant —
+/// checked here before a form is ever shown (the backend enforces it too).
 class OrderFormScreen extends ConsumerWidget {
-  const OrderFormScreen({super.key, this.orderId});
+  const OrderFormScreen({super.key, this.orderId, this.initialCustomerId});
 
   final String? orderId;
+  final String? initialCustomerId;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(authProvider.select((s) => s.value?.user));
-    final canCreate = user?.can('orders.create') ?? false;
-
     if (orderId == null) {
-      if (!canCreate) {
-        return const EmptyStateView(
-          title: "You don't have permission to create orders",
-          message: 'Ask an administrator for the orders.create permission.',
-          icon: Icons.lock_outline,
-        );
+      if (!(user?.can('orders.create') ?? false)) {
+        return const NxPageScroll(child: NxError(message: "You don't have permission to create orders (orders.create)."));
       }
-      return const _OrderFormBody(initialOrder: null);
+      return _Form(initialOrder: null, initialCustomerId: initialCustomerId);
     }
-
-    final orderAsync = ref.watch(orderDetailProvider(orderId!));
-    return orderAsync.when(
-      loading: () => const LoadingStateView(message: 'Loading order…'),
-      error: (error, stackTrace) => ErrorStateView(
-        message: error is AppError ? error.message : 'Could not load this order.',
-        onRetry: () => ref.invalidate(orderDetailProvider(orderId!)),
+    final async = ref.watch(orderDetailProvider(orderId!));
+    return async.when(
+      loading: () => const NxPageScroll(child: NxLoading(message: 'Loading order…')),
+      error: (e, _) => NxPageScroll(
+        child: NxError(message: e is AppError ? e.message : 'Could not load this order.', onRetry: () => ref.invalidate(orderDetailProvider(orderId!))),
       ),
       data: (order) {
-        final canEdit = user?.can('orders.edit_own_draft') ?? false;
-        final isOwner = user != null && order.consultantId == user.id;
         final isDraft = order.status == OrderStatus.draft;
-
+        final isOwner = user != null && order.consultantId == user.id;
+        final canEdit = user?.can('orders.edit_own_draft') ?? false;
         if (!canEdit || !isOwner || !isDraft) {
           final reason = !isDraft
               ? 'This order is no longer a draft (it is now "${order.status.label}") and can no longer be edited.'
               : !isOwner
-              ? "This draft belongs to a different consultant — only its owner can edit it."
+              ? 'This draft belongs to a different consultant — only its owner can edit it.'
               : "You don't have permission to edit draft orders (orders.edit_own_draft).";
-          return EmptyStateView(
-            title: "Can't edit this order",
-            message: reason,
-            icon: Icons.lock_outline,
-            action: OutlinedButton.icon(
-              onPressed: () => context.go(RoutePaths.orderDetail(order.id)),
-              icon: const Icon(Icons.visibility_outlined),
-              label: const Text('View order'),
-            ),
-          );
+          return NxPageScroll(child: NxError(message: reason, onRetry: () => context.go(RoutePaths.orderDetail(order.id))));
         }
-        return _OrderFormBody(initialOrder: order);
+        return _Form(initialOrder: order);
       },
     );
   }
 }
 
-class _OrderFormBody extends ConsumerStatefulWidget {
-  const _OrderFormBody({required this.initialOrder});
+class _Form extends ConsumerStatefulWidget {
+  const _Form({required this.initialOrder, this.initialCustomerId});
 
   final Order? initialOrder;
+  final String? initialCustomerId;
 
   @override
-  ConsumerState<_OrderFormBody> createState() => _OrderFormBodyState();
+  ConsumerState<_Form> createState() => _FormState();
 }
 
-class _OrderFormBodyState extends ConsumerState<_OrderFormBody> {
-  late final TextEditingController _deliveryInfoController;
-  Customer? _customer;
-  String? _lockedCustomerName;
-  late List<_DraftLine> _lines;
+class _FormState extends ConsumerState<_Form> {
+  late final _delivery = TextEditingController(text: widget.initialOrder?.deliveryInfo ?? '');
+  late String? _customerId = widget.initialOrder?.customerId ?? widget.initialCustomerId;
+  late final List<_DraftLine> _lines = [
+    for (final i in widget.initialOrder?.items ?? const <OrderItem>[])
+      _DraftLine(productId: i.productId, name: i.productName ?? '(unknown product)', sku: '', uom: '', price: i.unitPrice, quantity: i.quantityOrdered),
+  ];
+  final Map<String, TextEditingController> _qty = {};
   bool _saving = false;
   String? _error;
 
-  // Keyed by productId, NOT recreated on every rebuild (matches the
-  // warehouse app's stock-count-entry pattern) — a fresh controller per
-  // build would reset cursor position/typed-but-not-yet-parsed text on
-  // every keystroke, since typing a quantity triggers a parent setState.
-  final Map<String, TextEditingController> _quantityControllers = {};
-
-  bool get _isEditing => widget.initialOrder != null;
-
-  @override
-  void initState() {
-    super.initState();
-    final order = widget.initialOrder;
-    _deliveryInfoController = TextEditingController(text: order?.deliveryInfo ?? '');
-    _lockedCustomerName = order?.customer.name;
-    _lines = [
-      for (final item in order?.items ?? const <OrderItem>[])
-        _DraftLine(
-          productId: item.productId,
-          productName: item.productName ?? '(unknown product)',
-          estimatedUnitPrice: item.unitPrice,
-          quantity: item.quantityOrdered,
-        ),
-    ];
-  }
+  bool get _editing => widget.initialOrder != null;
 
   @override
   void dispose() {
-    _deliveryInfoController.dispose();
-    for (final controller in _quantityControllers.values) {
-      controller.dispose();
+    _delivery.dispose();
+    for (final c in _qty.values) {
+      c.dispose();
     }
     super.dispose();
   }
 
-  TextEditingController _quantityControllerFor(_DraftLine line) {
-    return _quantityControllers.putIfAbsent(
-      line.productId,
-      () => TextEditingController(text: formatQuantity(line.quantity)),
-    );
-  }
+  TextEditingController _qtyFor(_DraftLine l) => _qty.putIfAbsent(l.productId, () => TextEditingController(text: fmtPlain(l.quantity)));
 
-  double get _estimatedTotal => _lines.fold(0, (sum, l) => sum + l.estimatedLineTotal);
-
-  Future<void> _pickCustomer() async {
-    final picked = await showCustomerPickerDialog(context);
-    if (picked != null) setState(() => _customer = picked);
-  }
-
-  Future<void> _addProduct() async {
-    final product = await showProductPickerDialog(context);
-    if (product == null) return;
-    setState(() {
-      final existing = _lines.indexWhere((l) => l.productId == product.id);
-      if (existing != -1) {
-        _lines[existing].quantity += 1;
-        _quantityControllers[product.id]?.text = formatQuantity(_lines[existing].quantity);
-      } else {
-        _lines.add(
-          _DraftLine(
-            productId: product.id,
-            productName: product.name,
-            estimatedUnitPrice: product.sellingPrice,
-            quantity: 1,
-          ),
-        );
-      }
-    });
-  }
-
-  void _removeLine(_DraftLine line) => setState(() {
-    _lines.remove(line);
-    _quantityControllers.remove(line.productId)?.dispose();
+  void _add(WarehouseProduct p) => setState(() {
+    final i = _lines.indexWhere((l) => l.productId == p.id);
+    if (i >= 0) {
+      _lines[i].quantity += 1;
+      _qty[p.id]?.text = fmtPlain(_lines[i].quantity);
+    } else {
+      _lines.add(_DraftLine(productId: p.id, name: p.name, sku: p.sku, uom: p.uom, price: p.sellingPrice, quantity: 1));
+    }
+    _error = null;
   });
 
-  Future<void> _save() async {
-    if (!_isEditing && _customer == null) {
-      setState(() => _error = 'Choose a customer.');
-      return;
-    }
-    if (_lines.isEmpty) {
-      setState(() => _error = 'Add at least one product.');
-      return;
-    }
-    for (final line in _lines) {
-      if (line.quantity <= 0) {
-        setState(() => _error = 'Quantity for ${line.productName} must be greater than 0.');
-        return;
-      }
-    }
+  void _remove(_DraftLine l) => setState(() {
+    _lines.remove(l);
+    _qty.remove(l.productId)?.dispose();
+  });
 
+  Future<void> _newCustomer() async {
+    final c = await showCustomerFormDialog(context);
+    if (c != null) setState(() => _customerId = c.id);
+  }
+
+  Future<void> _save({required bool submit}) async {
+    final problem = !_editing && _customerId == null
+        ? 'Choose a customer.'
+        : _lines.isEmpty
+        ? 'Add at least one product.'
+        : _lines.where((l) => l.quantity <= 0).map((l) => 'Quantity for ${l.name} must be greater than 0.').firstOrNull;
+    if (problem != null) {
+      setState(() => _error = problem);
+      return;
+    }
     setState(() {
       _saving = true;
       _error = null;
     });
-
-    final deliveryInfo = _deliveryInfoController.text.trim();
-    final items = [for (final line in _lines) OrderItemInput(productId: line.productId, quantity: line.quantity)];
+    final api = ref.read(ordersApiProvider);
+    final delivery = _delivery.text.trim();
+    final items = [for (final l in _lines) OrderItemInput(productId: l.productId, quantity: l.quantity)];
     try {
-      final Order saved;
-      if (_isEditing) {
-        saved = await ref
-            .read(ordersApiProvider)
-            .update(widget.initialOrder!.id, deliveryInfo: deliveryInfo.isEmpty ? null : deliveryInfo, items: items);
-        invalidateOrder(ref, saved.id);
-      } else {
-        saved = await ref
-            .read(ordersApiProvider)
-            .create(customerId: _customer!.id, deliveryInfo: deliveryInfo.isEmpty ? null : deliveryInfo, items: items);
-        invalidateOrders(ref);
-      }
+      var saved = _editing
+          ? await api.update(widget.initialOrder!.id, deliveryInfo: delivery.isEmpty ? null : delivery, items: items)
+          : await api.create(customerId: _customerId!, deliveryInfo: delivery.isEmpty ? null : delivery, items: items);
+      if (submit) saved = await api.transition(saved.id, OrderAction.submit);
+      invalidateOrder(ref, saved.id);
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(_isEditing ? 'Draft saved' : 'Draft order created')));
+      NxToast.ok(submit ? 'Order submitted for approval' : (_editing ? 'Draft saved' : 'Draft order created'), '${saved.orderNumber} · ${fmtMoney(saved.total)}');
       context.go(RoutePaths.orderDetail(saved.id));
     } on AppError catch (e) {
       setState(() => _error = e.message);
@@ -245,198 +171,223 @@ class _OrderFormBodyState extends ConsumerState<_OrderFormBody> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final n = context.nx;
+    final canSubmit = ref.watch(authProvider.select((s) => s.value?.user?.can('orders.submit') ?? false));
+    final customers = ref.watch(customersListProvider).value ?? const <Customer>[];
+    final catalogue = ref.watch(catalogueSearchResultsProvider(''));
+    final products = (catalogue.value ?? const <WarehouseProduct>[]).where((p) => p.isActive).toList()..sort((a, b) => a.name.compareTo(b.name));
+    final total = _lines.fold<double>(0, (s, l) => s + l.total);
+    final units = _lines.fold<double>(0, (s, l) => s + l.quantity);
+    final wide = MediaQuery.of(context).size.width >= 1024;
 
-    return ListView(
-      padding: const EdgeInsets.all(AppSpacing.lg),
+    final order = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          children: [
-            IconButton(
-              icon: const Icon(Icons.arrow_back),
-              tooltip: 'Back',
-              onPressed: () =>
-                  context.go(_isEditing ? RoutePaths.orderDetail(widget.initialOrder!.id) : RoutePaths.orders),
-            ),
-            const SizedBox(width: AppSpacing.sm),
-            Text(_isEditing ? 'Edit draft order' : 'New order', style: theme.textTheme.headlineSmall),
-          ],
-        ),
-        const SizedBox(height: AppSpacing.lg),
-        ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 720),
-          child: AppCard(
-            title: 'Customer',
-            child: _isEditing
-                ? Text(_lockedCustomerName ?? '—', style: theme.textTheme.bodyLarge)
-                : Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          _customer?.name ?? 'No customer chosen',
-                          style: _customer == null
-                              ? theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)
-                              : theme.textTheme.bodyLarge,
-                        ),
-                      ),
-                      TextButton(onPressed: _pickCustomer, child: Text(_customer == null ? 'Choose' : 'Change')),
-                    ],
-                  ),
-          ),
-        ),
-        const SizedBox(height: AppSpacing.md),
-        ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 720),
-          child: AppCard(
-            child: AppTextField(
-              label: 'Delivery info (optional)',
-              controller: _deliveryInfoController,
-              maxLines: 2,
-              hintText: 'Address / delivery instructions',
-            ),
-          ),
-        ),
-        const SizedBox(height: AppSpacing.md),
-        ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 720),
-          child: AppCard(
-            title: 'Order lines',
-            subtitle:
-                'Prices shown are an estimate from the catalogue — the server snapshots the exact '
-                'price for each line when you save.',
-            trailing: TextButton.icon(
-              onPressed: _addProduct,
-              icon: const Icon(Icons.add),
-              label: const Text('Add product'),
-            ),
-            child: _lines.isEmpty
-                ? Padding(
-                    padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
-                    child: Text(
-                      'No lines yet — add a product to get started.',
-                      style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                    ),
-                  )
-                : Column(
-                    children: [
-                      for (final line in _lines) ...[
-                        _OrderLineRow(
-                          key: ValueKey(line.productId),
-                          line: line,
-                          controller: _quantityControllerFor(line),
-                          onQuantityChanged: (qty) => setState(() => line.quantity = qty),
-                          onRemove: () => _removeLine(line),
-                        ),
-                        const Divider(),
-                      ],
-                      Padding(
-                        padding: const EdgeInsets.only(top: AppSpacing.sm),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.end,
+        NxSection(
+          padding: const EdgeInsets.all(14),
+          child: NxFormGrid(
+            children: [
+              NxSpan2(
+                child: NxField(
+                  label: 'Customer',
+                  required: true,
+                  hint: _editing ? 'A saved order keeps its customer' : null,
+                  child: _editing
+                      ? Text(widget.initialOrder!.customer.name, style: TextStyle(fontSize: 14, color: n.text))
+                      : Row(
                           children: [
-                            Text(
-                              'Estimated total: ',
-                              style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                            Expanded(
+                              child: NxSelect<String>(
+                                searchable: true,
+                                searchPlaceholder: 'Search by name or phone',
+                                placeholder: 'Choose a customer',
+                                options: [
+                                  for (final c in customers) NxOption(c.id, c.name, sub: c.phone, search: c.locationText),
+                                ],
+                                value: _customerId,
+                                onChanged: (v) => setState(() {
+                                  _customerId = v;
+                                  _error = null;
+                                }),
+                              ),
                             ),
-                            Text(formatQuantity(_estimatedTotal), style: theme.textTheme.titleMedium),
+                            const SizedBox(width: 8),
+                            NxButton(label: 'New', icon: PhosphorIconsRegular.userPlus, onPressed: _newCustomer),
                           ],
                         ),
-                      ),
-                    ],
-                  ),
+                ),
+              ),
+              NxSpan2(
+                child: NxField(
+                  label: 'Delivery info',
+                  child: NxInput(controller: _delivery, maxLines: 3, minLines: 2, placeholder: 'Address / delivery instructions'),
+                ),
+              ),
+            ],
           ),
         ),
-        if (_error != null) ...[
-          const SizedBox(height: AppSpacing.md),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 720),
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(AppSpacing.sm),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.errorContainer,
-                borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+        const SizedBox(height: 12),
+        NxSection(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('Lines', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: n.text)),
+              const SizedBox(height: 8),
+              NxSelect<String>(
+                searchable: true,
+                searchPlaceholder: 'Search the catalogue by SKU or name',
+                placeholder: catalogue.isLoading ? 'Loading the catalogue…' : (catalogue.hasError ? 'The catalogue is unavailable right now' : 'Add a product…'),
+                enabled: products.isNotEmpty,
+                options: [
+                  for (final p in products)
+                    NxOption(
+                      p.id,
+                      '${p.sku} — ${p.name}',
+                      sub: [p.category?.name, p.category?.workstream?.name].whereType<String>().join(' · '),
+                      trailing: '${fmtMoney(p.sellingPrice)} / ${p.uom}',
+                    ),
+                ],
+                value: null,
+                onChanged: (id) {
+                  final p = products.where((x) => x.id == id).firstOrNull;
+                  if (p != null) _add(p);
+                },
               ),
-              child: Text(_error!, style: TextStyle(color: theme.colorScheme.onErrorContainer)),
-            ),
-          ),
-        ],
-        const SizedBox(height: AppSpacing.lg),
-        FilledButton.icon(
-          onPressed: _saving ? null : _save,
-          icon: _saving
-              ? SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: theme.colorScheme.onPrimary),
+              const SizedBox(height: 10),
+              if (_lines.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  child: Text('No lines yet — add a product above.', style: TextStyle(fontSize: 12, color: n.n400)),
                 )
-              : const Icon(Icons.save_outlined),
-          label: Text(_saving ? 'Saving…' : 'Save draft'),
+              else
+                for (final l in _lines)
+                  Container(
+                    key: ValueKey(l.productId),
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    decoration: BoxDecoration(border: Border(top: BorderSide(color: n.n900))),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(l.name, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: n.text)),
+                              Text(
+                                '${l.sku.isEmpty ? '' : '${l.sku} · '}${fmtMoney(l.price)}${l.uom.isEmpty ? '' : ' / ${l.uom}'} (estimate)',
+                                style: TextStyle(fontSize: 11, color: n.n500),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        SizedBox(
+                          width: 90,
+                          child: NxInput(
+                            controller: _qtyFor(l),
+                            dense: true,
+                            textAlign: TextAlign.right,
+                            inputFormatters: NxInput.decimals(),
+                            onChanged: (v) => setState(() => l.quantity = double.tryParse(v) ?? 0),
+                          ),
+                        ),
+                        SizedBox(
+                          width: 110,
+                          child: Text(fmtMoney(l.total), textAlign: TextAlign.right, style: TextStyle(fontSize: 13, color: n.text, fontFeatures: tabular)),
+                        ),
+                        const SizedBox(width: 4),
+                        NxIconButton(icon: PhosphorIconsRegular.trash, tooltip: 'Remove', size: 30, iconSize: 15, color: n.n400, onPressed: () => _remove(l)),
+                      ],
+                    ),
+                  ),
+            ],
+          ),
         ),
       ],
     );
-  }
-}
 
-class _OrderLineRow extends StatelessWidget {
-  const _OrderLineRow({
-    super.key,
-    required this.line,
-    required this.controller,
-    required this.onQuantityChanged,
-    required this.onRemove,
-  });
-
-  final _DraftLine line;
-  final TextEditingController controller;
-  final ValueChanged<double> onQuantityChanged;
-  final VoidCallback onRemove;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
+    final summary = NxSection(
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(
-            flex: 3,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(line.productName, style: theme.textTheme.bodyMedium),
-                Text(
-                  '${formatQuantity(line.estimatedUnitPrice)} each (estimated)',
-                  style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                ),
-              ],
-            ),
+          NxKicker('Summary', color: n.a300),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(child: Text('Lines', style: TextStyle(fontSize: 12, color: n.n400))),
+              Text(fmtNum(_lines.length), style: TextStyle(fontSize: 13, color: n.text)),
+            ],
           ),
-          SizedBox(
-            width: 100,
-            child: AppNumberField(
-              label: 'Qty',
-              controller: controller,
-              allowDecimal: true,
-              onChanged: (value) {
-                final n = double.tryParse(value);
-                if (n != null && n > 0) onQuantityChanged(n);
-              },
-            ),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              Expanded(child: Text('Units', style: TextStyle(fontSize: 12, color: n.n400))),
+              Text(fmtNum(units), style: TextStyle(fontSize: 13, color: n.text)),
+            ],
           ),
-          const SizedBox(width: AppSpacing.md),
-          SizedBox(
-            width: 90,
-            child: Text(
-              formatQuantity(line.estimatedLineTotal),
-              textAlign: TextAlign.end,
-              style: theme.textTheme.bodyMedium,
+          const SizedBox(height: 10),
+          Text('Estimated total', style: TextStyle(fontSize: 11, color: n.n500)),
+          Text(fmtMoney(total), style: TextStyle(fontSize: 24, fontWeight: FontWeight.w500, color: n.text, fontFeatures: tabular)),
+          const SizedBox(height: 4),
+          Text('The server sets the exact prices when you save.', style: TextStyle(fontSize: 11, color: n.n500)),
+          if (_error != null) ...[
+            const SizedBox(height: 10),
+            Text(_error!, style: TextStyle(fontSize: 12, color: n.bad)),
+          ],
+          const SizedBox(height: 14),
+          if (canSubmit) ...[
+            NxButton.primary(
+              label: _saving ? 'Saving…' : 'Save & submit for approval',
+              icon: PhosphorIconsRegular.paperPlaneTilt,
+              expand: true,
+              onPressed: _saving ? null : () => _save(submit: true),
             ),
+            const SizedBox(height: 8),
+          ],
+          NxButton(
+            label: _editing ? 'Save draft' : 'Save as draft',
+            icon: PhosphorIconsRegular.floppyDisk,
+            expand: true,
+            onPressed: _saving ? null : () => _save(submit: false),
           ),
-          IconButton(iconSize: 18, tooltip: 'Remove', icon: const Icon(Icons.delete_outline), onPressed: onRemove),
         ],
+      ),
+    );
+
+    return NxPageScroll(
+      child: Align(
+        alignment: Alignment.topLeft,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1200),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              NxPageHeader(
+                title: _editing ? 'Edit ${widget.initialOrder!.orderNumber}' : 'New order',
+                sub: 'Choose the customer, add products, then save as a draft or submit it for approval.',
+                actions: [
+                  NxButton.ghost(
+                    label: 'Cancel',
+                    color: n.n400,
+                    onPressed: () => context.go(_editing ? RoutePaths.orderDetail(widget.initialOrder!.id) : RoutePaths.orders),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              if (wide)
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(flex: 2, child: order),
+                    const SizedBox(width: 12),
+                    Expanded(child: summary),
+                  ],
+                )
+              else ...[order, const SizedBox(height: 12), summary],
+            ],
+          ),
+        ),
       ),
     );
   }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:ordering_frontend/shared/nx/nx_primitives.dart';
 import 'package:ordering_frontend/core/auth/app_user.dart';
 import 'package:ordering_frontend/core/auth/auth_provider.dart';
 import 'package:ordering_frontend/core/auth/auth_state.dart';
@@ -519,14 +520,14 @@ void main() {
 
     testWidgets('a pending order shows Approve / Reject / Cancel to a manager', (tester) async {
       await show(tester, _order(OrderStatus.pendingApproval, []), {'orders.approve', 'orders.reject'});
-      expect(find.text('Approve'), findsOneWidget);
-      expect(find.text('Reject'), findsOneWidget);
-      expect(find.text('Cancel order'), findsOneWidget);
+      expect(find.widgetWithText(NxButton, 'Approve'), findsOneWidget);
+      expect(find.widgetWithText(NxButton, 'Reject'), findsOneWidget);
+      expect(find.widgetWithText(NxButton, 'Cancel order'), findsOneWidget);
     });
 
     testWidgets('without orders.approve the Approve button is absent, with an explanation', (tester) async {
       await show(tester, _order(OrderStatus.pendingApproval, []), {'orders.submit'});
-      expect(find.text('Approve'), findsNothing);
+      expect(find.widgetWithText(NxButton, 'Approve'), findsNothing);
       expect(find.textContaining('needs the orders.approve permission'), findsOneWidget);
     });
 
@@ -534,12 +535,12 @@ void main() {
 
     testWidgets('a reserved order shows Record picking to someone with fulfilment.pick', (tester) async {
       await show(tester, reserved, {'fulfilment.pick'});
-      expect(find.text('Record picking'), findsOneWidget);
+      expect(find.widgetWithText(NxButton, 'Record picking'), findsOneWidget);
     });
 
     testWidgets('a reserved order hides Record picking from someone without fulfilment.pick', (tester) async {
       await show(tester, reserved, {'orders.approve'});
-      expect(find.text('Record picking'), findsNothing);
+      expect(find.widgetWithText(NxButton, 'Record picking'), findsNothing);
     });
 
     testWidgets('a finished order offers nothing', (tester) async {
@@ -549,8 +550,8 @@ void main() {
 
     testWidgets('after dispatch there is no Cancel (stock has left)', (tester) async {
       await show(tester, _order(OrderStatus.dispatched, []), {'orders.approve', 'fulfilment.dispatch'});
-      expect(find.text('Cancel order'), findsNothing);
-      expect(find.text('Mark delivered'), findsOneWidget);
+      expect(find.widgetWithText(NxButton, 'Cancel order'), findsNothing);
+      expect(find.widgetWithText(NxButton, 'Mark delivered'), findsOneWidget);
     });
   });
 }

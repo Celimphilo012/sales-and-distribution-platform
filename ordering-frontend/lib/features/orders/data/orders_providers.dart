@@ -26,7 +26,13 @@ final ordersListProvider = FutureProvider.autoDispose<List<Order>>((ref) {
   return ref.watch(ordersApiProvider).list(status: status);
 });
 
-final orderDetailProvider = FutureProvider.autoDispose.family<Order, String>((ref, id) {
+/// Every order the viewer may see (all statuses) — the Orders list, the
+/// dashboard panels and the notifications bell filter this client-side.
+final allOrdersProvider = FutureProvider.autoDispose<List<Order>>((ref) {
+  return ref.watch(ordersApiProvider).list();
+});
+
+final orderDetailProvider =FutureProvider.autoDispose.family<Order, String>((ref, id) {
   return ref.watch(ordersApiProvider).getOne(id);
 });
 
@@ -39,6 +45,8 @@ final customerOrdersProvider = FutureProvider.autoDispose.family<List<Order>, St
 
 void invalidateOrders(WidgetRef ref) {
   ref.invalidate(ordersListProvider);
+  ref.invalidate(allOrdersProvider);
+  ref.invalidate(customerOrdersProvider);
 }
 
 void invalidateOrder(WidgetRef ref, String id) {

@@ -272,11 +272,13 @@ void main() {
         scroll: false,
         overrides: [
           dashboardProvider.overrideWith((ref) async => summary),
+          allOrdersProvider.overrideWith((ref) async => const <Order>[]),
           authProvider.overrideWith(() => _FakeUser({'reports.view', 'orders.create'})),
         ],
       );
       expect(find.textContaining('Thandi'), findsOneWidget);
-      expect(find.text('Awaiting approval'), findsOneWidget);
+      expect(find.text('Awaiting approval'), findsWidgets); // KPI tile + queue panel
+      expect(find.text('Customers owe'), findsOneWidget);
       expect(find.text('E 1,180.50'), findsOneWidget);
       expect(find.text('New order'), findsOneWidget);
     });
@@ -291,9 +293,9 @@ void main() {
           authProvider.overrideWith(() => _FakeUser({'orders.view_own'})),
         ],
       );
-      expect(find.text('My latest orders'), findsOneWidget);
+      expect(find.text('Your latest orders'), findsOneWidget);
       expect(find.textContaining('ORD-TEST'), findsOneWidget);
-      expect(find.text('Awaiting approval'), findsNothing);
+      expect(find.text('Customers owe'), findsNothing); // the team money panels are for reports.view
     });
   });
 }

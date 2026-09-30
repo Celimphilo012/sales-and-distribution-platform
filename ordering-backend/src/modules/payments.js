@@ -19,10 +19,12 @@ const CLOCK_SKEW_MS = 5 * 60_000;
 const PAYMENT_SELECT = `
   SELECT ${cols('payment', 'p')},
          ${cols('order', 'o', ['id', 'orderNumber'], 'order.')},
+         ${cols('customer', 'c', ['id', 'name'], 'customer.')},
          ${cols('user', 'ru', ['id', 'fullName'], 'recordedByUser.')},
          ${cols('user', 'vu', ['id', 'fullName'], 'voidedByUser.')}
     FROM payments p
     JOIN orders o ON o.id = p.order_id
+    JOIN customers c ON c.id = o.customer_id
     JOIN users ru ON ru.id = p.recorded_by
     LEFT JOIN users vu ON vu.id = p.voided_by`;
 

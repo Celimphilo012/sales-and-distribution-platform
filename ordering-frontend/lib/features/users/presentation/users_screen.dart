@@ -1,203 +1,149 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../../../app_shell/responsive_app_shell.dart';
 import '../../../core/auth/auth_provider.dart';
 import '../../../core/error/app_error.dart';
-import '../../../core/theme/app_spacing.dart';
-import '../../../shared/widgets/app_data_table.dart';
-import '../../../shared/widgets/app_dialog.dart';
-import '../../../shared/widgets/app_dropdown_field.dart';
-import '../../../shared/widgets/app_text_field.dart';
-import '../../../shared/widgets/empty_loading_error_states.dart';
-import '../../../shared/widgets/status_badge.dart';
+import '../../../core/theme/nocturne.dart';
+import '../../../shared/nx/nx_format.dart';
+import '../../../shared/nx/nx_list_page.dart';
+import '../../../shared/nx/nx_overlays.dart';
+import '../../../shared/nx/nx_primitives.dart';
+import '../../roles/data/roles_providers.dart';
+import '../../roles/domain/role.dart';
 import '../data/users_providers.dart';
 import '../domain/user.dart';
 import 'user_form_dialog.dart';
 
-enum _StatusFilter { all, active, inactive, suspended }
-
-extension on _StatusFilter {
-  String get label => switch (this) {
-    _StatusFilter.all => 'All statuses',
-    _StatusFilter.active => 'Active',
-    _StatusFilter.inactive => 'Inactive',
-    _StatusFilter.suspended => 'Suspended',
-  };
-
-  bool matches(UserStatus status) => switch (this) {
-    _StatusFilter.all => true,
-    _StatusFilter.active => status == UserStatus.active,
-    _StatusFilter.inactive => status == UserStatus.inactive,
-    _StatusFilter.suspended => status == UserStatus.suspended,
-  };
-}
-
-/// STEP 6f — USERS. `GET /users` takes no query params (`UsersController.
-/// findAll`), so search/status filtering happens client-side over the one
-/// fetched list — fine at this scale, and the exact same pattern the
-/// ordering app's own user-management screen can reuse verbatim once
-/// re-pointed at its own (structurally identical) `/users` API.
-class UsersScreen extends ConsumerStatefulWidget {
+/// Users — people who sign in to the ordering system.
+class UsersScreen extends ConsumerWidget {
   const UsersScreen({super.key});
 
   @override
-  ConsumerState<UsersScreen> createState() => _UsersScreenState();
-}
+  Widget build(BuildContext context, WidgetRef ref) {
+    final n = context.nx;
+    final me = ref.watch(authProvider).value?.user;
+    final async = ref.watch(usersListProvider);
+    final roles = ref.watch(rolesListProvider).value ?? const <Role>[];
 
-class _UsersScreenState extends ConsumerState<UsersScreen> {
-  final _searchController = TextEditingController();
-  String _search = '';
-  _StatusFilter _statusFilter = _StatusFilter.all;
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _deactivate(WarehouseUser user) async {
-    final confirmed = await ConfirmDialog.show(
-      context,
-      title: 'Deactivate ${user.fullName}?',
-      message: 'They will no longer be able to sign in. This does not delete their history.',
-      confirmLabel: 'Deactivate',
-      isDestructive: true,
-    );
-    if (!confirmed) return;
-    try {
-      await ref.read(usersApiProvider).deactivate(user.id);
-      ref.invalidate(usersListProvider);
-    } on AppError catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final canManage = ref.watch(authProvider.select((s) => s.value?.user?.can('users.manage') ?? false));
-    if (!canManage) {
-      return const EmptyStateView(
-        title: "You don't have permission to manage users",
-        message: 'Ask an administrator for the users.manage permission.',
-        icon: Icons.lock_outline,
-      );
+    Future<void> setStatus(WarehouseUser u, bool activate) async {
+      if (!activate) {
+        final ok = await showNxConfirm(
+          context,
+          title: 'Deactivate ${u.fullName}?',
+          body: 'They will no longer be able to sign in. This does not delete their history.',
+          confirmLabel: 'Deactivate',
+          danger: true,
+        );
+        if (!ok) return;
+      }
+      try {
+        final api = ref.read(usersApiProvider);
+        activate ? await api.update(u.id, status: UserStatus.active) : await api.deactivate(u.id);
+        ref.invalidate(usersListProvider);
+        NxToast.ok('${u.fullName} ${activate ? 'reactivated' : 'deactivated'}', activate ? 'They can sign in again.' : 'Signed out everywhere.');
+      } on AppError catch (e) {
+        NxToast.error('Not changed', e.message);
+      }
     }
 
-    final usersAsync = ref.watch(usersListProvider);
+    return NxPageScroll(
+      onRefresh: () async => ref.invalidate(usersListProvider),
+      child: async.when(
+        loading: () => const NxLoading(message: 'Loading users…'),
+        error: (e, _) => NxError(
+          message: e is AppError ? e.message : 'Could not load users.',
+          onRetry: () => ref.invalidate(usersListProvider),
+        ),
+        data: (users) {
+          NxTag status(WarehouseUser u) => NxTag(u.status.label, tone: switch (u.status) {
+            UserStatus.active => Tone.ok,
+            UserStatus.suspended => Tone.bad,
+            UserStatus.inactive => Tone.neutral,
+          });
+          String mfa(WarehouseUser u) => kMfaMethodLabels[u.mfaMethod] ?? u.mfaMethod;
+          String roleNames(WarehouseUser u) => u.roles.isEmpty ? '—' : u.roles.map((r) => r.name).join(', ');
+          List<NxRowAction> acts(WarehouseUser u) => [
+            NxRowAction(icon: PhosphorIconsRegular.pencilSimple, label: 'Edit', onPressed: () => showUserFormDialog(context, user: u)),
+            NxRowAction(icon: PhosphorIconsRegular.key, label: 'Reset password', onPressed: () => showResetPasswordDialog(context, u)),
+            if (u.id != me?.id)
+              u.status == UserStatus.active
+                  ? NxRowAction(icon: PhosphorIconsRegular.prohibit, label: 'Deactivate', danger: true, onPressed: () => setStatus(u, false))
+                  : NxRowAction(icon: PhosphorIconsRegular.arrowCounterClockwise, label: 'Reactivate', onPressed: () => setStatus(u, true)),
+          ];
 
-    return Padding(
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(child: Text('Users', style: theme.textTheme.headlineSmall)),
-              FilledButton.icon(
-                onPressed: () => showUserFormDialog(context),
-                icon: const Icon(Icons.person_add_outlined),
-                label: const Text('New user'),
-              ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.lg),
-          Wrap(
-            spacing: AppSpacing.md,
-            runSpacing: AppSpacing.md,
-            children: [
-              SizedBox(
-                width: 280,
-                child: AppTextField(
-                  label: 'Search',
-                  controller: _searchController,
-                  hintText: 'Name or email',
-                  prefixIcon: Icons.search,
-                  onChanged: (value) => setState(() => _search = value.trim().toLowerCase()),
-                ),
-              ),
-              SizedBox(
-                width: 200,
-                child: AppDropdownField<_StatusFilter>(
-                  label: 'Status',
-                  value: _statusFilter,
-                  items: _StatusFilter.values,
-                  itemLabel: (f) => f.label,
-                  onChanged: (value) {
-                    if (value != null) setState(() => _statusFilter = value);
-                  },
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.lg),
-          Expanded(
-            child: usersAsync.when(
-              loading: () => const LoadingStateView(message: 'Loading users…'),
-              error: (error, stackTrace) => ErrorStateView(
-                message: error is AppError ? error.message : 'Could not load users.',
-                onRetry: () => ref.invalidate(usersListProvider),
-              ),
-              data: (users) {
-                final filtered = users.where((u) {
-                  if (!_statusFilter.matches(u.status)) return false;
-                  if (_search.isEmpty) return true;
-                  return u.fullName.toLowerCase().contains(_search) || u.email.toLowerCase().contains(_search);
-                }).toList();
-
-                return AppDataTable<WarehouseUser>(
-                  rows: filtered,
-                  emptyTitle: 'No users found',
-                  emptyMessage: 'Try adjusting your search or filters.',
-                  columns: [
-                    AppDataColumn(label: 'Name', cellBuilder: (u) => Text(u.fullName)),
-                    AppDataColumn(label: 'Email', cellBuilder: (u) => Text(u.email)),
-                    AppDataColumn(
-                      label: 'Roles',
-                      cellBuilder: (u) => Text(u.roles.isEmpty ? '—' : u.roles.map((r) => r.name).join(', ')),
-                    ),
-                    AppDataColumn(
-                      label: 'Sign-in check',
-                      cellBuilder: (u) => Text(kMfaMethodLabels[u.mfaMethod] ?? u.mfaMethod),
-                    ),
-                    AppDataColumn(
-                      label: 'Status',
-                      cellBuilder: (u) => StatusBadge(
-                        label: u.status.label,
-                        tone: switch (u.status) {
-                          UserStatus.active => StatusTone.success,
-                          UserStatus.inactive => StatusTone.neutral,
-                          UserStatus.suspended => StatusTone.danger,
-                        },
-                      ),
-                    ),
-                    AppDataColumn(
-                      label: '',
-                      cellBuilder: (u) => Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            iconSize: 18,
-                            tooltip: 'Edit',
-                            icon: const Icon(Icons.edit_outlined),
-                            onPressed: () => showUserFormDialog(context, user: u),
-                          ),
-                          if (u.status == UserStatus.active)
-                            IconButton(
-                              iconSize: 18,
-                              tooltip: 'Deactivate',
-                              icon: const Icon(Icons.block),
-                              onPressed: () => _deactivate(u),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ],
-                );
-              },
+          return NxListPage<WarehouseUser>(
+            stateKey: 'users',
+            title: 'Users',
+            sub: 'People who sign in to the ordering system.',
+            actions: [NxButton.primary(label: 'New user', icon: PhosphorIconsRegular.userPlus, onPressed: () => showUserFormDialog(context))],
+            rows: users,
+            search: (u) => '${u.fullName} ${u.email}',
+            searchPlaceholder: 'Name or email',
+            stats: (rs) {
+              final suspended = rs.where((u) => u.status == UserStatus.suspended).length;
+              return [
+                NxStat('Users', fmtNum(rs.length)),
+                NxStat('Active', fmtNum(rs.where((u) => u.status == UserStatus.active).length), color: n.ok),
+                NxStat('Suspended', fmtNum(suspended), color: suspended > 0 ? n.bad : null),
+                NxStat('Authenticator app', fmtNum(rs.where((u) => u.mfaMethod == 'TOTP').length), sub: 'stronger sign-in check'),
+                NxStat('Get SMS alerts', fmtNum(rs.where((u) => u.notifyChannel == 'SMS').length)),
+              ];
+            },
+            quick: NxQuick(
+              get: (u) => u.status.apiValue,
+              options: const [('', 'All'), ('ACTIVE', 'Active'), ('SUSPENDED', 'Suspended'), ('INACTIVE', 'Inactive')],
             ),
-          ),
-        ],
+            filters: [
+              NxSelectFilter('role', 'Role', options: [for (final r in roles) (r.id, r.name)], get: (u) => u.roles.map((r) => r.id)),
+              NxSelectFilter('mfa', 'Sign-in check', options: [for (final e in kMfaMethodLabels.entries) (e.key, e.value)], get: (u) => u.mfaMethod),
+            ],
+            defaultSort: ('name', 1),
+            columns: [
+              NxColumn(
+                key: 'name',
+                label: 'User',
+                sort: (u) => u.fullName.toLowerCase(),
+                cell: (u) => Row(
+                  children: [
+                    NxAvatar(name: u.fullName),
+                    const SizedBox(width: 9),
+                    Expanded(child: NxCellText(u.fullName, weight: FontWeight.w500, sub: u.email)),
+                  ],
+                ),
+              ),
+              NxColumn(
+                key: 'roles',
+                label: 'Roles',
+                hide: NxHide.md,
+                cell: (u) => Wrap(spacing: 4, runSpacing: 4, children: [for (final r in u.roles) NxTag(r.name, small: true, tone: Tone.accent)]),
+              ),
+              NxColumn(key: 'phone', label: 'Mobile', hide: NxHide.wide, cell: (u) => NxCellText(u.phone ?? '—', color: n.n300)),
+              NxColumn(key: 'mfa', label: 'Sign-in check', hide: NxHide.wide, cell: (u) => NxCellText(mfa(u), color: n.n300)),
+              NxColumn(key: 'status', label: 'Status', sort: (u) => u.status.index, cell: (u) => Align(alignment: Alignment.centerLeft, child: status(u))),
+              NxColumn(key: 'act', label: '', width: 106, cell: (u) => NxRowActions(acts(u))),
+            ],
+            listRow: (u) => NxListRowSpec(
+              icon: PhosphorIconsDuotone.user,
+              leading: NxAvatar(name: u.fullName, size: 32),
+              title: u.fullName,
+              sub: '${u.email} · ${roleNames(u)}',
+              right: mfa(u),
+              rightSub: 'sign-in check',
+              tag: status(u),
+            ),
+            card: (u) => NxCardSpec(
+              icon: PhosphorIconsDuotone.userCircle,
+              title: u.fullName,
+              sub: u.email,
+              metrics: [('Roles', roleNames(u), null), ('Sign-in', mfa(u), null)],
+              tag: status(u),
+            ),
+            onOpen: (u) => showUserFormDialog(context, user: u),
+            emptyTitle: 'No users match',
+          );
+        },
       ),
     );
   }

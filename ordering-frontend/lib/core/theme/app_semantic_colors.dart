@@ -37,44 +37,50 @@ class AppSemanticColors extends ThemeExtension<AppSemanticColors> {
   final Color infoContainer;
   final Color onInfoContainer;
 
-  /// The authenticator-app QR code. Scanners need dark-on-light to read it
+  /// QR codes (authenticator-app setup) must stay dark-on-light to scan
   /// reliably, so both themes use the same pair rather than inverting.
   final Color qrForeground;
   final Color qrBackground;
 
   static const light = AppSemanticColors(
-    success: Color(0xFF2E7D32),
+    success: Color(0xFF1C6B3A),
     onSuccess: Color(0xFFFFFFFF),
-    successContainer: Color(0xFFC8E6C9),
-    onSuccessContainer: Color(0xFF1B5E20),
-    warning: Color(0xFFED6C02),
+    successContainer: Color(0xFFE1EFE6),
+    onSuccessContainer: Color(0xFF14502B),
+    warning: Color(0xFF8A5A00),
     onWarning: Color(0xFFFFFFFF),
-    warningContainer: Color(0xFFFFE0B2),
-    onWarningContainer: Color(0xFF7A3300),
-    // Housekeeping 2a: darkened along the same hue from 0288D1 (was 2.90:1
-    // against white — a real WCAG AA fail for `onInfo` text). #016398 keeps
-    // the same blue but clears 4.5:1 with a safety margin (5.10:1).
-    info: Color(0xFF016398),
+    warningContainer: Color(0xFFF6EAD2),
+    onWarningContainer: Color(0xFF6B4500),
+    // Housekeeping 2a: both darkened along the same hue from 0088B0/006B8C.
+    // `info` is used as TEXT (StatusBadge's outline tag reads it straight,
+    // not through onInfoContainer) on white/paper — was 3.30:1/2.95:1, a
+    // real fail; #006486 clears 4.5:1 against both (5.47 / 4.89). The
+    // infoContainer/onInfoContainer pair was marginal at 4.29:1; #005F7F
+    // clears it at 5.12:1.
+    info: Color(0xFF006486),
     onInfo: Color(0xFFFFFFFF),
-    infoContainer: Color(0xFFB3E5FC),
-    onInfoContainer: Color(0xFF01579B),
+    infoContainer: Color(0xFFDCEEF4),
+    onInfoContainer: Color(0xFF005F7F),
     qrForeground: Color(0xFF111111),
     qrBackground: Color(0xFFFFFFFF),
   );
 
   static const dark = AppSemanticColors(
-    success: Color(0xFF81C784),
-    onSuccess: Color(0xFF1B3A1E),
-    successContainer: Color(0xFF1B4D22),
-    onSuccessContainer: Color(0xFFC8E6C9),
-    warning: Color(0xFFFFB74D),
-    onWarning: Color(0xFF4A2800),
-    warningContainer: Color(0xFF5A3400),
-    onWarningContainer: Color(0xFFFFE0B2),
-    info: Color(0xFF4FC3F7),
-    onInfo: Color(0xFF00344A),
-    infoContainer: Color(0xFF0B4F73),
-    onInfoContainer: Color(0xFFB3E5FC),
+    success: Color(0xFF5CC286),
+    onSuccess: Color(0xFF0F2A1A),
+    successContainer: Color(0xFF15301F),
+    onSuccessContainer: Color(0xFF5CC286),
+    warning: Color(0xFFE0A640),
+    onWarning: Color(0xFF3A2600),
+    warningContainer: Color(0xFF3A2C10),
+    onWarningContainer: Color(0xFFE0A640),
+    // Mirrors AppTheme's nocturne primary/primaryContainer/onPrimaryContainer
+    // exactly (deliberate, same as before) — re-verified at 4.5:1+ against
+    // the deepened surface/container tones.
+    info: Color(0xFF3FC6EA),
+    onInfo: Color(0xFF00303D),
+    infoContainer: Color(0xFF13333F),
+    onInfoContainer: Color(0xFF86D8EE),
     qrForeground: Color(0xFF111111),
     qrBackground: Color(0xFFFFFFFF),
   );

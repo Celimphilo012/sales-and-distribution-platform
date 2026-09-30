@@ -2,96 +2,86 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/error/app_error.dart';
-import '../../../core/theme/app_spacing.dart';
-import '../../../shared/widgets/app_dialog.dart';
-import '../../../shared/widgets/app_text_field.dart';
+import '../../../core/theme/nocturne.dart';
+import '../../../shared/nx/nx_form.dart';
+import '../../../shared/nx/nx_overlays.dart';
+import '../../../shared/nx/nx_primitives.dart';
 import '../data/customers_providers.dart';
 import '../domain/customer.dart';
 
-/// Create (no [customer]) or edit (pass [customer]) a customer. A dialog is
-/// enough — customers have few fields (§E: name, phone, address, location,
-/// notes), same call as the warehouse app's category-management dialog.
-/// The backend enforces no phone FORMAT (`CreateCustomerDto.phone` is a
-/// plain optional string), so this doesn't fake one either — just presence
-/// of `name`.
-Future<void> showCustomerFormDialog(BuildContext context, {Customer? customer}) {
-  return showDialog<void>(context: context, builder: (context) => _CustomerFormDialog(customer: customer));
-}
+/// New / edit customer (name, phone, address, location, notes). Returns the
+/// saved customer (null when cancelled) so a caller — the order form — can
+/// pick a customer it just created.
+Future<Customer?> showCustomerFormDialog(BuildContext context, {Customer? customer}) =>
+    showNxDialog<Customer>(context, width: 560, builder: (_) => _CustomerForm(customer: customer));
 
-class _CustomerFormDialog extends ConsumerStatefulWidget {
-  const _CustomerFormDialog({this.customer});
+class _CustomerForm extends ConsumerStatefulWidget {
+  const _CustomerForm({this.customer});
 
   final Customer? customer;
 
   @override
-  ConsumerState<_CustomerFormDialog> createState() => _CustomerFormDialogState();
+  ConsumerState<_CustomerForm> createState() => _CustomerFormState();
 }
 
-class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
-  final _formKey = GlobalKey<FormState>();
-  late final TextEditingController _nameController;
-  late final TextEditingController _phoneController;
-  late final TextEditingController _addressController;
-  late final TextEditingController _locationController;
-  late final TextEditingController _notesController;
+class _CustomerFormState extends ConsumerState<_CustomerForm> {
+  late final _name = TextEditingController(text: widget.customer?.name ?? '');
+  late final _phone = TextEditingController(text: widget.customer?.phone ?? '');
+  late final _address = TextEditingController(text: widget.customer?.address ?? '');
+  late final _location = TextEditingController(text: widget.customer?.locationText ?? '');
+  late final _notes = TextEditingController(text: widget.customer?.notes ?? '');
+  String? _nameErr;
+  String? _formError;
   bool _saving = false;
-  String? _error;
 
-  bool get _isEditing => widget.customer != null;
-
-  @override
-  void initState() {
-    super.initState();
-    final c = widget.customer;
-    _nameController = TextEditingController(text: c?.name ?? '');
-    _phoneController = TextEditingController(text: c?.phone ?? '');
-    _addressController = TextEditingController(text: c?.address ?? '');
-    _locationController = TextEditingController(text: c?.locationText ?? '');
-    _notesController = TextEditingController(text: c?.notes ?? '');
-  }
+  bool get _editing => widget.customer != null;
 
   @override
   void dispose() {
-    _nameController.dispose();
-    _phoneController.dispose();
-    _addressController.dispose();
-    _locationController.dispose();
-    _notesController.dispose();
+    for (final c in [_name, _phone, _address, _location, _notes]) {
+      c.dispose();
+    }
     super.dispose();
   }
 
   Future<void> _save() async {
-    if (!(_formKey.currentState?.validate() ?? false)) return;
-
+    final name = _name.text.trim();
+    if (name.isEmpty) {
+      setState(() => _nameErr = 'Required');
+      return;
+    }
     setState(() {
       _saving = true;
-      _error = null;
+      _nameErr = null;
+      _formError = null;
     });
-
     final api = ref.read(customersApiProvider);
-    final name = _nameController.text.trim();
-    final phone = _phoneController.text.trim();
-    final address = _addressController.text.trim();
-    final location = _locationController.text.trim();
-    final notes = _notesController.text.trim();
     try {
-      if (_isEditing) {
-        await api.update(
+      final Customer saved;
+      if (_editing) {
+        saved = await api.update(
           widget.customer!.id,
           name: name,
-          phone: phone,
-          address: address,
-          locationText: location,
-          notes: notes,
+          phone: _phone.text.trim(),
+          address: _address.text.trim(),
+          locationText: _location.text.trim(),
+          notes: _notes.text.trim(),
         );
-        invalidateCustomer(ref, widget.customer!.id);
+        invalidateCustomer(ref, saved.id);
       } else {
-        await api.create(name: name, phone: phone, address: address, locationText: location, notes: notes);
+        saved = await api.create(
+          name: name,
+          phone: _phone.text.trim(),
+          address: _address.text.trim(),
+          locationText: _location.text.trim(),
+          notes: _notes.text.trim(),
+        );
         invalidateCustomers(ref);
       }
-      if (mounted) Navigator.of(context, rootNavigator: true).pop();
+      if (mounted) Navigator.of(context).pop(saved);
+      NxToast.ok(_editing ? 'Customer updated' : 'Customer added', saved.name);
     } on AppError catch (e) {
-      setState(() => _error = e.message);
+      setState(() => _formError = e.message);
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -99,52 +89,23 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return AppDialog(
-      title: _isEditing ? 'Edit customer' : 'New customer',
-      content: Form(
-        key: _formKey,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              AppTextField(
-                label: 'Name',
-                controller: _nameController,
-                validator: (v) => (v == null || v.trim().isEmpty) ? 'Name is required' : null,
-              ),
-              const SizedBox(height: AppSpacing.md),
-              AppTextField(
-                label: 'Phone (optional)',
-                controller: _phoneController,
-                keyboardType: TextInputType.phone,
-                hintText: '+268 7612 3456',
-              ),
-              const SizedBox(height: AppSpacing.md),
-              AppTextField(label: 'Address (optional)', controller: _addressController),
-              const SizedBox(height: AppSpacing.md),
-              AppTextField(
-                label: 'Location (optional)',
-                controller: _locationController,
-                hintText: 'Area, landmark, GPS note…',
-              ),
-              const SizedBox(height: AppSpacing.md),
-              AppTextField(label: 'Notes (optional)', controller: _notesController, maxLines: 3),
-              if (_error != null) ...[
-                const SizedBox(height: AppSpacing.sm),
-                Text(_error!, style: TextStyle(color: theme.colorScheme.error)),
-              ],
-            ],
-          ),
-        ),
+    final n = context.nx;
+    return NxDialogFrame(
+      title: _editing ? 'Edit customer' : 'New customer',
+      sub: 'Customers live in the ordering system only.',
+      body: NxFormGrid(
+        children: [
+          NxField(label: 'Name', required: true, error: _nameErr, child: NxInput(controller: _name, autofocus: true, error: _nameErr != null)),
+          NxField(label: 'Phone', child: NxInput(controller: _phone, placeholder: '+268 7612 3456', keyboardType: TextInputType.phone)),
+          NxSpan2(child: NxField(label: 'Address', child: NxInput(controller: _address))),
+          NxSpan2(child: NxField(label: 'Location', hint: 'Area, landmark or GPS note — helps delivery', child: NxInput(controller: _location))),
+          NxSpan2(child: NxField(label: 'Notes', child: NxInput(controller: _notes, maxLines: 3, minLines: 2))),
+          if (_formError != null) NxSpan2(child: Text(_formError!, style: TextStyle(fontSize: 12, color: n.bad))),
+        ],
       ),
       actions: [
-        TextButton(
-          onPressed: _saving ? null : () => Navigator.of(context, rootNavigator: true).pop(),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(onPressed: _saving ? null : _save, child: Text(_saving ? 'Saving…' : 'Save')),
+        NxButton(label: 'Cancel', onPressed: _saving ? null : () => Navigator.of(context).pop()),
+        NxButton.primary(label: _saving ? 'Saving…' : (_editing ? 'Save changes' : 'Add customer'), onPressed: _saving ? null : _save),
       ],
     );
   }

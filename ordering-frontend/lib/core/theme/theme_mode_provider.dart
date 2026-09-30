@@ -6,7 +6,10 @@ import '../persistence/shared_preferences_provider.dart';
 const _themeModeKey = 'settings.themeMode';
 
 /// Persisted light/dark/system theme choice. Drives `MaterialApp.themeMode`
-/// and survives app restarts via [SharedPreferences].
+/// and survives app restarts via [SharedPreferences]. Defaults to dark
+/// ("nocturne" is this app's home look) rather than following the OS —
+/// still a genuine three-way choice (light/dark/system) once a user picks
+/// one explicitly via [setThemeMode]/[toggle].
 class ThemeModeNotifier extends Notifier<ThemeMode> {
   @override
   ThemeMode build() {
@@ -14,7 +17,8 @@ class ThemeModeNotifier extends Notifier<ThemeMode> {
     return switch (stored) {
       'light' => ThemeMode.light,
       'dark' => ThemeMode.dark,
-      _ => ThemeMode.system,
+      'system' => ThemeMode.system,
+      _ => ThemeMode.dark,
     };
   }
 
@@ -25,8 +29,8 @@ class ThemeModeNotifier extends Notifier<ThemeMode> {
 
   Future<void> toggle() async {
     final next = switch (state) {
-      ThemeMode.light => ThemeMode.dark,
       ThemeMode.dark => ThemeMode.light,
+      ThemeMode.light => ThemeMode.dark,
       ThemeMode.system => ThemeMode.light,
     };
     await setThemeMode(next);

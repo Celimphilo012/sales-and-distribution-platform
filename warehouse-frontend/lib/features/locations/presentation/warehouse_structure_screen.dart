@@ -270,7 +270,7 @@ class _WarehouseStructureScreenState extends ConsumerState<WarehouseStructureScr
               cell: (r) => r.cap > 0 ? NxLabeledBar(label: pctS(r), fraction: r.util, color: fillColor(r)) : NxCellText('—', color: n.n500),
             ),
             NxColumn(key: 'status', label: 'Status', cell: (r) => Align(alignment: Alignment.centerLeft, child: status(r))),
-            if (canManage) NxColumn(key: 'act', label: '', width: 104, cell: (r) => NxRowActions(rowActions(r))),
+            if (canManage) NxColumn(key: 'act', label: '', width: 106, cell: (r) => NxRowActions(rowActions(r))),
           ],
           listRow: (r) => NxListRowSpec(
             icon: r.leaf ? PhosphorIconsDuotone.cube : PhosphorIconsDuotone.folderSimple,

@@ -136,7 +136,7 @@ class PackingScreen extends ConsumerWidget {
                 hide: NxHide.wide,
                 cell: (r) => Wrap(spacing: 4, runSpacing: 4, children: [for (final w in r.workstreams) NxTag(w, small: true, tone: Tone.accent)]),
               ),
-              NxColumn(key: 'act', label: '', width: 44, cell: (r) => NxRowActions([print(r)])),
+              NxColumn(key: 'act', label: '', width: 52, cell: (r) => NxRowActions([print(r)])),
             ],
             listRow: (r) => NxListRowSpec(
               icon: PhosphorIconsDuotone.package,

@@ -9,14 +9,13 @@ import '../core/auth/auth_provider.dart';
 import '../core/auth/auth_state.dart';
 import '../features/audit/presentation/audit_log_screen.dart';
 import '../features/auth/presentation/login_screen.dart';
-import '../features/customers/presentation/customer_detail_screen.dart';
 import '../features/customers/presentation/customers_screen.dart';
 import '../features/dashboard/presentation/dashboard_screen.dart';
+import '../features/payments/presentation/payments_screen.dart';
 import '../features/reports/presentation/reports_screen.dart';
 import '../features/orders/presentation/order_detail_screen.dart';
 import '../features/orders/presentation/order_form_screen.dart';
 import '../features/orders/presentation/orders_screen.dart';
-import '../features/roles/presentation/role_detail_screen.dart';
 import '../features/roles/presentation/roles_screen.dart';
 import '../features/settings/presentation/settings_screen.dart';
 import '../features/users/presentation/users_screen.dart';
@@ -45,6 +44,7 @@ const _customBuiltPaths = {
   RoutePaths.audit,
   RoutePaths.settings,
   RoutePaths.reports,
+  RoutePaths.payments,
 };
 
 /// The app's single [GoRouter], keyed off [authProvider] for the splash
@@ -122,13 +122,27 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                     ? const DashboardScreen()
                     : ComingSoonView(title: item.label, icon: item.icon),
               ),
-          GoRoute(path: RoutePaths.customers, builder: (context, state) => const CustomersScreen()),
+          GoRoute(
+            path: RoutePaths.customers,
+            builder: (context, state) => CustomersScreen(openCustomerId: state.uri.queryParameters['open']),
+          ),
+          // A customer's page is a sheet over the list now; old links open it.
           GoRoute(
             path: '${RoutePaths.customers}/:id',
-            builder: (context, state) => CustomerDetailScreen(customerId: state.pathParameters['id']!),
+            redirect: (context, state) => '${RoutePaths.customers}?open=${state.pathParameters['id']}',
           ),
-          GoRoute(path: RoutePaths.orders, builder: (context, state) => const OrdersScreen()),
-          GoRoute(path: RoutePaths.orderNew, builder: (context, state) => const OrderFormScreen()),
+          GoRoute(
+            path: RoutePaths.orders,
+            builder: (context, state) => OrdersScreen(
+              initialStatus: state.uri.queryParameters['status'],
+              unpaidOnly: state.uri.queryParameters['unpaid'] == '1',
+            ),
+          ),
+          GoRoute(path: RoutePaths.payments, builder: (context, state) => const PaymentsScreen()),
+          GoRoute(
+            path: RoutePaths.orderNew,
+            builder: (context, state) => OrderFormScreen(initialCustomerId: state.uri.queryParameters['customer']),
+          ),
           GoRoute(
             path: '${RoutePaths.orders}/:id/edit',
             builder: (context, state) => OrderFormScreen(orderId: state.pathParameters['id']!),
@@ -139,13 +153,19 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(path: RoutePaths.reports, builder: (context, state) => const ReportsScreen()),
           GoRoute(path: RoutePaths.users, builder: (context, state) => const UsersScreen()),
-          GoRoute(path: RoutePaths.roles, builder: (context, state) => const RolesScreen()),
+          GoRoute(
+            path: RoutePaths.roles,
+            builder: (context, state) => RolesScreen(openRoleId: state.uri.queryParameters['open']),
+          ),
           GoRoute(
             path: '${RoutePaths.roles}/:id',
-            builder: (context, state) => RoleDetailScreen(roleId: state.pathParameters['id']!),
+            redirect: (context, state) => '${RoutePaths.roles}?open=${state.pathParameters['id']}',
           ),
           GoRoute(path: RoutePaths.audit, builder: (context, state) => const AuditLogScreen()),
-          GoRoute(path: RoutePaths.settings, builder: (context, state) => const SettingsScreen()),
+          GoRoute(
+            path: RoutePaths.settings,
+            builder: (context, state) => SettingsScreen(initialSection: state.uri.queryParameters['section']),
+          ),
         ],
       ),
     ],

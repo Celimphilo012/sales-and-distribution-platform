@@ -1,128 +1,125 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../core/auth/app_user.dart';
 import 'route_paths.dart';
 
-/// A single top-level navigation destination.
+/// A single navigation destination (one routed screen).
 ///
 /// [requiredPermissions] is an "any of" list: an empty list means the item
-/// is always visible (e.g. Dashboard, Settings); a non-empty list means the
-/// signed-in user must hold at least one of those permission strings —
-/// mirroring the ORDERING backend's permission catalog
-/// (`ordering-backend/src/catalog/permission-catalog.js`), never a role
-/// name (rule 1). This app is a standalone client of `/ordering-backend` only; it
-/// never sees warehouse-side permissions like `catalogue.view`/
-/// `inventory.*`/`warehouse.structure.*` — those don't exist on this system
-/// (step R1 removed products/categories/warehouses/inventory, which used
-/// them, along with the permission strings themselves).
+/// is always visible (Dashboard, Settings); otherwise the signed-in user must
+/// hold at least one of those keys — the ORDERING backend's own permission
+/// catalog (`ordering-backend/src/catalog/permission-catalog.js`), never a
+/// role name (rule 1) and never a warehouse-side key.
 class NavItem {
-  const NavItem({
-    required this.label,
-    required this.path,
-    required this.icon,
-    required this.selectedIcon,
-    this.requiredPermissions = const [],
-  });
+  const NavItem({required this.label, required this.path, required this.icon, this.requiredPermissions = const []});
 
   final String label;
   final String path;
+
+  /// A Phosphor duotone glyph (render with `PhosphorIcon` for both layers).
   final IconData icon;
-  final IconData selectedIcon;
   final List<String> requiredPermissions;
 }
 
-/// The full nav table. Order here determines display order in every layout
-/// (sidebar, rail, and bottom nav). Every key below is a real permission
-/// from the ordering backend's own catalog — there is no `fulfilment.*` item
-/// here either; pick/pack/dispatch are actions on an individual order (R2+),
-/// not a separate top-level section.
-const List<NavItem> kNavItems = [
-  NavItem(
-    label: 'Dashboard',
-    path: RoutePaths.dashboard,
-    icon: Icons.dashboard_outlined,
-    selectedIcon: Icons.dashboard,
+/// A titled group of [NavItem]s the sidebar/drawer expands and collapses. A
+/// [flat] group (Dashboard) is one plain row. [shortLabel] captions the icon
+/// in the tablet rail and phone bottom bar.
+class NavGroup {
+  const NavGroup({required this.id, required this.title, required this.shortLabel, required this.icon, required this.items, this.flat = false});
+
+  final String id;
+  final String title;
+  final String shortLabel;
+  final IconData icon;
+  final List<NavItem> items;
+  final bool flat;
+}
+
+/// The nav table, grouped. Order here is display order in every layout.
+/// Pick / pack / dispatch are actions on an order, not a section.
+const List<NavGroup> kNavGroups = [
+  NavGroup(
+    id: 'overview',
+    title: 'Dashboard',
+    shortLabel: 'Home',
+    icon: PhosphorIconsDuotone.gauge,
+    flat: true,
+    items: [NavItem(label: 'Dashboard', path: RoutePaths.dashboard, icon: PhosphorIconsDuotone.gauge)],
   ),
-  NavItem(
-    label: 'Customers',
-    path: RoutePaths.customers,
-    icon: Icons.people_alt_outlined,
-    selectedIcon: Icons.people_alt,
-    requiredPermissions: ['customers.view', 'customers.create'],
+  NavGroup(
+    id: 'sales',
+    title: 'Sales',
+    shortLabel: 'Sales',
+    icon: PhosphorIconsDuotone.shoppingCart,
+    items: [
+      NavItem(
+        label: 'Orders',
+        path: RoutePaths.orders,
+        icon: PhosphorIconsDuotone.receipt,
+        requiredPermissions: ['orders.view_team', 'orders.view_own'],
+      ),
+      NavItem(
+        label: 'Customers',
+        path: RoutePaths.customers,
+        icon: PhosphorIconsDuotone.addressBook,
+        requiredPermissions: ['customers.view', 'customers.create'],
+      ),
+      NavItem(label: 'Payments', path: RoutePaths.payments, icon: PhosphorIconsDuotone.wallet, requiredPermissions: ['reports.view']),
+    ],
   ),
-  NavItem(
-    label: 'Orders',
-    path: RoutePaths.orders,
-    icon: Icons.receipt_long_outlined,
-    selectedIcon: Icons.receipt_long,
-    requiredPermissions: ['orders.view_team', 'orders.view_own'],
+  NavGroup(
+    id: 'user-management',
+    title: 'User management',
+    shortLabel: 'Users',
+    icon: PhosphorIconsDuotone.usersThree,
+    items: [
+      NavItem(label: 'Users', path: RoutePaths.users, icon: PhosphorIconsDuotone.users, requiredPermissions: ['users.manage']),
+      NavItem(label: 'Roles', path: RoutePaths.roles, icon: PhosphorIconsDuotone.lockKey, requiredPermissions: ['roles.manage']),
+    ],
   ),
-  NavItem(
-    label: 'Reports',
-    path: RoutePaths.reports,
-    icon: Icons.bar_chart_outlined,
-    selectedIcon: Icons.bar_chart,
-    requiredPermissions: ['reports.view'],
-  ),
-  NavItem(
-    label: 'Users',
-    path: RoutePaths.users,
-    icon: Icons.people_outline,
-    selectedIcon: Icons.people,
-    requiredPermissions: ['users.manage'],
-  ),
-  NavItem(
-    label: 'Roles',
-    path: RoutePaths.roles,
-    icon: Icons.admin_panel_settings_outlined,
-    selectedIcon: Icons.admin_panel_settings,
-    requiredPermissions: ['roles.manage'],
-  ),
-  NavItem(
-    label: 'Audit Log',
-    path: RoutePaths.audit,
-    icon: Icons.history_outlined,
-    selectedIcon: Icons.history,
-    requiredPermissions: ['audit.view'],
-  ),
-  NavItem(
-    label: 'Settings',
-    path: RoutePaths.settings,
-    icon: Icons.settings_outlined,
-    selectedIcon: Icons.settings,
+  NavGroup(
+    id: 'system',
+    title: 'System',
+    shortLabel: 'System',
+    icon: PhosphorIconsDuotone.gearSix,
+    items: [
+      NavItem(label: 'Reports', path: RoutePaths.reports, icon: PhosphorIconsDuotone.chartBar, requiredPermissions: ['reports.view']),
+      NavItem(label: 'Audit Log', path: RoutePaths.audit, icon: PhosphorIconsDuotone.listMagnifyingGlass, requiredPermissions: ['audit.view']),
+      NavItem(label: 'Settings', path: RoutePaths.settings, icon: PhosphorIconsDuotone.sliders),
+    ],
   ),
 ];
 
-/// Filters [kNavItems] down to what [user] is permitted to see. A `null`
-/// user (signed out) sees only items with no required permission.
-List<NavItem> visibleNavItems(AppUser? user) {
-  return kNavItems.where((item) {
-    if (item.requiredPermissions.isEmpty) return true;
-    return user?.canAny(item.requiredPermissions) ?? false;
-  }).toList();
+/// Every destination, flattened in display order. The router builds its
+/// routes from this and gates sub-routes with [navItemForPath].
+final List<NavItem> kNavItems = [for (final group in kNavGroups) ...group.items];
+
+bool _isVisible(NavItem item, AppUser? user) {
+  if (item.requiredPermissions.isEmpty) return true;
+  return user?.canAny(item.requiredPermissions) ?? false;
 }
 
-/// Index into [items] whose path matches [path] exactly, or is the longest
-/// prefix match — so a sub-route like `/roles/abc-123` still highlights the
-/// "Roles" entry and inherits its permission gate.
-int navIndexForPath(List<NavItem> items, String path) {
-  var bestIndex = -1;
-  var bestLength = -1;
-  for (var i = 0; i < items.length; i++) {
-    final itemPath = items[i].path;
-    final matches = path == itemPath || path.startsWith('$itemPath/');
-    if (matches && itemPath.length > bestLength) {
-      bestIndex = i;
-      bestLength = itemPath.length;
-    }
+/// [kNavGroups] filtered to what [user] may see; a group left empty disappears.
+List<NavGroup> visibleNavGroups(AppUser? user) => [
+  for (final g in kNavGroups)
+    if (g.items.where((i) => _isVisible(i, user)).toList() case final items when items.isNotEmpty)
+      NavGroup(id: g.id, title: g.title, shortLabel: g.shortLabel, icon: g.icon, items: items, flat: g.flat),
+];
+
+/// The visible destinations for [user], flattened in display order.
+List<NavItem> visibleNavItems(AppUser? user) => [for (final group in visibleNavGroups(user)) ...group.items];
+
+/// The item whose path matches [path] exactly or is its longest prefix — so
+/// `/orders/abc/edit` still highlights "Orders" and inherits its gate.
+NavItem? navItemMatching(Iterable<NavItem> items, String path) {
+  NavItem? best;
+  for (final item in items) {
+    final matches = path == item.path || path.startsWith('${item.path}/');
+    if (matches && (best == null || item.path.length > best.path.length)) best = item;
   }
-  return bestIndex;
+  return best;
 }
 
-/// The nav item (from the full, unfiltered [kNavItems]) that governs [path]
-/// — used by the router's redirect to gate sub-routes the same way as their
-/// parent nav entry.
-NavItem? navItemForPath(String path) {
-  final index = navIndexForPath(kNavItems, path);
-  return index == -1 ? null : kNavItems[index];
-}
+/// The nav item (from the full [kNavItems]) that governs [path] — the router's gate.
+NavItem? navItemForPath(String path) => navItemMatching(kNavItems, path);

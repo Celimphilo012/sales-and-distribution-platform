@@ -179,6 +179,38 @@ describe('ordering API (Express port)', () => {
     });
   });
 
+  describe('report branding', () => {
+    it('anyone signed in reads it; only settings.manage changes the name and logo', async () => {
+      const token = (await loginAs(app.origin)).accessToken;
+      const upload = async (content, type, filename) => {
+        const form = new FormData();
+        form.append('file', new Blob([content], { type }), filename);
+        const res = await fetch(`${app.origin}/settings/branding/logo`, { method: 'POST', headers: { authorization: `Bearer ${token}` }, body: form });
+        return { status: res.status, json: await res.json().catch(() => undefined) };
+      };
+      const initial = (await api.get('/settings/branding')).json;
+      assert.equal(typeof initial.companyName, 'string');
+
+      const renamed = await api.put('/settings/branding', { companyName: '  Acme Sales  ' });
+      assert.equal(renamed.status, 200, renamed.body);
+      assert.equal(renamed.json.companyName, 'Acme Sales');
+
+      // 1x1 transparent PNG.
+      const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
+      const uploaded = await upload(png, 'image/png', 'logo.png');
+      assert.equal(uploaded.status, 200);
+      assert.equal(uploaded.json.hasLogo, true);
+      const file = await fetch(`${app.origin}/settings/branding/logo`, { headers: { authorization: `Bearer ${token}` } });
+      assert.equal(file.status, 200);
+      assert.equal(file.headers.get('content-type'), 'image/png');
+      assert.equal((await upload(Buffer.from('hello'), 'text/plain', 'x.txt')).status, 400);
+
+      assert.equal((await api.delete('/settings/branding/logo')).json.hasLogo, false);
+      assert.equal((await api.get('/settings/branding/logo')).status, 404);
+      await api.put('/settings/branding', { companyName: initial.companyName });
+    });
+  });
+
   describe('reports & audit', () => {
     it('reports aggregate orders by status; every mutation is audited', async () => {
       const report = (await api.get('/reports/orders')).json;

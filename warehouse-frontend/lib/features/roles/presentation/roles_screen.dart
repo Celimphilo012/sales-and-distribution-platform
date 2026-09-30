@@ -144,7 +144,7 @@ class _RolesScreenState extends ConsumerState<RolesScreen> {
                 sort: (r) => r.users,
                 cell: (r) => NxCellText(r.users == null ? '—' : fmtNum(r.users), align: TextAlign.right),
               ),
-              NxColumn(key: 'act', label: '', width: 104, cell: (r) => NxRowActions(acts(r))),
+              NxColumn(key: 'act', label: '', width: 106, cell: (r) => NxRowActions(acts(r))),
             ],
             listRow: (r) => NxListRowSpec(
               icon: PhosphorIconsDuotone.shield,

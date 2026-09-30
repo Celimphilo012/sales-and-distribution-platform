@@ -90,6 +90,13 @@ describe('payments', () => {
     assert.equal(rest.json.paymentStatus, 'PAID');
     assert.equal(rest.json.balanceDue, 0);
 
+    // The all-payments ledger (reports.view) names the order and its customer on each row.
+    const ledger = (await fx.api.get('/payments')).json.filter((p) => p.order.id === order.id);
+    assert.equal(ledger.length, 2);
+    assert.equal(ledger[0].order.orderNumber, order.orderNumber);
+    assert.equal(ledger[0].customer.id, order.customerId);
+    assert.ok(ledger[0].customer.name);
+
     const more = await fx.api.post('/payments', { orderId: order.id, amount: 1, method: 'CASH' });
     assert.equal(more.status, 409);
     assert.match(more.json.message, /already fully paid/);

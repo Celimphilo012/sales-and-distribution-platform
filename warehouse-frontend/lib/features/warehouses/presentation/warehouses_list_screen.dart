@@ -121,7 +121,7 @@ class WarehousesListScreen extends ConsumerWidget {
               NxColumn(
                 key: 'act',
                 label: '',
-                width: canManage ? 104 : 40,
+                width: canManage ? 106 : 52,
                 cell: (w) => NxRowActions([
                   NxRowAction(icon: PhosphorIconsRegular.treeStructure, label: 'Open structure', onPressed: () => open(w)),
                   if (canManage) ...[

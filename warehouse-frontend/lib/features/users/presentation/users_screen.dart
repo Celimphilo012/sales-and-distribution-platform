@@ -127,7 +127,7 @@ class UsersScreen extends ConsumerWidget {
               NxColumn(key: 'whs', label: 'Warehouses', hide: NxHide.wide, cell: (u) => NxCellText(whs(u), mono: true, color: n.n300)),
               NxColumn(key: 'mfa', label: 'Sign-in check', hide: NxHide.wide, cell: (u) => NxCellText(mfa(u), color: n.n300)),
               NxColumn(key: 'status', label: 'Status', sort: (u) => u.status.index, cell: (u) => Align(alignment: Alignment.centerLeft, child: status(u))),
-              NxColumn(key: 'act', label: '', width: 104, cell: (u) => NxRowActions(acts(u))),
+              NxColumn(key: 'act', label: '', width: 106, cell: (u) => NxRowActions(acts(u))),
             ],
             listRow: (u) => NxListRowSpec(
               icon: PhosphorIconsDuotone.user,

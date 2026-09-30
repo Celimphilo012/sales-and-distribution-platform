@@ -3,10 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/auth/auth_provider.dart';
 import '../../../../core/error/app_error.dart';
-import '../../../../core/theme/app_spacing.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
+
+import '../../../../core/theme/nocturne.dart';
+import '../../../../shared/nx/nx_overlays.dart';
+import '../../../../shared/nx/nx_primitives.dart';
 import '../../../../shared/quantity_format.dart';
-import '../../../../shared/widgets/app_card.dart';
-import '../../../../shared/widgets/app_dialog.dart';
 import '../../data/orders_providers.dart';
 import '../../domain/order.dart';
 import '../../domain/order_lifecycle.dart';
@@ -29,35 +31,44 @@ class OrderActionsCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
+    final n = context.nx;
     final user = ref.watch(authProvider.select((s) => s.value?.user));
     final actions = allowedOrderActions(order.status, (p) => user?.can(p) ?? false);
     final forward = forwardActionFor(order.status);
 
-    return AppCard(
-      title: 'Order actions',
-      subtitle: 'Current status: ${order.status.label}',
-      child: actions.isEmpty
-          ? Text(_idleMessage(forward), style: theme.textTheme.bodyMedium)
-          : Wrap(
-              spacing: AppSpacing.sm,
-              runSpacing: AppSpacing.sm,
-              children: [
-                for (final action in actions) _ActionButton(order: order, action: action, primary: action == forward),
-              ],
+    return NxSection(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          NxKicker('Next step', color: n.a300),
+          const SizedBox(height: 4),
+          Text(
+            forward == null ? 'Nothing further' : kOrderActionSpecs[forward]!.label,
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: n.text),
+          ),
+          const SizedBox(height: 10),
+          if (actions.isEmpty)
+            Text(_idleMessage(forward), style: TextStyle(fontSize: 12, color: n.n400))
+          else
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [for (final action in actions) _ActionButton(order: order, action: action, primary: action == forward)],
             ),
+        ],
+      ),
     );
   }
 
-  /// Why nothing is offered: either the order is finished, or the next step
-  /// belongs to someone with a permission this user lacks.
+  /// Why nothing is offered: the order is finished, or the next step needs a
+  /// permission this user lacks.
   String _idleMessage(OrderAction? forward) {
     if (forward == null) {
       return 'This order is ${order.status.label.toLowerCase()} — there are no further actions.';
     }
     final spec = kOrderActionSpecs[forward]!;
-    return 'Next step: ${spec.label}. That needs the ${spec.permission} permission, which your account '
-        'does not have.';
+    return 'That needs the ${spec.permission} permission, which your account does not have.';
   }
 }
 
@@ -70,36 +81,23 @@ class _ActionButton extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
     final spec = kOrderActionSpecs[action]!;
-    final icon = Icon(_iconFor(action));
-    final label = Text(spec.label);
     void onPressed() => _run(context, ref);
-
-    if (primary) {
-      return FilledButton.icon(onPressed: onPressed, icon: icon, label: label);
+    if (primary && !spec.destructive) {
+      return NxButton.primary(label: spec.label, icon: _iconFor(action), onPressed: onPressed);
     }
-    return OutlinedButton.icon(
+    return NxButton(
+      label: spec.label,
+      icon: _iconFor(action),
+      color: spec.destructive ? context.nx.bad : null,
       onPressed: onPressed,
-      icon: icon,
-      label: label,
-      style: spec.destructive
-          ? OutlinedButton.styleFrom(
-              foregroundColor: theme.colorScheme.error,
-              side: BorderSide(color: theme.colorScheme.error),
-            )
-          : null,
     );
   }
 
   Future<void> _run(BuildContext context, WidgetRef ref) async {
-    // Captured before any await: the widget may be gone by the time a
-    // dialog closes (the detail body rebuilds when the order refreshes).
-    final messenger = ScaffoldMessenger.of(context);
-
     void done(String message) {
       invalidateOrder(ref, order.id);
-      messenger.showSnackBar(SnackBar(content: Text(message)));
+      NxToast.ok(message, order.orderNumber);
     }
 
     switch (action) {
@@ -108,13 +106,9 @@ class _ActionButton extends ConsumerWidget {
           done('Stock reserved — the warehouse has set it aside for this order.');
         }
       case OrderAction.pick:
-        if (await showQuantityEntryDialog(context, order: order, step: QuantityStep.pick)) {
-          done('Picking recorded.');
-        }
+        if (await showQuantityEntryDialog(context, order: order, step: QuantityStep.pick)) done('Picking recorded.');
       case OrderAction.pack:
-        if (await showQuantityEntryDialog(context, order: order, step: QuantityStep.pack)) {
-          done('Packing recorded.');
-        }
+        if (await showQuantityEntryDialog(context, order: order, step: QuantityStep.pack)) done('Packing recorded.');
       case OrderAction.reject:
         if (await showRejectOrderDialog(context, order: order)) done('Order rejected.');
       case OrderAction.dispatch:
@@ -126,60 +120,51 @@ class _ActionButton extends ConsumerWidget {
           OrderAction.ready ||
           OrderAction.deliver ||
           OrderAction.complete:
-        await _confirmAndRun(context, ref, done, messenger);
+        await _confirmAndRun(context, ref, done);
     }
   }
 
   /// submit / approve / cancel / ready / deliver / complete: confirm, then a
-  /// single call. Errors (including "warehouse unavailable" on a cancel that
-  /// has to release stock) come back as a message — the order is unchanged.
-  Future<void> _confirmAndRun(
-    BuildContext context,
-    WidgetRef ref,
-    void Function(String) done,
-    ScaffoldMessengerState messenger,
-  ) async {
+  /// single call. Errors (incl. "warehouse unavailable" on a cancel that must
+  /// release stock) come back as a message — the order is unchanged.
+  Future<void> _confirmAndRun(BuildContext context, WidgetRef ref, void Function(String) done) async {
     final spec = kOrderActionSpecs[action]!;
     final text = _confirmText(action, order);
-    final confirmed = await ConfirmDialog.show(
+    final confirmed = await showNxConfirm(
       context,
       title: text.title,
-      message: text.message,
+      body: text.message,
       confirmLabel: spec.label,
-      isDestructive: spec.destructive,
+      danger: spec.destructive,
     );
     if (!confirmed) return;
-
     try {
       await ref.read(ordersApiProvider).transition(order.id, action);
       done(text.success);
     } on AppError catch (e) {
       final failure = classifyLifecycleError(e);
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            failure is WarehouseUnavailableFailure
-                ? 'The warehouse is temporarily unavailable — the order was not changed. Safe to try again.'
-                : failure.message,
-          ),
-        ),
+      NxToast.error(
+        'Not changed',
+        failure is WarehouseUnavailableFailure
+            ? 'The warehouse is temporarily unavailable — the order was not changed. Safe to try again.'
+            : failure.message,
       );
     }
   }
 }
 
 IconData _iconFor(OrderAction action) => switch (action) {
-  OrderAction.submit => Icons.send_outlined,
-  OrderAction.approve => Icons.check_circle_outline,
-  OrderAction.reject => Icons.thumb_down_alt_outlined,
-  OrderAction.reserve => Icons.lock_outline,
-  OrderAction.cancel => Icons.cancel_outlined,
-  OrderAction.pick => Icons.pan_tool_alt_outlined,
-  OrderAction.pack => Icons.inventory_2_outlined,
-  OrderAction.ready => Icons.flag_outlined,
-  OrderAction.dispatch => Icons.local_shipping_outlined,
-  OrderAction.deliver => Icons.home_outlined,
-  OrderAction.complete => Icons.task_alt_outlined,
+  OrderAction.submit => PhosphorIconsRegular.paperPlaneTilt,
+  OrderAction.approve => PhosphorIconsRegular.checkCircle,
+  OrderAction.reject => PhosphorIconsRegular.thumbsDown,
+  OrderAction.reserve => PhosphorIconsRegular.lockKey,
+  OrderAction.cancel => PhosphorIconsRegular.xCircle,
+  OrderAction.pick => PhosphorIconsRegular.handGrabbing,
+  OrderAction.pack => PhosphorIconsRegular.package,
+  OrderAction.ready => PhosphorIconsRegular.flag,
+  OrderAction.dispatch => PhosphorIconsRegular.truck,
+  OrderAction.deliver => PhosphorIconsRegular.houseLine,
+  OrderAction.complete => PhosphorIconsRegular.sealCheck,
 };
 
 const _statusesHoldingReservation = {

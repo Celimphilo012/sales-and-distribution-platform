@@ -19,6 +19,18 @@ class PaymentsApi {
     return OrderPayments.fromJson(response.data!);
   }
 
+  /// `GET /payments` — every payment (reports.view), each naming its order
+  /// and customer: the Payments ledger.
+  Future<List<Payment>> all({DateTime? from, DateTime? to}) async {
+    final response = await _apiClient.guard(
+      (dio) => dio.get<List<dynamic>>(
+        '/payments',
+        queryParameters: {'from': ?from?.toUtc().toIso8601String(), 'to': ?to?.toUtc().toIso8601String()},
+      ),
+    );
+    return response.data!.map((e) => Payment.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
   /// `POST /payments`. The server refuses overpayment (409, with `balanceDue`),
   /// a missing reference for non-cash methods (400), and a future [paidAt].
   Future<void> record({
@@ -55,4 +67,9 @@ final paymentsApiProvider = Provider<PaymentsApi>((ref) => PaymentsApi(ref.watch
 
 final orderPaymentsProvider = FutureProvider.autoDispose.family<OrderPayments, String>((ref, orderId) {
   return ref.watch(paymentsApiProvider).forOrder(orderId);
+});
+
+/// Every payment the viewer may see (reports.view) — the Payments ledger.
+final allPaymentsProvider = FutureProvider.autoDispose<List<Payment>>((ref) {
+  return ref.watch(paymentsApiProvider).all();
 });

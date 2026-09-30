@@ -24,6 +24,7 @@ const { auditRoutes } = require('./modules/audit');
 const { createCustomersService, customersRoutes } = require('./modules/customers');
 const { createOrdersService, ordersRoutes, catalogueRoutes, warehouseLocationsRoutes } = require('./modules/orders');
 const { createReportsService, reportsRoutes, dashboardRoutes } = require('./modules/reports');
+const { createBrandingService, brandingRoutes } = require('./modules/branding');
 
 /** [mountPath, routes function]. Express matches in order: more specific mounts first. */
 const MODULES = [
@@ -40,6 +41,7 @@ const MODULES = [
   ['/reports', reportsRoutes],
   ['/dashboard', dashboardRoutes],
   ['/settings/delivery', deliverySettingsRoutes],
+  ['/settings/branding', brandingRoutes],
 ];
 
 /** Builds every service once, in dependency order (rule 9: cross-module calls go through services). */
@@ -64,6 +66,8 @@ function buildServices({ db, models, config, auth, logger }) {
   });
   services.payments = createPaymentsService({ ...base, orders: services.orders, notifications: services.notifications });
   services.reports = createReportsService(base);
+  // Company name + logo printed on every PDF / Excel export (Settings -> Report branding).
+  services.branding = createBrandingService(base);
   return services;
 }
 

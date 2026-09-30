@@ -151,7 +151,7 @@ class CategoriesScreen extends ConsumerWidget {
                 NxColumn(
                   key: 'act',
                   label: '',
-                  width: 104,
+                  width: 106,
                   cell: (r) => NxRowActions([
                     if (r.c.isActive)
                       NxRowAction(

@@ -21,6 +21,7 @@ class RoutePaths {
   static const users = '/users';
   static const roles = '/roles';
   static String roleDetail(String id) => '$roles/$id';
+  static const payments = '/payments';
   static const reports = '/reports';
   static const audit = '/audit';
   static const settings = '/settings';

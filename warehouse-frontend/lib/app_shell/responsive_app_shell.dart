@@ -301,6 +301,7 @@ class _Brand extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final n = context.nx;
     final name = ref.watch(brandNameProvider);
+    final tagline = ref.watch(brandTaglineProvider);
     // Default product name keeps its two-tone look; a company name shows as-is.
     final span = name == kDefaultBrandName
         ? TextSpan(text: 'Warehouse ', children: [TextSpan(text: 'System', style: TextStyle(color: n.n500, fontWeight: FontWeight.w400))])
@@ -310,11 +311,19 @@ class _Brand extends ConsumerWidget {
         const BrandMark(glow: true),
         const SizedBox(width: 9),
         Flexible(
-          child: Text.rich(
-            span,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: n.text),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text.rich(
+                span,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: n.text, height: 1.2),
+              ),
+              if (tagline != null)
+                Text(tagline, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 10.5, color: n.a300, height: 1.2)),
+            ],
           ),
         ),
       ],

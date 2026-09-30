@@ -33,9 +33,16 @@ String _safe(String s) => s
     .replaceAll('’', "'")
     .replaceAll(RegExp(r'[^\x00-\xFF]'), '?');
 
-pw.Widget _label(QrLabel l, String company) => pw.Container(
+pw.Widget _label(QrLabel l, String company, ExportColors c) => pw.Container(
   padding: const pw.EdgeInsets.all(6),
-  decoration: pw.BoxDecoration(border: pw.Border.all(color: _cut, width: 0.4)),
+  decoration: pw.BoxDecoration(
+    border: pw.Border(
+      left: pw.BorderSide(color: c.accent, width: 2.2),
+      top: const pw.BorderSide(color: _cut, width: 0.4),
+      right: const pw.BorderSide(color: _cut, width: 0.4),
+      bottom: const pw.BorderSide(color: _cut, width: 0.4),
+    ),
+  ),
   child: pw.Row(
     crossAxisAlignment: pw.CrossAxisAlignment.center,
     children: [
@@ -54,7 +61,7 @@ pw.Widget _label(QrLabel l, String company) => pw.Container(
               pw.Text(_safe(l.sub!), maxLines: 2, style: const pw.TextStyle(fontSize: 6.5, color: _muted)),
             ],
             pw.SizedBox(height: 3),
-            pw.Text(_safe(company), maxLines: 1, style: const pw.TextStyle(fontSize: 6, color: _muted)),
+            pw.Text(_safe(company), maxLines: 1, style: pw.TextStyle(fontSize: 6, color: c.accent, fontWeight: pw.FontWeight.bold)),
           ],
         ),
       ),
@@ -67,6 +74,7 @@ pw.Widget _label(QrLabel l, String company) => pw.Container(
 Future<Uint8List> labelsPdf(List<QrLabel> labels, ExportBranding b, {int copies = 1}) async {
   final all = [for (final l in labels) for (var i = 0; i < copies; i++) l];
   final doc = pw.Document(title: 'QR labels', author: b.company);
+  final colors = b.colors;
   for (var start = 0; start < all.length; start += _perPage) {
     final page = all.sublist(start, (start + _perPage).clamp(0, all.length));
     doc.addPage(
@@ -81,7 +89,7 @@ Future<Uint8List> labelsPdf(List<QrLabel> labels, ExportBranding b, {int copies 
                   crossAxisAlignment: pw.CrossAxisAlignment.stretch,
                   children: [
                     for (var c = 0; c < _cols; c++)
-                      pw.Expanded(child: r * _cols + c < page.length ? _label(page[r * _cols + c], b.company) : pw.SizedBox()),
+                      pw.Expanded(child: r * _cols + c < page.length ? _label(page[r * _cols + c], b.company, colors) : pw.SizedBox()),
                   ],
                 ),
               ),

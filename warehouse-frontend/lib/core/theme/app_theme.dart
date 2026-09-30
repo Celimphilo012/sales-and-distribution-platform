@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import 'app_semantic_colors.dart';
+import 'brand_fonts.dart';
+import 'brand_palette.dart';
 import 'nocturne.dart';
 
 /// Builds the app's dark and light [ThemeData] from the Nocturne tokens
@@ -21,9 +22,15 @@ import 'nocturne.dart';
 class AppTheme {
   const AppTheme._();
 
-  static ThemeData dark() => _build(Nocturne.dark);
+  /// [brand] (Settings → Branding) re-tints the accent palette; null keeps
+  /// the built-in violet. See [BrandPalette].
+  /// [headingFont] / [bodyFont] are approved brand fonts (see [kBrandFonts]);
+  /// null keeps Inter.
+  static ThemeData dark({Color? brand, String? headingFont, String? bodyFont}) =>
+      _build(Nocturne.dark.withBrand(brand), headingFont: headingFont, bodyFont: bodyFont);
 
-  static ThemeData light() => _build(Nocturne.light);
+  static ThemeData light({Color? brand, String? headingFont, String? bodyFont}) =>
+      _build(Nocturne.light.withBrand(brand), headingFont: headingFont, bodyFont: bodyFont);
 
   static ColorScheme _scheme(Nocturne n) => ColorScheme(
     brightness: n.brightness,
@@ -77,8 +84,8 @@ class AppTheme {
     qrBackground: n.isDark ? n.n100 : n.surface,
   );
 
-  static TextTheme _textTheme(TextTheme base, Nocturne n) {
-    final inter = GoogleFonts.interTextTheme(base);
+  static TextTheme _textTheme(TextTheme base, Nocturne n, {String? headingFont, String? bodyFont}) {
+    final inter = brandTextTheme(base, heading: headingFont, body: bodyFont);
     TextStyle? s(TextStyle? t, double size, {FontWeight weight = FontWeight.w400, double? height, double? spacing}) =>
         t?.copyWith(fontSize: size, fontWeight: weight, height: height, letterSpacing: spacing, color: n.text);
     return inter.copyWith(
@@ -100,10 +107,10 @@ class AppTheme {
     );
   }
 
-  static ThemeData _build(Nocturne n) {
+  static ThemeData _build(Nocturne n, {String? headingFont, String? bodyFont}) {
     final scheme = _scheme(n);
     final base = ThemeData(brightness: n.brightness, useMaterial3: true);
-    final textTheme = _textTheme(base.textTheme, n);
+    final textTheme = _textTheme(base.textTheme, n, headingFont: headingFont, bodyFont: bodyFont);
     final radius = BorderRadius.circular(NxRadius.md);
     final shape = RoundedRectangleBorder(borderRadius: radius);
     final label = textTheme.labelLarge!;
@@ -130,7 +137,7 @@ class AppTheme {
       colorScheme: scheme,
       textTheme: textTheme,
       primaryTextTheme: textTheme,
-      fontFamily: GoogleFonts.inter().fontFamily,
+      fontFamily: brandFontFamily(bodyFont),
       scaffoldBackgroundColor: n.bg,
       canvasColor: n.bg,
       dividerColor: n.n900,

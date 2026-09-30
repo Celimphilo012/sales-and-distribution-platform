@@ -86,7 +86,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       child: Align(
         alignment: Alignment.topLeft,
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 920),
+          // Branding gets room for its live preview beside the form.
+          constraints: BoxConstraints(maxWidth: current == 'branding' ? 1320 : 920),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [

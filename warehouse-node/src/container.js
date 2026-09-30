@@ -32,7 +32,7 @@ const { createBrandingService } = require('./modules/branding/service');
 const { ProductImportService } = require('./modules/product-import/product-import.service');
 const { ProductImportSessionStore } = require('./modules/product-import/product-import-session.store');
 
-function buildServices({ db, models, cache, config, auth, notifier, logger }) {
+function buildServices({ db, models, cache, config, auth, notifier, logger, branding }) {
   const services = {};
   // Warehouse access (deny by default) is needed by almost everything, so it rides in `base`.
   services.access = createAccessService({ db, models, cache, config, auth });
@@ -58,7 +58,7 @@ function buildServices({ db, models, cache, config, auth, notifier, logger }) {
     workstreamManagers: services.workstreamManagers,
   });
   services.attributeTypes = createAttributeTypesService(base);
-  services.branding = createBrandingService(base);
+  services.branding = branding ?? createBrandingService(base);
   services.products = createProductsService({
     ...base,
     categories: services.categories,

@@ -69,6 +69,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           const _BrandMark(),
                           const SizedBox(height: AppSpacing.lg),
                           _BrandName(style: Theme.of(context).textTheme.headlineSmall),
+                          const _Tagline(),
                           const SizedBox(height: AppSpacing.xl),
                           _body(context),
                         ],
@@ -349,6 +350,24 @@ class _BrandName extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) => Text(ref.watch(brandNameProvider), style: style);
 }
 
+/// The company tagline (Settings → Branding), in the brand colour; nothing when unset.
+class _Tagline extends ConsumerWidget {
+  const _Tagline({this.style});
+
+  final TextStyle? style;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tagline = ref.watch(brandTaglineProvider);
+    if (tagline == null) return const SizedBox.shrink();
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(top: AppSpacing.xs),
+      child: Text(tagline, style: style ?? theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.primary)),
+    );
+  }
+}
+
 /// The left-hand masthead on wide screens.
 class _Masthead extends StatelessWidget {
   const _Masthead();
@@ -379,6 +398,7 @@ class _Masthead extends StatelessWidget {
             constraints: const BoxConstraints(maxWidth: 460),
             child: _BrandName(style: theme.textTheme.displaySmall?.copyWith(fontWeight: FontWeight.w700, height: 1.1)),
           ),
+          _Tagline(style: theme.textTheme.titleMedium?.copyWith(color: scheme.primary)),
           const SizedBox(height: AppSpacing.md),
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 440),

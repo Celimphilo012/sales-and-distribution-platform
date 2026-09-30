@@ -25,6 +25,21 @@ void applyBrowserFavicon(Uint8List? logo) {
     ..href = 'data:$mime;base64,${base64Encode(logo)}';
 }
 
+/// Tints the mobile browser's toolbar (`<meta name="theme-color">`) with the
+/// brand colour; removes the tint when [hex] is null.
+void applyBrowserThemeColor(String? hex) {
+  var meta = web.document.querySelector('meta[name="theme-color"]') as web.HTMLMetaElement?;
+  if (hex == null) {
+    meta?.remove();
+    return;
+  }
+  if (meta == null) {
+    meta = web.document.createElement('meta') as web.HTMLMetaElement..name = 'theme-color';
+    web.document.head?.appendChild(meta);
+  }
+  meta.content = hex;
+}
+
 String _mimeOf(Uint8List b) {
   if (b.length > 3 && b[0] == 0x89 && b[1] == 0x50) return 'image/png';
   if (b.length > 2 && b[0] == 0xFF && b[1] == 0xD8) return 'image/jpeg';

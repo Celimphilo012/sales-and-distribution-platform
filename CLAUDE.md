@@ -98,6 +98,18 @@ pickers, "Scan to count" (+1 per scan), packing "Scan to check" (ticks lines, in
 as A4 3×8 sticker PDFs (product sheet, Products "QR labels", location detail, "Print slot labels"). The
 ordering order form scans products into the order (scan module COPIED, not shared).
 
+**BRAND KIT (2026-09-30, warehouse)** — Settings → Branding (`settings.manage`) is a tabbed brand-kit editor with a
+live preview: Identity (logo, company name, tagline) · Colour (presets, colours extracted from the logo, custom hex)
+· Typography (approved heading/body Google Fonts — closed list in `warehouse-node/src/modules/branding/fonts.js`,
+copied to `core/theme/brand_fonts.dart`) · Letterhead (address, phone, email, website, registration, footer line) ·
+Email signature (+ send a test email). Stored in `app_settings` (`branding.tagline`, `branding.color`, and
+`branding.kit` JSON for fonts/letterhead/signature); `PUT /settings/branding` takes any subset. The brand colour
+re-tints the WHOLE console: `core/theme/brand_palette.dart` generates the accent ramp for dark + light by matching
+each built-in shade's LUMINANCE (contrast is preserved for any colour — tested). Also used by: PDF/Excel exports,
+pick lists and QR labels (letterhead + brand colours via `ExportBranding`), the sign-in page and top bar (tagline),
+the mobile browser `theme-color`, and every email (`core/email-template.js`: brand colour rules, buttons darkened to
+pass 4.5:1 with white text, brand font stacks, tagline, signature, letterhead contact line). PDFs keep Helvetica.
+
 **Ordering port DONE (2026-09-28):** `/ordering-backend` — 33/33 read endpoints + error shapes
 byte-identical to `/backend` on real data (parity script, removed with `/backend`); 14 integration tests (full lifecycle
 against an in-process fake warehouse); `/ordering-frontend` repointed to 3300 (analyze clean, 51

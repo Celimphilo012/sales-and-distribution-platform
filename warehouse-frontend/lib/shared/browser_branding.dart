@@ -1,4 +1,5 @@
-/// Puts the company's logo on the browser tab (favicon). Real implementation
+/// Puts the company's logo on the browser tab (favicon) and its brand colour
+/// on the mobile browser's toolbar. Real implementation
 /// in `browser_branding_web.dart`; elsewhere (mobile / desktop builds, tests)
 /// it does nothing — native app icons are fixed at build time.
 library;

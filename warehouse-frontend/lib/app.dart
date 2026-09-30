@@ -14,13 +14,16 @@ class App extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(appRouterProvider);
     final themeMode = ref.watch(themeModeProvider);
+    // The accent palette and fonts follow the company's brand (Settings → Branding).
+    final brand = ref.watch(brandColorProvider);
+    final fonts = ref.watch(brandFontsProvider);
 
     return MaterialApp.router(
       // The tab title follows the company name (Settings → Branding).
       title: ref.watch(brandTitleProvider),
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.light(),
-      darkTheme: AppTheme.dark(),
+      theme: AppTheme.light(brand: brand, headingFont: fonts.heading, bodyFont: fonts.body),
+      darkTheme: AppTheme.dark(brand: brand, headingFont: fonts.heading, bodyFont: fonts.body),
       themeMode: themeMode,
       routerConfig: router,
       // Toasts float above every route, sheet and dialog; the favicon follows the company logo.

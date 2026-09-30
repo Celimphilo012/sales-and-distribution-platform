@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../core/theme/brand_palette.dart';
 import '../core/theme/nocturne.dart';
 import '../features/settings/data/branding_api.dart';
 import '../shared/browser_branding.dart';
@@ -18,6 +19,22 @@ final brandNameProvider = Provider<String>((ref) {
   return (name == null || name.isEmpty) ? kDefaultBrandName : name;
 });
 
+/// The brand colour (Settings → Branding) the whole console's accent is
+/// generated from, or null for the built-in violet.
+final brandColorProvider = Provider<Color?>((ref) => BrandPalette.parse(ref.watch(brandingProvider).value?.brandColor));
+
+/// The approved brand fonts (heading, body); nulls keep Inter.
+final brandFontsProvider = Provider<({String? heading, String? body})>((ref) {
+  final b = ref.watch(brandingProvider).value;
+  return (heading: b?.headingFont, body: b?.bodyFont);
+});
+
+/// The tagline under the company name, or null.
+final brandTaglineProvider = Provider<String?>((ref) {
+  final t = ref.watch(brandingProvider).value?.tagline?.trim();
+  return (t == null || t.isEmpty) ? null : t;
+});
+
 /// The uploaded company logo, or null (the built-in mark is drawn instead).
 final brandLogoProvider = Provider<Uint8List?>((ref) => ref.watch(brandingLogoProvider).value);
 
@@ -28,8 +45,9 @@ final brandTitleProvider = Provider<String>((ref) {
   return name == kDefaultBrandName ? kDefaultBrandName : '$name · Warehouse';
 });
 
-/// Keeps the browser tab's icon in step with the company logo — set once the
-/// branding loads, and again whenever an administrator changes it.
+/// Keeps the browser tab's icon (the company logo) and the mobile browser's
+/// toolbar colour (the brand colour) in step with Settings → Branding — set
+/// once the branding loads, and again whenever an administrator changes it.
 class BrandingEffects extends ConsumerStatefulWidget {
   const BrandingEffects({super.key, required this.child});
 
@@ -44,6 +62,7 @@ class _BrandingEffectsState extends ConsumerState<BrandingEffects> {
   void initState() {
     super.initState();
     ref.listenManual<Uint8List?>(brandLogoProvider, (_, logo) => applyBrowserFavicon(logo), fireImmediately: true);
+    ref.listenManual<Color?>(brandColorProvider, (_, c) => applyBrowserThemeColor(c == null ? null : BrandPalette.hex(c)), fireImmediately: true);
   }
 
   @override

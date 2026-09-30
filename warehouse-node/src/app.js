@@ -14,6 +14,7 @@ const { auditMiddleware } = require('./core/audit');
 const { createLogger, requestLogger } = require('./core/logger');
 const { createNotifier } = require('./core/notifier');
 const { createDeliverySettingsService } = require('./modules/delivery-settings/service');
+const { createBrandingService } = require('./modules/branding/service');
 const { buildServices } = require('./container');
 
 /**
@@ -67,8 +68,10 @@ function buildApp(overrides = {}) {
   const auth = createAuth({ config, db, cache });
   // Delivery settings come first: the notifier reads them on every send.
   const deliverySettings = createDeliverySettingsService({ db, cache, config });
-  const notifier = overrides.notifier ?? createNotifier({ config, models, logger, deliverySettings });
-  const services = buildServices({ db, models, cache, config, auth, notifier, logger });
+  // Branding too: every email is dressed in the company's name, colour, fonts and signature.
+  const branding = createBrandingService({ db, config });
+  const notifier = overrides.notifier ?? createNotifier({ config, models, logger, deliverySettings, branding });
+  const services = buildServices({ db, models, cache, config, auth, notifier, logger, branding });
   Object.assign(services, { deliverySettings, notifier });
 
   const app = express();

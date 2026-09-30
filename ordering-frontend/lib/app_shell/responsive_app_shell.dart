@@ -15,6 +15,7 @@ import '../shared/nx/nx_form.dart';
 import '../shared/nx/nx_list_page.dart';
 import '../shared/nx/nx_overlays.dart';
 import '../shared/nx/nx_primitives.dart';
+import 'branding.dart';
 import 'console_notifications.dart';
 import 'nav_expansion_provider.dart';
 
@@ -281,35 +282,37 @@ class _TopBar extends ConsumerWidget {
   }
 }
 
-class _Brand extends StatelessWidget {
+/// The company's mark, name and tagline (Settings → Branding); the product
+/// name in its two-tone look until a company name is set.
+class _Brand extends ConsumerWidget {
   const _Brand();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final n = context.nx;
+    final name = ref.watch(brandNameProvider);
+    final tagline = ref.watch(brandTaglineProvider);
+    final span = name == kDefaultBrandName
+        ? TextSpan(text: 'Ordering ', children: [TextSpan(text: 'System', style: TextStyle(color: n.n500, fontWeight: FontWeight.w400))])
+        : TextSpan(text: name);
     return Row(
       children: [
-        Container(
-          width: 26,
-          height: 26,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(7),
-            border: Border.all(color: n.accent),
-            boxShadow: [BoxShadow(color: n.accent.withValues(alpha: 0.35), blurRadius: 14)],
-          ),
-          alignment: Alignment.center,
-          child: Icon(PhosphorIconsBold.receipt, size: 14, color: n.accent),
-        ),
+        const BrandMark(glow: true),
         const SizedBox(width: 9),
         Flexible(
-          child: Text.rich(
-            TextSpan(
-              text: 'Ordering ',
-              children: [TextSpan(text: 'System', style: TextStyle(color: n.n500, fontWeight: FontWeight.w400))],
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: n.text),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text.rich(
+                span,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: n.text, height: 1.2),
+              ),
+              if (tagline != null)
+                Text(tagline, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 10.5, color: n.a300, height: 1.2)),
+            ],
           ),
         ),
       ],
@@ -936,19 +939,18 @@ class _ConsoleDrawer extends ConsumerWidget {
               decoration: BoxDecoration(border: Border(bottom: BorderSide(color: n.n900))),
               child: Row(
                 children: [
-                  Container(
-                    width: 30,
-                    height: 30,
-                    decoration: BoxDecoration(borderRadius: BorderRadius.circular(8), border: Border.all(color: n.accent)),
-                    alignment: Alignment.center,
-                    child: Icon(PhosphorIconsBold.receipt, size: 15, color: n.accent),
-                  ),
+                  const BrandMark(size: 30),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Ordering System', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: n.text)),
+                        Text(
+                          ref.watch(brandNameProvider),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: n.text),
+                        ),
                         Text(
                           [user?.name ?? '', role].where((s) => s.isNotEmpty).join(' · '),
                           maxLines: 1,

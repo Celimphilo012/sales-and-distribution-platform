@@ -51,7 +51,9 @@ function buildServices({ db, models, config, auth, logger }) {
   services.warehouseApi = createWarehouseApi(base);
   // Where email/SMS go is admin-configured (Settings -> Email & SMS delivery), read at send time.
   services.deliverySettings = createDeliverySettingsService(base);
-  services.notifier = createNotifier({ config, models, logger, deliverySettings: services.deliverySettings });
+  // Company branding (Settings -> Branding): the console's look, every report export and every email.
+  services.branding = createBrandingService(base);
+  services.notifier = createNotifier({ config, models, logger, deliverySettings: services.deliverySettings, branding: services.branding });
   services.notifications = createNotificationsService({ db, notifier: services.notifier, config, logger });
   services.otp = createOtpService({ ...base, notifier: services.notifier });
   services.auth = createAuthService({ ...base, otp: services.otp });
@@ -66,8 +68,6 @@ function buildServices({ db, models, config, auth, logger }) {
   });
   services.payments = createPaymentsService({ ...base, orders: services.orders, notifications: services.notifications });
   services.reports = createReportsService(base);
-  // Company name + logo printed on every PDF / Excel export (Settings -> Report branding).
-  services.branding = createBrandingService(base);
   return services;
 }
 

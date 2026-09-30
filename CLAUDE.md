@@ -109,6 +109,10 @@ each built-in shade's LUMINANCE (contrast is preserved for any colour — tested
 pick lists and QR labels (letterhead + brand colours via `ExportBranding`), the sign-in page and top bar (tagline),
 the mobile browser `theme-color`, and every email (`core/email-template.js`: brand colour rules, buttons darkened to
 pass 4.5:1 with white text, brand font stacks, tagline, signature, letterhead contact line). PDFs keep Helvetica.
+The SAME brand kit is in the ordering system (COPIED — its own `app_settings`, so each system is branded
+separately): `ordering-backend/src/modules/branding.js` (GET now public for the sign-in page), its
+`core/email-template.js` + notifier, and `ordering-frontend` (theme, tab title/favicon, top bar, drawer, sign-in
+page, Settings → Branding, report exports). Verified: ordering-backend 42 tests, ordering-frontend 89 tests.
 
 **Ordering port DONE (2026-09-28):** `/ordering-backend` — 33/33 read endpoints + error shapes
 byte-identical to `/backend` on real data (parity script, removed with `/backend`); 14 integration tests (full lifecycle

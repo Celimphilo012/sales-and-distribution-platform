@@ -17,7 +17,7 @@ import 'widgets/settings_head.dart';
 typedef _Sec = (String id, String label, IconData icon);
 
 /// Settings (prototype `settings`): a section list beside one panel —
-/// profile, appearance, report branding, contact & alerts, sign-in check,
+/// profile, appearance, branding, contact & alerts, sign-in check,
 /// password, and (with `settings.manage`) email & SMS delivery.
 /// `/settings?section=<id>` opens a section.
 class SettingsScreen extends ConsumerStatefulWidget {
@@ -46,7 +46,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final secs = <_Sec>[
       ('profile', 'Profile', PhosphorIconsDuotone.user),
       ('appearance', 'Appearance', PhosphorIconsDuotone.palette),
-      ('branding', 'Report branding', PhosphorIconsDuotone.image),
+      ('branding', 'Branding', PhosphorIconsDuotone.palette),
       ('contact', 'Contact & alerts', PhosphorIconsDuotone.bellSimple),
       ('mfa', 'Sign-in check', PhosphorIconsDuotone.shieldCheck),
       ('password', 'Password', PhosphorIconsDuotone.password),
@@ -81,7 +81,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       child: Align(
         alignment: Alignment.topLeft,
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 920),
+          // Branding gets room for its live preview beside the form.
+          constraints: BoxConstraints(maxWidth: current == 'branding' ? 1320 : 920),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [

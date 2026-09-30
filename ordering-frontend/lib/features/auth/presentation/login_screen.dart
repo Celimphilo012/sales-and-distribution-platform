@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../app_shell/branding.dart';
 import '../../../core/auth/auth_provider.dart';
 import '../../../core/auth/auth_state.dart';
 import '../../../core/error/app_error.dart';
@@ -59,13 +60,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.storefront_rounded, size: 48, color: theme.colorScheme.primary),
+                  // The company's logo, name and tagline (Settings → Branding).
+                  const BrandMark(size: 56, glow: true),
                   const SizedBox(height: AppSpacing.md),
-                  Text('Ordering System', style: theme.textTheme.headlineSmall),
+                  Text(ref.watch(brandNameProvider), textAlign: TextAlign.center, style: theme.textTheme.headlineSmall),
                   const SizedBox(height: AppSpacing.xs),
                   Text(
-                    'Back Office',
-                    style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                    ref.watch(brandTaglineProvider) ?? 'Back Office',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: ref.watch(brandTaglineProvider) == null ? theme.colorScheme.onSurfaceVariant : theme.colorScheme.primary,
+                    ),
                   ),
                   const SizedBox(height: AppSpacing.xl),
                   Card(

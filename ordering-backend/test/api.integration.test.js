@@ -195,6 +195,43 @@ describe('ordering API (Express port)', () => {
       assert.equal(renamed.status, 200, renamed.body);
       assert.equal(renamed.json.companyName, 'Acme Sales');
 
+      // The sign-in page reads it before anyone signs in; changing it still needs settings.manage.
+      const anonymous = await fetch(`${app.origin}/settings/branding`);
+      assert.equal(anonymous.status, 200);
+      assert.equal((await fetch(`${app.origin}/settings/branding`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: '{"companyName":"Hijack"}' })).status, 401);
+
+      const styled = await api.put('/settings/branding', { tagline: ' Sales · Mbabane ', brandColor: '#0e7c66' });
+      assert.equal(styled.status, 200, styled.body);
+      assert.equal(styled.json.tagline, 'Sales · Mbabane');
+      assert.equal(styled.json.brandColor, '#0E7C66');
+      assert.equal(styled.json.companyName, 'Acme Sales', 'fields left out are unchanged');
+      assert.equal((await api.put('/settings/branding', { brandColor: 'teal' })).status, 400);
+      assert.equal((await api.put('/settings/branding', {})).status, 400);
+
+      const kit = await api.put('/settings/branding', {
+        headingFont: 'Montserrat',
+        bodyFont: 'Open Sans',
+        letterhead: { address: 'Plot 12, Mbabane', phone: '+268 2404 0000' },
+        emailSignature: 'Kind regards,\nThe sales team',
+      });
+      assert.equal(kit.status, 200, kit.body);
+      assert.equal(kit.json.headingFont, 'Montserrat');
+      assert.equal(kit.json.letterhead.phone, '+268 2404 0000');
+      assert.equal(kit.json.emailSignature, 'Kind regards,\nThe sales team');
+      assert.equal((await api.put('/settings/branding', { bodyFont: 'Comic Sans MS' })).status, 400, 'only approved fonts');
+      const more = await api.put('/settings/branding', { letterhead: { website: 'acme.example', phone: '' } });
+      assert.deepEqual([more.json.letterhead.address, more.json.letterhead.website, more.json.letterhead.phone], ['Plot 12, Mbabane', 'acme.example', null]);
+      const plain = await api.put('/settings/branding', {
+        brandColor: null,
+        tagline: '',
+        headingFont: '',
+        bodyFont: '',
+        letterhead: { address: '', website: '' },
+        emailSignature: '',
+      });
+      assert.equal(plain.json.brandColor, null);
+      assert.equal(plain.json.headingFont, 'Inter');
+
       // 1x1 transparent PNG.
       const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
       const uploaded = await upload(png, 'image/png', 'logo.png');

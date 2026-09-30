@@ -19,7 +19,7 @@ const { renderEmail, renderText } = require('./email-template');
  * FAILED — because a notification must never break the business action that triggered it. Callers
  * that NEED delivery (a one-time code) check `ok` and report the failure to the user themselves.
  */
-function createNotifier({ config, models, logger, deliverySettings }) {
+function createNotifier({ config, models, logger, deliverySettings, branding }) {
   const outbox = [];
   let smtp;
   let smtpKey;
@@ -119,8 +119,10 @@ function createNotifier({ config, models, logger, deliverySettings }) {
       } else {
         let html;
         if (message.email) {
-          html = renderEmail(message.email, config);
-          text = renderText(message.email, config);
+          // The company's branding (Settings → Branding); the plain product look if it can't be read.
+          const brand = (await branding?.emailBrand().catch(() => null)) ?? { appName: config.appName };
+          html = renderEmail(message.email, brand);
+          text = renderText(message.email, brand);
         }
         status = await deliverEmail(settings.email, to, subject ?? config.appName, text, html);
       }

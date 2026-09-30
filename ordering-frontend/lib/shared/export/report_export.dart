@@ -1,9 +1,12 @@
 import 'dart:typed_data';
 
 import 'package:excel/excel.dart' as xl;
+import 'package:flutter/painting.dart' show Color;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
+import '../../core/theme/brand_palette.dart';
+import '../../core/theme/nocturne.dart';
 import '../browser_download.dart';
 import '../nx/nx_format.dart';
 
@@ -46,9 +49,18 @@ class ReportData {
   }
 }
 
-/// Who/what goes in the header of every export.
+/// Who/what goes in the header of every export — the company's letterhead.
 class ExportBranding {
-  const ExportBranding({required this.company, required this.subtitle, this.logo});
+  const ExportBranding({
+    required this.company,
+    required this.subtitle,
+    this.logo,
+    this.color,
+    this.tagline,
+    this.contact = const [],
+    this.registration,
+    this.footer,
+  });
 
   final String company;
 
@@ -57,6 +69,58 @@ class ExportBranding {
 
   /// PNG or JPEG bytes; null (or anything else) draws the default mark.
   final Uint8List? logo;
+
+  /// The brand colour; null keeps the built-in violet.
+  final Color? color;
+
+  final String? tagline;
+
+  /// Letterhead contact lines (address, phone, email, website), top right.
+  final List<String> contact;
+
+  /// Registration / VAT line and small print, at the foot of every page.
+  final String? registration;
+  final String? footer;
+
+  /// The export colours, from the brand colour (see [BrandPalette]): a deep
+  /// shade for header bands, the accent for rules, pale tints for fills.
+  ExportColors get colors {
+    if (color == null) return ExportColors.standard;
+    final ramp = BrandPalette.of(color!, Nocturne.light).ramp;
+    PdfColor p(Color c) => PdfColor.fromInt(c.toARGB32());
+    return ExportColors(deep: p(ramp[1]), accent: p(ramp[4]), soft: p(ramp[7]), pale: p(ramp[8]), mark: p(ramp[6]));
+  }
+}
+
+/// The colours an export is drawn in.
+class ExportColors {
+  const ExportColors({required this.deep, required this.accent, required this.soft, required this.pale, required this.mark});
+
+  /// Header bands (white text on it).
+  final PdfColor deep;
+
+  /// Rules, the letterhead stripe, the tagline.
+  final PdfColor accent;
+
+  /// Totals row / section fills.
+  final PdfColor soft;
+
+  /// Zebra stripes.
+  final PdfColor pale;
+
+  /// The default mark's letter.
+  final PdfColor mark;
+
+  static const standard = ExportColors(
+    deep: PdfColor.fromInt(0xFF2B2741),
+    accent: PdfColor.fromInt(0xFF6D60C6),
+    soft: PdfColor.fromInt(0xFFECEEF7),
+    pale: PdfColor.fromInt(0xFFF8F9FD),
+    mark: PdfColor.fromInt(0xFFB5ABFC),
+  );
+
+  /// "#RRGGBB" for Excel.
+  static String hexOf(PdfColor c) => '#${(c.toInt() & 0xFFFFFF).toRadixString(16).padLeft(6, '0').toUpperCase()}';
 }
 
 String formatCell(Object? v, ColType type) {
@@ -104,11 +168,7 @@ const _muted = PdfColor.fromInt(0xFF6B6F80);
 const _faint = PdfColor.fromInt(0xFF9397AB);
 const _rule = PdfColor.fromInt(0xFFD6D9E7);
 const _grid = PdfColor.fromInt(0xFFE2E5F0);
-const _headBg = PdfColor.fromInt(0xFF2B2741);
-const _headFg = PdfColor.fromInt(0xFFF5F4FF);
-const _footBg = PdfColor.fromInt(0xFFECEEF7);
-const _zebra = PdfColor.fromInt(0xFFF8F9FD);
-const _mark = PdfColor.fromInt(0xFFB5ABFC);
+const _headFg = PdfColor.fromInt(0xFFFFFFFF);
 
 pw.ImageProvider? _logoImage(Uint8List? bytes) {
   if (bytes == null || bytes.length < 4) return null;
@@ -117,48 +177,82 @@ pw.ImageProvider? _logoImage(Uint8List? bytes) {
   return png || jpg ? pw.MemoryImage(bytes) : null;
 }
 
-pw.Widget _defaultMark() => pw.Container(
+pw.Widget _defaultMark(ExportColors c, String company) => pw.Container(
   width: 36,
   height: 36,
-  decoration: const pw.BoxDecoration(color: _headBg, borderRadius: pw.BorderRadius.all(pw.Radius.circular(8))),
+  decoration: pw.BoxDecoration(color: c.deep, borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8))),
   alignment: pw.Alignment.center,
-  child: pw.Text('W', style: pw.TextStyle(color: _mark, fontSize: 18, fontWeight: pw.FontWeight.bold)),
+  child: pw.Text(
+    company.trim().isEmpty ? 'W' : _pdfSafe(company.trim()[0].toUpperCase()),
+    style: pw.TextStyle(color: c.mark, fontSize: 18, fontWeight: pw.FontWeight.bold),
+  ),
 );
 
+/// The letterhead: logo, company name + tagline + what this document is, the
+/// contact block on the right, and a rule in the brand colour.
 pw.Widget _pdfHeader(ExportBranding b) {
   final logo = _logoImage(b.logo);
+  final c = b.colors;
+  final tagline = b.tagline ?? '';
   return pw.Column(
     crossAxisAlignment: pw.CrossAxisAlignment.stretch,
     children: [
       pw.Row(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
-          if (logo != null) pw.SizedBox(width: 36, height: 36, child: pw.Image(logo, fit: pw.BoxFit.contain)) else _defaultMark(),
+          if (logo != null) pw.SizedBox(width: 36, height: 36, child: pw.Image(logo, fit: pw.BoxFit.contain)) else _defaultMark(c, b.company),
           pw.SizedBox(width: 10),
           pw.Expanded(
             child: pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
                 pw.Text(_pdfSafe(b.company), style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold, color: _ink)),
+                if (tagline.isNotEmpty) ...[
+                  pw.SizedBox(height: 1),
+                  pw.Text(_pdfSafe(tagline), style: pw.TextStyle(fontSize: 8.5, color: c.accent)),
+                ],
                 pw.SizedBox(height: 2),
                 pw.Text(_pdfSafe(b.subtitle), style: const pw.TextStyle(fontSize: 8.5, color: _muted)),
               ],
             ),
           ),
+          if (b.contact.isNotEmpty) ...[
+            pw.SizedBox(width: 12),
+            pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.end,
+              children: [for (final line in b.contact) pw.Text(_pdfSafe(line), style: const pw.TextStyle(fontSize: 8, color: _muted))],
+            ),
+          ],
         ],
       ),
       pw.SizedBox(height: 8),
-      pw.Divider(color: _rule, thickness: 0.8, height: 1),
+      pw.Container(height: 1.6, color: c.accent),
       pw.SizedBox(height: 10),
     ],
   );
 }
 
-pw.Widget _pdfFooter(pw.Context ctx, ExportBranding b, String title) => pw.Row(
-  children: [
-    pw.Expanded(child: pw.Text(_pdfSafe('${b.company} | $title'), style: const pw.TextStyle(fontSize: 8, color: _faint))),
-    pw.Text('Page ${ctx.pageNumber} of ${ctx.pagesCount}', style: const pw.TextStyle(fontSize: 8, color: _faint)),
-  ],
-);
+/// Registration / small print (when set), then "company | title" and the page number.
+pw.Widget _pdfFooter(pw.Context ctx, ExportBranding b, String title) {
+  final small = [b.registration, b.footer].whereType<String>().where((x) => x.isNotEmpty).join('   |   ');
+  return pw.Column(
+    crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+    children: [
+      if (small.isNotEmpty) ...[
+        pw.Divider(color: _rule, thickness: 0.5, height: 1),
+        pw.SizedBox(height: 4),
+        pw.Text(_pdfSafe(small), style: const pw.TextStyle(fontSize: 7.5, color: _faint)),
+        pw.SizedBox(height: 3),
+      ],
+      pw.Row(
+        children: [
+          pw.Expanded(child: pw.Text(_pdfSafe('${b.company} | $title'), style: const pw.TextStyle(fontSize: 8, color: _faint))),
+          pw.Text('Page ${ctx.pageNumber} of ${ctx.pagesCount}', style: const pw.TextStyle(fontSize: 8, color: _faint)),
+        ],
+      ),
+    ],
+  );
+}
 
 pw.Widget _titleBlock(String title, String desc) => pw.Column(
   crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -171,6 +265,7 @@ pw.Widget _titleBlock(String title, String desc) => pw.Column(
 );
 
 Future<Uint8List> reportPdf(ReportData rep, ExportBranding b) async {
+  final c = b.colors;
   final doc = pw.Document(title: rep.title, author: b.company);
   final landscape = rep.columns.length > 6;
   final totals = rep.totals;
@@ -200,16 +295,16 @@ Future<Uint8List> reportPdf(ReportData rep, ExportBranding b) async {
                 [for (var i = 0; i < rep.columns.length; i++) _pdfSafe(totals[i] is num ? formatCell(totals[i], rep.columns[i].type) : '${totals[i]}')],
             ],
             headerStyle: pw.TextStyle(fontSize: 8.5, fontWeight: pw.FontWeight.bold, color: _headFg),
-            headerDecoration: const pw.BoxDecoration(color: _headBg),
+            headerDecoration: pw.BoxDecoration(color: c.deep),
             cellStyle: const pw.TextStyle(fontSize: 8.5, color: _ink),
             cellAlignments: align,
             headerAlignments: align,
             cellPadding: const pw.EdgeInsets.all(5),
-            oddRowDecoration: const pw.BoxDecoration(color: _zebra),
+            oddRowDecoration: pw.BoxDecoration(color: c.pale),
             border: const pw.TableBorder(horizontalInside: pw.BorderSide(color: _grid, width: 0.5), bottom: pw.BorderSide(color: _grid, width: 0.5)),
             cellDecoration: totals == null
                 ? null
-                : (index, value, rowNum) => rowNum == data.length + 1 ? const pw.BoxDecoration(color: _footBg) : const pw.BoxDecoration(),
+                : (index, value, rowNum) => rowNum == data.length + 1 ? pw.BoxDecoration(color: c.soft) : const pw.BoxDecoration(),
           ),
       ],
     ),
@@ -229,6 +324,7 @@ class PickOrder {
 }
 
 Future<Uint8List> pickListPdf(List<PickOrder> orders, ExportBranding b) async {
+  final c = b.colors;
   final doc = pw.Document(title: 'Pick list', author: b.company);
   doc.addPage(
     pw.MultiPage(
@@ -240,7 +336,7 @@ Future<Uint8List> pickListPdf(List<PickOrder> orders, ExportBranding b) async {
         _titleBlock('Pick list', '${orders.length} open order(s) | only the lines you pack'),
         for (final o in orders) ...[
           pw.Container(
-            color: _headBg,
+            color: c.deep,
             padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 5),
             child: pw.Text(_pdfSafe('${o.title}   |   ${o.subtitle}'), style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold, color: _headFg)),
           ),
@@ -248,7 +344,7 @@ Future<Uint8List> pickListPdf(List<PickOrder> orders, ExportBranding b) async {
             headers: ['', 'Qty', 'Product', 'SKU', 'Pick from'],
             data: [for (final l in o.lines) ['[  ]', _pdfSafe(l.$1), _pdfSafe(l.$2), _pdfSafe(l.$3), _pdfSafe(l.$4)]],
             headerStyle: pw.TextStyle(fontSize: 8.5, fontWeight: pw.FontWeight.bold, color: _ink),
-            headerDecoration: const pw.BoxDecoration(color: _footBg),
+            headerDecoration: pw.BoxDecoration(color: c.soft),
             cellStyle: const pw.TextStyle(fontSize: 9, color: _ink),
             cellPadding: const pw.EdgeInsets.all(5),
             columnWidths: {0: const pw.FixedColumnWidth(26), 1: const pw.FixedColumnWidth(70)},
@@ -288,8 +384,13 @@ Uint8List reportXlsx(ReportData rep, ExportBranding b) {
   final lastCol = n > 1 ? n - 1 : 1;
   put(0, 0, b.company, style: xl.CellStyle(bold: true, fontSize: 14, fontColorHex: hex('#1F2127')));
   s.merge(at(0, 0), at(lastCol, 0));
-  put(0, 1, b.subtitle, style: xl.CellStyle(fontSize: 9, fontColorHex: hex('#6B6F80')));
+  final colors = b.colors;
+  put(0, 1, [?b.tagline, b.subtitle].join(' · '), style: xl.CellStyle(fontSize: 9, fontColorHex: hex('#6B6F80')));
   s.merge(at(0, 1), at(lastCol, 1));
+  if (b.contact.isNotEmpty) {
+    put(0, 2, b.contact.join(' · '), style: xl.CellStyle(fontSize: 9, fontColorHex: hex('#6B6F80')));
+    s.merge(at(0, 2), at(lastCol, 2));
+  }
   put(0, 3, rep.title, style: xl.CellStyle(bold: true, fontSize: 15, fontColorHex: hex('#1F2127')));
   s.merge(at(0, 3), at(lastCol, 3));
   put(0, 4, '${rep.description}${rep.note == null ? '' : '  ${rep.note}'}', style: xl.CellStyle(fontSize: 9, fontColorHex: hex('#6B6F80')));
@@ -306,7 +407,7 @@ Uint8List reportXlsx(ReportData rep, ExportBranding b) {
   const headRow = 5;
   for (var i = 0; i < n; i++) {
     final c = rep.columns[i];
-    put(i, headRow, c.header, style: xl.CellStyle(bold: true, fontColorHex: hex('#F5F4FF'), backgroundColorHex: hex('#2B2741'), horizontalAlign: alignOf(c.type)));
+    put(i, headRow, c.header, style: xl.CellStyle(bold: true, fontColorHex: hex('#FFFFFF'), backgroundColorHex: hex(ExportColors.hexOf(colors.deep)), horizontalAlign: alignOf(c.type)));
     s.setColumnWidth(i, c.width);
   }
   for (var r = 0; r < rep.rows.length; r++) {
@@ -319,7 +420,7 @@ Uint8List reportXlsx(ReportData rep, ExportBranding b) {
         rep.rows[r][i],
         style: xl.CellStyle(
           horizontalAlign: alignOf(c.type),
-          backgroundColorHex: r.isOdd ? hex('#F8F9FD') : xl.ExcelColor.none,
+          backgroundColorHex: r.isOdd ? hex(ExportColors.hexOf(colors.pale)) : xl.ExcelColor.none,
           numberFormat: f ?? xl.NumFormat.standard_0,
         ),
       );
@@ -334,7 +435,7 @@ Uint8List reportXlsx(ReportData rep, ExportBranding b) {
         i,
         row,
         totals[i] == '' ? null : totals[i],
-        style: xl.CellStyle(bold: true, backgroundColorHex: hex('#ECEEF7'), horizontalAlign: alignOf(rep.columns[i].type), numberFormat: f ?? xl.NumFormat.standard_0),
+        style: xl.CellStyle(bold: true, backgroundColorHex: hex(ExportColors.hexOf(colors.soft)), horizontalAlign: alignOf(rep.columns[i].type), numberFormat: f ?? xl.NumFormat.standard_0),
       );
     }
   }

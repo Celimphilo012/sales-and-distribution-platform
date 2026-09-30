@@ -18,6 +18,7 @@ import '../../locations/data/leaf_locations_provider.dart';
 import '../../products/domain/product.dart';
 import '../../products/presentation/product_options.dart';
 import '../../products/presentation/products_list_providers.dart';
+import '../../receiving/presentation/receive_sheet.dart' show FormWithAside, RecentMovementsPanel;
 import '../data/transfers_providers.dart';
 
 /// "Transfer stock" — the prototype's transfer sheet: a SEARCHABLE product,
@@ -27,20 +28,27 @@ import '../data/transfers_providers.dart';
 Future<void> showTransferSheet(BuildContext context, {String? productId, String? fromLocationId}) => showNxSheet<void>(
   context,
   kicker: 'Transfer stock',
-  builder: (_) => _TransferSheet(productId: productId, fromLocationId: fromLocationId),
+  builder: (_) => SingleChildScrollView(
+    padding: const EdgeInsets.all(16),
+    child: TransferForm(productId: productId, fromLocationId: fromLocationId),
+  ),
 );
 
-class _TransferSheet extends ConsumerStatefulWidget {
-  const _TransferSheet({this.productId, this.fromLocationId});
+/// The transfer form. [page] lays it out like the prototype's Stock Transfers
+/// screen — the form on the left, the balance preview and "Recent" transfers
+/// on the right — and clears itself after each transfer instead of closing.
+class TransferForm extends ConsumerStatefulWidget {
+  const TransferForm({super.key, this.productId, this.fromLocationId, this.page = false});
 
   final String? productId;
   final String? fromLocationId;
+  final bool page;
 
   @override
-  ConsumerState<_TransferSheet> createState() => _TransferSheetState();
+  ConsumerState<TransferForm> createState() => _TransferFormState();
 }
 
-class _TransferSheetState extends ConsumerState<_TransferSheet> {
+class _TransferFormState extends ConsumerState<TransferForm> {
   late String? _productId = widget.productId;
   late String? _from = widget.fromLocationId;
   String? _to;
@@ -91,10 +99,19 @@ class _TransferSheetState extends ConsumerState<_TransferSheet> {
       final router = GoRouter.of(context);
       final lists = ref.read(nxListStatesProvider.notifier);
       final pid = _productId!;
-      Navigator.of(context).pop();
+      final route = '${leaves[_from]?.code ?? ''} → ${leaves[_to]?.code ?? ''}';
+      if (widget.page) {
+        setState(() {
+          _qty.clear();
+          _reference.clear();
+          _reason.clear();
+        });
+      } else {
+        Navigator.of(context).pop();
+      }
       NxToast.ok(
         'Moved ${fmtNum(qty)} ${product?.uom ?? ''} of ${product?.name ?? ''}',
-        '${leaves[_from]?.code ?? ''} → ${leaves[_to]?.code ?? ''}',
+        route,
         NxToastAction('View stock', () {
           lists.preset('inventory', filters: {'pid': pid});
           router.go(RoutePaths.inventory);
@@ -123,11 +140,7 @@ class _TransferSheetState extends ConsumerState<_TransferSheet> {
     final available = fromRow?.available ?? 0;
     String code(String? id) => id == null ? '—' : (leaves[id]?.code ?? balances.where((b) => b.locationId == id).firstOrNull?.location.code ?? '—');
 
-    return NxSheetBody(
-      children: [
-        Text('Moves available stock between two locations as one TRANSFER transaction.', style: TextStyle(fontSize: 12, color: n.n400)),
-        const SizedBox(height: 12),
-        NxFormGrid(
+    final fields = NxFormGrid(
           children: [
             NxSpan2(
               child: NxField(
@@ -203,9 +216,8 @@ class _TransferSheetState extends ConsumerState<_TransferSheet> {
             NxField(label: 'Reference (optional)', child: NxInput(controller: _reference, placeholder: 'TRF-…')),
             NxField(label: 'Reason (optional)', child: NxInput(controller: _reason, placeholder: 'Putaway, replenish pick face…')),
           ],
-        ),
-        const SizedBox(height: 14),
-        BalancePreview(
+        );
+    final preview = BalancePreview(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -226,26 +238,63 @@ class _TransferSheetState extends ConsumerState<_TransferSheet> {
               ],
             ],
           ),
+        );
+    final error = _error == null
+        ? null
+        : Padding(padding: const EdgeInsets.only(top: 12), child: Text(_error!, style: TextStyle(fontSize: 12, color: n.bad)));
+    final buttons = Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        NxButton.primary(
+          label: _saving ? 'Moving…' : 'Transfer stock',
+          icon: PhosphorIconsRegular.arrowsLeftRight,
+          onPressed: _saving ? null : () => _submit(product: product, available: available, leaves: leaves),
         ),
-        if (_error != null) ...[
-          const SizedBox(height: 12),
-          Text(_error!, style: TextStyle(fontSize: 12, color: n.bad)),
-        ],
-        const SizedBox(height: 14),
-        Row(
-          children: [
-            NxButton.primary(
-              label: _saving ? 'Moving…' : 'Transfer stock',
-              icon: PhosphorIconsRegular.arrowsLeftRight,
-              onPressed: _saving ? null : () => _submit(product: product, available: available, leaves: leaves),
-            ),
-            const SizedBox(width: 8),
-            NxButton.ghost(label: 'Cancel', color: n.n400, onPressed: () => Navigator.of(context).pop()),
-          ],
-        ),
+        if (widget.page)
+          NxButton.ghost(label: 'Clear', color: n.n400, onPressed: _saving ? null : _clear)
+        else
+          NxButton.ghost(label: 'Cancel', color: n.n400, onPressed: () => Navigator.of(context).pop()),
       ],
     );
+
+    if (!widget.page) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('Moves available stock between two locations as one TRANSFER transaction.', style: TextStyle(fontSize: 12, color: n.n400)),
+          const SizedBox(height: 12),
+          fields,
+          const SizedBox(height: 14),
+          preview,
+          ?error,
+          const SizedBox(height: 14),
+          buttons,
+        ],
+      );
+    }
+    return FormWithAside(
+      form: NxSection(
+        padding: const EdgeInsets.all(14),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [fields, ?error, const SizedBox(height: 14), buttons]),
+      ),
+      aside: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [preview, const SizedBox(height: 12), const RecentMovementsPanel(type: 'TRANSFER')],
+      ),
+    );
   }
+
+  void _clear() => setState(() {
+    _productId = null;
+    _from = null;
+    _to = null;
+    for (final c in [_qty, _reference, _reason]) {
+      c.clear();
+    }
+    _errors.clear();
+    _error = null;
+  });
 }
 
 class _SourceOption extends StatelessWidget {

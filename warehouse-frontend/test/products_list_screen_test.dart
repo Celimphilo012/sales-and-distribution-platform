@@ -11,6 +11,9 @@ import 'package:warehouse_frontend/core/persistence/shared_preferences_provider.
 import 'package:warehouse_frontend/core/theme/app_theme.dart';
 import 'package:warehouse_frontend/features/categories/data/categories_providers.dart';
 import 'package:warehouse_frontend/features/categories/domain/category.dart';
+import 'package:warehouse_frontend/features/inventory/data/inventory_providers.dart';
+import 'package:warehouse_frontend/features/inventory/domain/ledger_entry.dart';
+import 'package:warehouse_frontend/features/inventory/domain/product_location_stock.dart';
 import 'package:warehouse_frontend/features/products/domain/product.dart';
 import 'package:warehouse_frontend/features/products/domain/product_status.dart';
 import 'package:warehouse_frontend/features/products/presentation/products_list_providers.dart';
@@ -71,6 +74,11 @@ Future<void> _pump(WidgetTester tester) async {
         productsListProvider.overrideWith((ref) async => _fakeProducts),
         categoriesProvider(true).overrideWith((ref) async => const <Category>[]),
         workstreamsProvider(true).overrideWith((ref) async => const <Workstream>[]),
+        for (final p in _fakeProducts) ...[
+          productDetailProvider(p.id).overrideWith((ref) async => p),
+          productStockBreakdownProvider(p.id).overrideWith((ref) async => const <ProductLocationStock>[]),
+          productLedgerProvider(p.id).overrideWith((ref) async => const <LedgerEntry>[]),
+        ],
       ],
       child: MaterialApp.router(theme: AppTheme.dark(), routerConfig: router),
     ),
@@ -79,6 +87,23 @@ Future<void> _pump(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('clicking a product opens its sheet on the right of the screen', (tester) async {
+    await _pump(tester);
+
+    await tester.tap(find.text('Shampoo'));
+    await tester.pumpAndSettle();
+
+    // The sheet: kicker, the product's name as its title, and the prototype's sections.
+    expect(find.text('PRODUCT'), findsOneWidget);
+    expect(find.text('Stock by location'), findsOneWidget);
+    expect(find.text('Recent movements'), findsOneWidget);
+    expect(find.text('Where is it?'), findsNothing); // needs inventory.view, which this viewer lacks
+    // A 480px panel anchored to the right edge of a 1280px window.
+    final panel = tester.getRect(find.ancestor(of: find.text('Stock by location'), matching: find.byType(Material)).first);
+    expect(panel.right, 1280);
+    expect(panel.width, 480);
+  });
+
   testWidgets('defaults to the table view and shows correct stats', (tester) async {
     await _pump(tester);
 

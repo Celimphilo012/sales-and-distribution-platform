@@ -8,14 +8,14 @@ import '../../../core/error/app_error.dart';
 import '../../../core/theme/nocturne.dart';
 import '../../../shared/nx/nx_format.dart';
 import '../../../shared/nx/nx_list_page.dart';
-import '../../../shared/nx/nx_primitives.dart';
 import '../../inventory/data/inventory_providers.dart';
 import '../../inventory/domain/ledger_entry.dart';
 import '../../products/presentation/product_sheet.dart';
 import 'transfer_sheet.dart';
 
-/// Stock Transfers (prototype `transfers`) — the TRANSFER ledger rows,
-/// newest first, with the transfer sheet one click away.
+/// Stock Transfers — the prototype's transfers page: the transfer form with a
+/// preview of both ends and the most recent transfers beside it, then the
+/// full, searchable transfer history (TRANSFER ledger rows, newest first).
 class TransfersScreen extends ConsumerWidget {
   const TransfersScreen({super.key});
 
@@ -44,14 +44,10 @@ class TransfersScreen extends ConsumerWidget {
           bool isToday(DateTime d) => d.year == today.year && d.month == today.month && d.day == today.day;
           final productOpts = {for (final r in rows) r.productId: r.productName}.entries.toList()..sort((a, b) => a.value.compareTo(b.value));
 
-          return NxListPage<LedgerEntry>(
+          final history = NxListPage<LedgerEntry>(
             stateKey: 'transfers',
-            title: 'Stock Transfers',
-            sub: 'Moves available stock between two locations as one TRANSFER transaction.',
-            actions: [
-              if (canTransfer)
-                NxButton.primary(label: 'Transfer stock', icon: PhosphorIconsRegular.arrowsLeftRight, onPressed: () => showTransferSheet(context)),
-            ],
+            title: 'Transfer history',
+            sub: 'Every transfer, newest first — search, filter or change the view.',
             rows: rows,
             search: (r) => '${r.reference ?? ''} ${r.productName} ${r.productSku} ${route(r)}',
             searchPlaceholder: 'Reference, product or location',
@@ -96,6 +92,21 @@ class TransfersScreen extends ConsumerWidget {
             onOpen: (r) => showProductSheet(context, r.productId),
             emptyTitle: 'No transfers match',
             emptyMessage: 'Adjust filters, or transfer stock.',
+          );
+          return Align(
+            alignment: Alignment.topLeft,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1400),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const NxPageHeader(title: 'Stock Transfers', sub: 'Moves available stock between two locations as one TRANSFER transaction.'),
+                  const SizedBox(height: 12),
+                  if (canTransfer) ...[const TransferForm(page: true), const SizedBox(height: 22)],
+                  history,
+                ],
+              ),
+            ),
           );
         },
       ),

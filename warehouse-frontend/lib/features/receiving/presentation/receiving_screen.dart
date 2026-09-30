@@ -8,14 +8,14 @@ import '../../../core/error/app_error.dart';
 import '../../../core/theme/nocturne.dart';
 import '../../../shared/nx/nx_format.dart';
 import '../../../shared/nx/nx_list_page.dart';
-import '../../../shared/nx/nx_primitives.dart';
 import '../../inventory/data/inventory_providers.dart';
 import '../../inventory/domain/ledger_entry.dart';
 import '../../products/presentation/product_sheet.dart';
 import 'receive_sheet.dart';
 
-/// Stock Receiving (prototype `receiving`) — the RECEIVE ledger rows, newest
-/// first, with the receive sheet one click away.
+/// Stock Receiving — the prototype's receiving page: the receive form with a
+/// live balance preview and the most recent receipts beside it, then the
+/// full, searchable receipt history (the RECEIVE ledger rows, newest first).
 class ReceivingScreen extends ConsumerWidget {
   const ReceivingScreen({super.key});
 
@@ -43,14 +43,10 @@ class ReceivingScreen extends ConsumerWidget {
           bool isToday(DateTime d) => d.year == today.year && d.month == today.month && d.day == today.day;
           final productOpts = {for (final r in rows) r.productId: r.productName}.entries.toList()..sort((a, b) => a.value.compareTo(b.value));
 
-          return NxListPage<LedgerEntry>(
+          final history = NxListPage<LedgerEntry>(
             stateKey: 'receiving',
-            title: 'Stock Receiving',
-            sub: 'Each receipt is a RECEIVE transaction that increases on-hand at its destination.',
-            actions: [
-              if (canReceive)
-                NxButton.primary(label: 'Receive stock', icon: PhosphorIconsRegular.boxArrowDown, onPressed: () => showReceiveSheet(context)),
-            ],
+            title: 'Receipt history',
+            sub: 'Every receipt, newest first — search, filter or export the view.',
             rows: rows,
             search: (r) => '${r.reference ?? ''} ${r.productName} ${r.productSku} ${r.supplier ?? ''}',
             searchPlaceholder: 'Reference, product or supplier',
@@ -104,6 +100,24 @@ class ReceivingScreen extends ConsumerWidget {
             onOpen: (r) => showProductSheet(context, r.productId),
             emptyTitle: 'No receipts match',
             emptyMessage: 'Adjust filters, or receive stock.',
+          );
+          return Align(
+            alignment: Alignment.topLeft,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1400),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const NxPageHeader(
+                    title: 'Stock Receiving',
+                    sub: 'Records a RECEIVE transaction and increases on-hand at the destination.',
+                  ),
+                  const SizedBox(height: 12),
+                  if (canReceive) ...[const ReceiveForm(page: true), const SizedBox(height: 22)],
+                  history,
+                ],
+              ),
+            ),
           );
         },
       ),

@@ -13,22 +13,31 @@ import 'package:warehouse_frontend/core/persistence/shared_preferences_provider.
 import 'package:warehouse_frontend/core/theme/app_theme.dart';
 import 'package:warehouse_frontend/features/inventory/data/inventory_providers.dart';
 import 'package:warehouse_frontend/features/inventory/domain/inventory_balance.dart';
+import 'package:warehouse_frontend/features/inventory/domain/ledger_entry.dart';
 import 'package:warehouse_frontend/features/locations/data/leaf_locations_provider.dart';
 import 'package:warehouse_frontend/features/locations/domain/location.dart';
 import 'package:warehouse_frontend/features/products/domain/product.dart';
 import 'package:warehouse_frontend/features/products/domain/product_status.dart';
 import 'package:warehouse_frontend/features/products/presentation/products_list_providers.dart';
+import 'package:warehouse_frontend/features/receiving/presentation/receiving_screen.dart';
 import 'package:warehouse_frontend/features/stock_adjustments/presentation/adjustment_form_dialog.dart';
 import 'package:warehouse_frontend/features/stock_counts/presentation/count_sheet.dart';
 import 'package:warehouse_frontend/features/warehouses/domain/warehouse.dart';
 import 'package:warehouse_frontend/shared/export/report_export.dart';
 import 'package:warehouse_frontend/shared/nx/nx_form.dart';
+import 'package:warehouse_frontend/shared/nx/nx_primitives.dart';
 
 const _staff = AppUser(id: 'u1', name: 'Staff', email: 's@example.com', permissions: {'inventory.adjust.request'});
 
 class _FakeUser extends AuthNotifier {
   @override
   Future<AuthState> build() async => const AuthState.authenticated(_staff);
+}
+
+class _Receiver extends AuthNotifier {
+  @override
+  Future<AuthState> build() async =>
+      const AuthState.authenticated(AppUser(id: 'u2', name: 'Receiver', email: 'r@example.com', permissions: {'inventory.receive', 'inventory.view'}));
 }
 
 final _now = DateTime(2026, 9, 30);
@@ -66,16 +75,16 @@ Future<SharedPreferences> _prefs() async {
   return SharedPreferences.getInstance();
 }
 
-Future<void> _pumpApp(WidgetTester tester, Widget home, {List overrides = const []}) async {
+Future<void> _pumpApp(WidgetTester tester, Widget home, {List overrides = const [], AuthNotifier Function() auth = _FakeUser.new}) async {
   final prefs = await _prefs();
-  tester.view.physicalSize = const Size(1280, 1100);
+  tester.view.physicalSize = const Size(1280, 1600);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         sharedPreferencesProvider.overrideWithValue(prefs),
-        authProvider.overrideWith(_FakeUser.new),
+        authProvider.overrideWith(auth),
         ...overrides.cast(),
       ],
       child: MaterialApp(theme: AppTheme.dark(), home: Scaffold(body: home)),
@@ -149,6 +158,44 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Choose a product'), findsWidgets);
       expect(find.text('Say what happened, and how you know'), findsOneWidget);
+    });
+  });
+
+  group('receiving page', () {
+    testWidgets('shows the form with the balance preview and recent receipts beside it, then the history', (tester) async {
+      final receipt = LedgerEntry(
+        id: 't1',
+        type: 'RECEIVE',
+        productId: 'SKU-1',
+        productSku: 'SKU-1',
+        productName: 'Soap',
+        quantity: 24,
+        createdAt: DateTime.now(),
+        toLocationId: 'l1',
+        toCode: 'A-01',
+        reason: 'Supplier: Acme Traders | Received: today',
+        performedByName: 'Staff',
+      );
+      await _pumpApp(
+        tester,
+        const ReceivingScreen(),
+        auth: _Receiver.new,
+        overrides: [
+          ledgerByTypeProvider('RECEIVE').overrideWith((ref) async => [receipt]),
+          productsListProvider.overrideWith((ref) async => [_p('SKU-1', 'Soap')]),
+          leafLocationsProvider.overrideWith((ref) async => [_leaf('l1', 'A-01', ['Aisle A', 'Bin 01'])]),
+        ],
+      );
+      expect(find.text('Stock Receiving'), findsOneWidget);
+      expect(find.widgetWithText(NxButton, 'Receive stock'), findsOneWidget);
+      expect(find.text('Clear'), findsOneWidget);
+      expect(find.textContaining('BALANCE PREVIEW', findRichText: true), findsWidgets);
+      expect(find.text('Recent'), findsOneWidget);
+      expect(find.text('+24'), findsWidgets); // in Recent (and the history table)
+      expect(find.textContaining('to A-01 · Acme Traders'), findsOneWidget);
+      expect(find.text('Receipt history'), findsOneWidget);
+      // Side by side on a desktop: Recent sits to the right of the form.
+      expect(tester.getTopLeft(find.text('Recent')).dx, greaterThan(tester.getTopLeft(find.text('Clear')).dx));
     });
   });
 

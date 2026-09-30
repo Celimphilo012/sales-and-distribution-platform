@@ -1,0 +1,959 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/nocturne-be9d3f1f-d5d9-41eb-9548-70d42100af34/styles.css">
+<script src="_ds/nocturne-be9d3f1f-d5d9-41eb-9548-70d42100af34/_ds_bundle.js"></script>
+<script src="https://unpkg.com/@phosphor-icons/web@2.1.1"></script>
+<script src="warehouse-data-v2.js"></script>
+<script src="warehouse-app.js"></script>
+<style>
+html,body{margin:0;height:100%;background:var(--color-bg)}
+a{color:var(--color-accent-300)} a:hover{color:var(--color-accent-200)}
+select.input{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--color-neutral-400) 50%),linear-gradient(135deg,var(--color-neutral-400) 50%,transparent 50%);background-position:calc(100% - 15px) 55%,calc(100% - 10px) 55%;background-size:5px 5px;background-repeat:no-repeat;padding-right:28px}
+@keyframes wIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@keyframes wFade{from{opacity:0}to{opacity:1}}
+@keyframes wPop{from{opacity:0;transform:scale(.97) translateY(6px)}to{opacity:1;transform:none}}
+@keyframes wSlide{from{transform:translateX(28px);opacity:0}to{transform:none;opacity:1}}
+@keyframes wSlideL{from{transform:translateX(-28px);opacity:0}to{transform:none;opacity:1}}
+@keyframes wShrink{from{transform:scaleX(1)}to{transform:scaleX(0)}}
+</style>
+</helmet>
+<div style="height:100vh;display:flex;flex-direction:column;background:var(--color-bg);color:var(--color-text);font-family:var(--font-body);font-size:13px;line-height:1.45;overflow:hidden">
+  <header style="position:relative;flex:none;height:50px;display:flex;align-items:center;gap:10px;padding:0 12px;background:linear-gradient(180deg,color-mix(in srgb,var(--color-surface) 70%,var(--color-bg)),var(--color-bg))">
+    <sc-if value="{{ notDesktop }}" hint-placeholder-val="{{ false }}"><button class="btn btn-icon" onClick="{{ openDrawer }}" aria-label="Menu" style="white-space:nowrap;flex:none;width:34px;height:34px;color:var(--color-neutral-300)"><i class="ph ph-list" style="font-size:20px"></i></button></sc-if>
+    <sc-if value="{{ notPhone }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;align-items:center;gap:9px;flex:none;width:{{ brandW }}">
+        <div style="width:26px;height:26px;border-radius:7px;border:1px solid var(--color-accent);display:grid;place-items:center;color:var(--color-accent);box-shadow:0 0 14px color-mix(in srgb,var(--color-accent) 35%,transparent)"><i class="ph-bold ph-warehouse" style="font-size:14px"></i></div>
+        <div style="font-weight:500;font-size:14px;white-space:nowrap">Warehouse <span style="color:var(--color-neutral-500);font-weight:400">System</span></div>
+      </div>
+      <div style="flex:1;min-width:0;display:flex;align-items:center;gap:7px;font-size:12px;color:var(--color-neutral-400);white-space:nowrap;overflow:hidden">
+        <sc-if value="{{ hasCrumbGroup }}"><span>{{ crumbGroup }}</span><i class="ph ph-caret-right" style="font-size:10px;color:var(--color-neutral-600)"></i></sc-if>
+        <span style="color:var(--color-text);font-weight:500">{{ crumbLabel }}</span>
+      </div>
+    </sc-if>
+    <sc-if value="{{ phone }}" hint-placeholder-val="{{ false }}"><div style="flex:1;min-width:0;font-size:15px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ crumbLabel }}</div></sc-if>
+    <sc-if value="{{ desktop }}" hint-placeholder-val="{{ true }}">
+      <label style="position:relative;display:block;width:300px;flex:none">
+        <i class="ph ph-magnifying-glass" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--color-neutral-500);font-size:14px"></i>
+        <input class="input" placeholder="Find a product by SKU or name" onKeyDown="{{ onGlobalSearch }}" style="min-height:32px;padding:4px 52px 4px 30px;font-size:13px;background:color-mix(in srgb,var(--color-surface) 70%,transparent)">
+        <span style="position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:10px;color:var(--color-neutral-500);border:1px solid var(--color-neutral-800);border-radius:4px;padding:1px 5px">Enter</span>
+      </label>
+    </sc-if>
+    <button class="btn btn-icon" onClick="{{ toggleTheme }}" aria-label="{{ themeLabel }}" title="{{ themeLabel }}" style="white-space:nowrap;flex:none;width:34px;height:34px;color:var(--color-neutral-300)"><i class="ph {{ themeIcon }}" style="font-size:18px"></i></button>
+    <button class="btn btn-icon" onClick="{{ toggleNotif }}" aria-label="Notifications" style="white-space:nowrap;flex:none;position:relative;width:34px;height:34px;color:var(--color-neutral-300)"><i class="ph ph-bell" style="font-size:19px"></i><sc-if value="{{ hasUnread }}"><span style="position:absolute;top:3px;right:3px;min-width:15px;height:15px;padding:0 4px;border-radius:8px;background:var(--color-accent);color:var(--color-bg);font-size:10px;font-weight:600;line-height:15px;text-align:center">{{ unread }}</span></sc-if></button>
+    <div style="display:flex;align-items:center;gap:8px">
+      <div style="width:28px;height:28px;border-radius:8px;background:var(--color-accent-800);color:var(--color-accent-100);display:grid;place-items:center;font-size:11px;font-weight:600">NM</div>
+      <sc-if value="{{ desktop }}" hint-placeholder-val="{{ true }}"><div style="line-height:1.2"><div style="font-size:12px;font-weight:500">Nomsa Mahlangu</div><div style="font-size:11px;color:var(--color-neutral-400)">Warehouse Manager</div></div></sc-if>
+    </div>
+    <div style="position:absolute;left:0;right:0;bottom:0;height:1px;background:linear-gradient(to right,transparent,var(--color-divider) 48px,var(--color-divider) calc(100% - 48px),transparent)"></div>
+  </header>
+  <div style="flex:1;min-height:0;display:flex">
+    <sc-if value="{{ desktop }}" hint-placeholder-val="{{ true }}">
+      <aside style="flex:none;width:232px;display:flex;flex-direction:column;border-right:1px solid var(--color-neutral-900);background:linear-gradient(180deg,color-mix(in srgb,var(--color-surface) 40%,var(--color-bg)),var(--color-bg) 70%)">
+        <div style="flex:1;overflow:auto;padding:8px">
+          <sc-for list="{{ nav }}" as="g" hint-placeholder-count="6">
+            <sc-if value="{{ g.flat }}">
+              <button onClick="{{ g.first.go }}" style="width:100%;display:flex;align-items:center;gap:9px;padding:7px 10px;border:0;border-radius:6px;cursor:pointer;font:inherit;font-size:13px;text-align:left;background:{{ g.first.bg }};color:{{ g.first.color }};font-weight:{{ g.first.weight }};box-shadow:inset 2px 0 0 {{ g.first.bar }}"><i class="ph-duotone {{ g.first.icon }}" style="font-size:17px;color:{{ g.first.ic }}"></i><span style="flex:1">{{ g.first.label }}</span></button>
+            </sc-if>
+            <sc-if value="{{ g.notFlat }}">
+              <div style="margin-top:8px">
+                <button onClick="{{ g.toggle }}" style="width:100%;display:flex;align-items:center;gap:9px;padding:5px 10px;border:0;background:transparent;cursor:pointer;font:inherit;font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--color-neutral-400);border-radius:6px;box-shadow:inset 2px 0 0 {{ g.cue }}" style-hover="color:var(--color-text);background:color-mix(in srgb,var(--color-text) 4%,transparent)"><i class="ph-duotone {{ g.icon }}" style="font-size:15px;color:{{ g.iconColor }}"></i><span style="flex:1;text-align:left">{{ g.title }}</span><sc-if value="{{ g.hasGroupBadge }}"><span style="min-width:18px;padding:0 5px;height:16px;border-radius:8px;background:color-mix(in oklab,var(--wh-warn) 18%,transparent);color:var(--wh-warn);font-size:10px;font-weight:600;line-height:16px;text-align:center;letter-spacing:0">{{ g.groupBadge }}</span></sc-if><i class="ph-bold ph-caret-down" style="font-size:10px;transition:transform .16s;transform:{{ g.caret }}"></i></button>
+                <sc-if value="{{ g.open }}">
+                  <div style="display:flex;flex-direction:column;gap:1px;padding:2px 0 2px">
+                    <sc-for list="{{ g.items }}" as="it">
+                      <button onClick="{{ it.go }}" style="width:100%;display:flex;align-items:center;gap:9px;padding:6px 10px 6px 16px;border:0;border-radius:6px;cursor:pointer;font:inherit;font-size:13px;text-align:left;background:{{ it.bg }};color:{{ it.color }};font-weight:{{ it.weight }};box-shadow:inset 2px 0 0 {{ it.bar }}"><i class="ph-duotone {{ it.icon }}" style="font-size:15px;color:{{ it.ic }}"></i><span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ it.label }}</span><sc-if value="{{ it.hasBadge }}"><span style="min-width:18px;padding:0 5px;height:16px;border-radius:8px;background:color-mix(in oklab,var(--wh-warn) 18%,transparent);color:var(--wh-warn);font-size:10px;font-weight:600;line-height:16px;text-align:center">{{ it.badge }}</span></sc-if></button>
+                    </sc-for>
+                  </div>
+                </sc-if>
+              </div>
+            </sc-if>
+          </sc-for>
+        </div>
+        <div style="padding:10px;border-top:1px solid var(--color-neutral-900);display:flex;align-items:center;gap:8px">
+          <div style="flex:1;min-width:0;line-height:1.3">
+            <div style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--color-neutral-500)">Signed in as</div>
+            <div style="font-size:12px;font-weight:500">Nomsa Mahlangu</div>
+            <div style="font-size:11px;color:var(--color-accent-300)">Warehouse Manager · JHB-01</div>
+          </div>
+          <button class="btn btn-icon btn-secondary" onClick="{{ askSignOut }}" aria-label="Sign out" style="white-space:nowrap;flex:none;width:30px;height:30px;color:var(--color-neutral-400)"><i class="ph ph-sign-out" style="font-size:15px"></i></button>
+        </div>
+      </aside>
+    </sc-if>
+
+    <sc-if value="{{ tablet }}" hint-placeholder-val="{{ false }}">
+      <aside style="flex:none;width:72px;border-right:1px solid var(--color-neutral-900);padding:6px 4px;display:flex;flex-direction:column;gap:4px;overflow:auto">
+        <sc-for list="{{ nav }}" as="g"><button onClick="{{ g.railClick }}" style="position:relative;display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 2px;border:0;border-radius:8px;cursor:pointer;font:inherit;font-size:10px;background:{{ g.railBg }};color:{{ g.railColor }}" style-hover="background:color-mix(in srgb,var(--color-text) 6%,transparent)"><i class="ph-duotone {{ g.icon }}" style="font-size:21px"></i><span>{{ g.short }}</span><sc-if value="{{ g.hasBadgeAny }}"><span style="position:absolute;top:6px;right:14px;width:7px;height:7px;border-radius:50%;background:var(--wh-warn)"></span></sc-if></button></sc-for>
+      </aside>
+    </sc-if>
+    <main style="flex:1;min-width:0;overflow:auto;padding:{{ pad }}">
+      <sc-if value="{{ isDash }}" hint-placeholder-val="{{ true }}">
+        <div data-screen-label="Dashboard" style="max-width:1400px">
+          <div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+            <div style="flex:1;min-width:200px">
+              <h1 style="font-size:22px;margin:0">Dashboard</h1>
+              <div style="font-size:12px;color:var(--color-neutral-400);margin-top:3px">Main Warehouse (JHB-01) · figures as of 10:42 today</div>
+            </div>
+            <button class="btn btn-secondary" onClick="{{ refresh }}" style="white-space:nowrap;flex:none;font-size:13px;padding:5px 10px"><i class="ph ph-arrows-clockwise"></i>Refresh</button>
+          </div>
+          <div style="display:grid;gap:12px;align-items:start;grid-template-columns:{{ dashCols }};grid-template-areas:{{ dashAreas }}">
+            <section style="grid-area:kpi;display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:0;border-radius:var(--radius-md);overflow:hidden;background:var(--color-surface);box-shadow:var(--shadow-sm)">
+              <sc-for list="{{ kpis }}" as="k" hint-placeholder-count="5">
+                <button onClick="{{ k.go }}" style="text-align:left;border:0;font:inherit;color:inherit;cursor:pointer;padding:12px 14px;background:var(--color-surface);box-shadow:1px 0 0 var(--color-neutral-800),0 1px 0 var(--color-neutral-800);display:flex;flex-direction:column;gap:3px" style-hover="background:color-mix(in srgb,var(--color-surface) 82%,var(--color-accent-800))">
+                  <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--color-neutral-400)"><i class="ph-duotone {{ k.icon }}" style="font-size:14px;color:{{ k.fg }}"></i>{{ k.label }}</div>
+                  <div style="font-size:22px;font-weight:500;letter-spacing:-.01em;font-variant-numeric:tabular-nums;color:{{ k.valColor }}">{{ k.value }}</div>
+                  <div style="font-size:11px;color:var(--color-neutral-500)">{{ k.sub }}</div>
+                </button>
+              </sc-for>
+            </section>
+
+            <section style="grid-area:low;min-width:0;border-radius:var(--radius-md);background:var(--color-surface);box-shadow:var(--shadow-sm)">
+              <div style="display:flex;align-items:center;gap:8px;padding:10px 12px 8px">
+                <h2 style="font-size:14px;margin:0;flex:1;display:flex;align-items:center;gap:8px">Low stock <span style="font-size:11px;padding:1px 7px;border-radius:6px;background:color-mix(in oklab,var(--wh-warn) 15%,transparent);color:var(--wh-warn)">{{ lowCount }}</span></h2>
+                <button class="btn btn-ghost" onClick="{{ goLow }}" style="white-space:nowrap;flex:none;font-size:12px">View all<i class="ph ph-arrow-right"></i></button>
+              </div>
+              <sc-for list="{{ lowList }}" as="p" hint-placeholder-count="4">
+                <button onClick="{{ p.open }}" style="width:100%;display:grid;grid-template-columns:minmax(0,1fr) 72px 44px;align-items:center;gap:10px;padding:7px 12px;border:0;border-top:1px solid var(--color-neutral-900);background:transparent;font:inherit;color:inherit;text-align:left;cursor:pointer" style-hover="background:color-mix(in srgb,var(--color-text) 4%,transparent)">
+                  <div style="min-width:0"><div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ p.name }}</div><div style="font-size:11px;color:var(--color-neutral-500)">{{ p.sku }} · {{ p.onHand }} of {{ p.minS }} min</div></div>
+                  <div style="height:5px;border-radius:3px;background:var(--color-neutral-900);overflow:hidden"><div style="height:100%;width:{{ p.pctW }};background:var(--wh-warn);border-radius:3px"></div></div>
+                  <span style="justify-self:end;font-size:12px;font-weight:500;color:var(--wh-bad);font-variant-numeric:tabular-nums">−{{ p.short }}</span>
+                </button>
+              </sc-for>
+            </section>
+
+            <section style="grid-area:pend;min-width:0;border-radius:var(--radius-md);background:var(--color-surface);box-shadow:var(--shadow-sm)">
+              <div style="display:flex;align-items:center;gap:8px;padding:10px 12px 8px">
+                <h2 style="font-size:14px;margin:0;flex:1;display:flex;align-items:center;gap:8px">Pending adjustments <span style="font-size:11px;padding:1px 7px;border-radius:6px;background:var(--color-neutral-900);color:var(--color-neutral-300)">{{ pendCount }}</span></h2>
+                <button class="btn btn-ghost" onClick="{{ goAdj }}" style="white-space:nowrap;flex:none;font-size:12px">Review queue<i class="ph ph-arrow-right"></i></button>
+              </div>
+              <sc-if value="{{ pendEmpty }}"><div style="padding:14px 12px;border-top:1px solid var(--color-neutral-900);color:var(--color-neutral-400);font-size:12px">Nothing waiting for review.</div></sc-if>
+              <sc-for list="{{ pendList }}" as="a" hint-placeholder-count="4">
+                <button onClick="{{ goAdj }}" style="width:100%;display:grid;grid-template-columns:44px minmax(0,1fr) auto;gap:10px;align-items:center;padding:7px 12px;border:0;border-top:1px solid var(--color-neutral-900);background:transparent;font:inherit;color:inherit;text-align:left;cursor:pointer" style-hover="background:color-mix(in srgb,var(--color-text) 4%,transparent)">
+                  <span style="font-variant-numeric:tabular-nums;font-weight:500;color:{{ a.dFg }}">{{ a.deltaS }}</span>
+                  <div style="min-width:0"><div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ a.product }}</div><div style="font-size:11px;color:var(--color-neutral-500);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ a.bucketS }} · {{ a.loc }} · {{ a.reason }}</div></div>
+                  <span style="font-size:11px;padding:2px 7px;border-radius:6px;white-space:nowrap;background:{{ a.wBg }};color:{{ a.wFg }}">{{ a.waitS }}</span>
+                </button>
+              </sc-for>
+            </section>
+
+            <section style="grid-area:move;min-width:0;border-radius:var(--radius-md);background:var(--color-surface);box-shadow:var(--shadow-sm)">
+              <div style="display:flex;align-items:baseline;gap:8px;padding:10px 12px 10px">
+                <h2 style="font-size:14px;margin:0;flex:1">Stock movement</h2>
+                <span style="font-size:11px;color:var(--color-neutral-500)">{{ moveTotal }} transactions · 30 days</span>
+              </div>
+              <div style="padding:0 12px 12px;display:flex;flex-direction:column;gap:7px">
+                <sc-for list="{{ moves }}" as="m" hint-placeholder-count="6"><div style="display:grid;grid-template-columns:120px minmax(0,1fr) 30px;gap:8px;align-items:center;font-size:12px"><span style="color:var(--color-neutral-300);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ m.label }}</span><div style="height:7px;border-radius:4px;background:var(--color-neutral-900)"><div style="height:100%;border-radius:4px;width:{{ m.w }};background:{{ m.c }}"></div></div><span style="text-align:right;font-variant-numeric:tabular-nums;color:var(--color-neutral-300)">{{ m.n }}</span></div></sc-for>
+              </div>
+            </section>
+
+            <section style="grid-area:act;min-width:0;border-radius:var(--radius-md);background:var(--color-surface);box-shadow:var(--shadow-sm)">
+              <div style="display:flex;align-items:baseline;gap:8px;padding:10px 12px 8px"><h2 style="font-size:14px;margin:0;flex:1">Recent activity</h2><span style="font-size:11px;color:var(--color-neutral-500)">Latest ledger transactions</span></div>
+              <sc-for list="{{ acts }}" as="x" hint-placeholder-count="5">
+                <button onClick="{{ x.open }}" style="width:100%;display:grid;grid-template-columns:108px minmax(0,1fr) auto;gap:10px;align-items:center;padding:7px 12px;border:0;border-top:1px solid var(--color-neutral-900);background:transparent;font:inherit;color:inherit;text-align:left;cursor:pointer" style-hover="background:color-mix(in srgb,var(--color-text) 4%,transparent)">
+                  <span style="justify-self:start;font-size:10px;letter-spacing:.04em;padding:2px 7px;border-radius:6px;white-space:nowrap;background:{{ x.bg }};color:{{ x.fg }}">{{ x.typeS }}</span>
+                  <div style="min-width:0"><div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ x.product }} <span style="color:var(--color-neutral-500);font-size:11px">{{ x.sku }}</span></div><div style="font-size:11px;color:var(--color-neutral-500);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ x.where }} · by {{ x.by }}</div></div>
+                  <div style="text-align:right"><div style="font-variant-numeric:tabular-nums;font-weight:500">{{ x.qtyS }}</div><div style="font-size:11px;color:var(--color-neutral-500)">{{ x.when }}</div></div>
+                </button>
+              </sc-for>
+            </section>
+          </div>
+        </div>
+      </sc-if>
+      <sc-if value="{{ isList }}">
+        <div data-screen-label="{{ L.title }}" style="max-width:1400px">
+          <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+            <div style="flex:1;min-width:200px"><h1 style="font-size:22px;margin:0">{{ L.title }}</h1><sc-if value="{{ L.hasSub }}"><div style="font-size:12px;color:var(--color-neutral-400);margin-top:3px;text-wrap:pretty">{{ L.sub }}</div></sc-if></div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap"><sc-for list="{{ L.actions }}" as="a"><button class="{{ a.cls }}" onClick="{{ a.fn }}" style="white-space:nowrap;flex:none;font-size:13px;padding:5px 10px"><i class="ph {{ a.icon }}"></i>{{ a.label }}</button></sc-for></div>
+          </div>
+          <section style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));border-radius:var(--radius-md);overflow:hidden;background:var(--color-surface);box-shadow:var(--shadow-sm);margin-bottom:12px">
+            <sc-for list="{{ L.stats }}" as="st" hint-placeholder-count="5"><div style="padding:10px 14px;box-shadow:1px 0 0 var(--color-neutral-800),0 1px 0 var(--color-neutral-800);min-width:0"><div style="font-size:11px;color:var(--color-neutral-400);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ st.l }}</div><div style="font-size:19px;font-weight:500;letter-spacing:-.01em;font-variant-numeric:tabular-nums;color:{{ st.c }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ st.v }}</div><div style="font-size:11px;color:var(--color-neutral-500);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ st.sub }}</div></div></sc-for>
+          </section>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px">
+            <label style="position:relative;flex:1 1 200px;max-width:320px"><i class="ph ph-magnifying-glass" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--color-neutral-500)"></i><input class="input" value="{{ L.q }}" onChange="{{ L.setQ }}" placeholder="{{ L.searchPh }}" style="min-height:32px;padding:4px 10px 4px 30px;font-size:13px"></label>
+            <sc-if value="{{ L.hasQuick }}"><div class="seg" style="flex:none;max-width:100%;overflow-x:auto"><sc-for list="{{ L.quick }}" as="o"><button onClick="{{ o.click }}" style="border:0;border-right:1px solid var(--color-divider);white-space:nowrap;padding:6px 10px;font:inherit;font-size:12px;cursor:pointer;background:{{ o.bg }};color:{{ o.color }}">{{ o.label }}</button></sc-for></div></sc-if>
+            <button onClick="{{ L.toggleFilters }}" style="display:flex;align-items:center;gap:6px;white-space:nowrap;flex:none;padding:5px 10px;border-radius:8px;font:inherit;font-size:12px;cursor:pointer;background:transparent;border:1px solid {{ L.filterBtnBorder }};color:{{ L.filterBtnColor }}"><i class="ph ph-funnel-simple"></i>Filters<sc-if value="{{ L.hasFilterCount }}"><span style="min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:var(--color-accent);color:var(--color-bg);font-size:10px;font-weight:600;line-height:16px;text-align:center">{{ L.filterCount }}</span></sc-if></button>
+            <div style="flex:1"></div>
+            <div class="seg" style="flex:none"><sc-for list="{{ L.views }}" as="o"><button onClick="{{ o.click }}" title="{{ o.label }}" aria-label="{{ o.label }}" style="border:0;border-right:1px solid var(--color-divider);padding:6px 9px;font:inherit;cursor:pointer;background:{{ o.bg }};color:{{ o.color }}"><i class="ph {{ o.icon }}" style="font-size:15px"></i></button></sc-for></div>
+          </div>
+          <sc-if value="{{ L.filtersOpen }}">
+            <section style="padding:12px 14px;margin-bottom:10px;border-radius:var(--radius-md);background:var(--color-surface);box-shadow:var(--shadow-sm);animation:wPop .15s ease-out">
+              <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px">
+                <sc-for list="{{ L.filterFields }}" as="f">
+                  <div class="field" style="grid-column:{{ f.span }};min-width:0"><label>{{ f.label }}</label>
+                    <sc-if value="{{ f.isSelect }}"><select class="input" onChange="{{ f.onChange }}" style="min-height:32px;font-size:13px"><sc-for list="{{ f.options }}" as="o"><option value="{{ o.v }}" selected="{{ o.sel }}">{{ o.l }}</option></sc-for></select></sc-if>
+                    <sc-if value="{{ f.isRange }}"><div style="display:flex;gap:6px"><input class="input" type="number" placeholder="Min" value="{{ f.min }}" onChange="{{ f.onMin }}" style="min-height:32px;font-size:13px"><input class="input" type="number" placeholder="Max" value="{{ f.max }}" onChange="{{ f.onMax }}" style="min-height:32px;font-size:13px"></div></sc-if>
+                    <sc-if value="{{ f.isDate }}"><div style="display:flex;gap:6px"><input class="input" type="date" value="{{ f.from }}" onChange="{{ f.onFrom }}" style="min-height:32px;font-size:12px"><input class="input" type="date" value="{{ f.to }}" onChange="{{ f.onTo }}" style="min-height:32px;font-size:12px"></div></sc-if>
+                    <sc-if value="{{ f.isMulti }}"><div style="display:flex;flex-wrap:wrap;gap:6px"><sc-for list="{{ f.options }}" as="o"><button onClick="{{ o.toggle }}" style="white-space:nowrap;padding:4px 10px;border-radius:14px;font:inherit;font-size:12px;cursor:pointer;background:{{ o.bg }};color:{{ o.color }};border:1px solid {{ o.border }}">{{ o.l }}</button></sc-for></div></sc-if>
+                    <sc-if value="{{ f.isToggle }}"><button onClick="{{ f.toggle }}" style="display:flex;align-items:center;gap:8px;min-height:32px;padding:0;border:0;background:transparent;font:inherit;font-size:13px;color:var(--color-text);cursor:pointer"><i class="ph-fill {{ f.box }}" style="font-size:18px;color:{{ f.boxC }}"></i>{{ f.text }}</button></sc-if>
+                  </div>
+                </sc-for>
+              </div>
+              <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end"><button class="btn btn-ghost" onClick="{{ L.clearAll }}" style="white-space:nowrap;flex:none;font-size:12px;color:var(--color-neutral-400)">Reset all</button><button class="btn btn-secondary" onClick="{{ L.toggleFilters }}" style="white-space:nowrap;flex:none;font-size:12px;padding:4px 12px">Done</button></div>
+            </section>
+          </sc-if>
+          <sc-if value="{{ L.hasChips }}">
+            <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:10px">
+              <sc-for list="{{ L.chips }}" as="c"><span style="display:inline-flex;align-items:center;gap:4px;padding:3px 4px 3px 10px;border-radius:14px;font-size:12px;background:var(--color-accent-900);color:var(--color-accent-200)">{{ c.label }}<button onClick="{{ c.clear }}" aria-label="Remove filter" style="width:18px;height:18px;display:grid;place-items:center;border:0;border-radius:50%;background:transparent;color:inherit;cursor:pointer;padding:0"><i class="ph ph-x" style="font-size:11px"></i></button></span></sc-for>
+              <button class="btn btn-ghost" onClick="{{ L.clearAll }}" style="white-space:nowrap;flex:none;font-size:12px">Clear all</button>
+            </div>
+          </sc-if>
+          <sc-if value="{{ isStruct }}">
+            <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px">
+              <select class="input" style="width:auto;min-width:220px;min-height:32px;font-size:13px"><option>Main Warehouse (JHB-01)</option><option>Cape Town DC (CPT-01)</option></select>
+              <button onClick="{{ toggleInactive }}" style="display:flex;align-items:center;gap:6px;white-space:nowrap;flex:none;padding:5px 10px;border-radius:8px;font:inherit;font-size:12px;cursor:pointer;background:transparent;border:1px solid {{ inactiveBorder }};color:{{ inactiveColor }}"><i class="ph {{ inactiveIcon }}"></i>Show inactive</button>
+            </div>
+            <div style="display:grid;gap:12px;align-items:start;grid-template-columns:{{ structCols }}">
+              <div style="min-width:0">
+                <sc-if value="{{ L.vMap }}">
+                  <section style="padding:12px;border-radius:var(--radius-md);background:var(--color-surface);box-shadow:var(--shadow-sm)">
+                    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+                      <sc-for list="{{ mapZones }}" as="z"><button onClick="{{ z.select }}" title="{{ z.title }}" style="flex:1 1 150px;display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;border:0;box-shadow:inset 0 0 0 {{ z.bw }} {{ z.border }};background:{{ z.bg }};font:inherit;color:{{ z.txt }};text-align:left;cursor:pointer"><i class="ph-duotone ph-squares-four" style="font-size:18px"></i><span style="flex:1;min-width:0"><span style="display:block;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ z.name }}</span><span style="display:block;font-size:11px;opacity:.85">{{ z.type }} · {{ z.code }}</span></span><span style="text-align:right;font-variant-numeric:tabular-nums"><span style="display:block">{{ z.units }}</span><span style="display:block;font-size:11px;opacity:.85">{{ z.pctS }}</span></span></button></sc-for>
+                    </div>
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px">
+                      <sc-for list="{{ mapAisles }}" as="a">
+                        <div style="padding:10px;border-radius:10px;background:var(--color-bg);box-shadow:inset 0 0 0 1px {{ a.border }}">
+                          <button onClick="{{ a.select }}" style="width:100%;display:flex;align-items:baseline;gap:8px;padding:0;margin-bottom:6px;border:0;background:transparent;font:inherit;color:inherit;cursor:pointer;text-align:left"><span style="font-weight:500;flex:1">{{ a.name }}</span><span style="font-size:11px;color:var(--color-neutral-400);font-variant-numeric:tabular-nums">{{ a.units }} · {{ a.pctS }}</span></button>
+                          <div style="height:3px;border-radius:2px;background:var(--color-neutral-800);margin-bottom:10px;overflow:hidden"><div style="height:100%;width:{{ a.barW }};background:var(--color-accent-500)"></div></div>
+                          <div style="display:flex;flex-direction:column;gap:6px">
+                            <sc-for list="{{ a.racks }}" as="r">
+                              <div style="display:grid;grid-template-columns:42px minmax(0,1fr);gap:6px;align-items:center">
+                                <button onClick="{{ r.selectRack }}" style="padding:0;border:0;background:transparent;font:inherit;font-family:ui-monospace,Menlo,monospace;font-size:10px;color:{{ r.rackColor }};cursor:pointer;text-align:left">{{ r.code }}</button>
+                                <div style="display:flex;gap:4px">
+                                  <sc-for list="{{ r.cells }}" as="c"><button onClick="{{ c.select }}" title="{{ c.title }}" style="flex:1;min-width:0;height:36px;border-radius:6px;border:0;box-shadow:inset 0 0 0 {{ c.bw }} {{ c.border }};background:{{ c.bg }};color:{{ c.txt }};font:inherit;font-size:10px;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.15"><span style="font-weight:600">{{ c.short }}</span><span style="opacity:.85">{{ c.pctS }}</span></button></sc-for>
+                                  <sc-if value="{{ r.empty }}"><span style="font-size:11px;color:var(--color-neutral-500)">No levels yet</span></sc-if>
+                                </div>
+                              </div>
+                            </sc-for>
+                          </div>
+                        </div>
+                      </sc-for>
+                    </div>
+                    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;margin-top:12px;font-size:11px;color:var(--color-neutral-400)">
+                      <span style="display:flex;align-items:center;gap:6px">Fill <span style="width:90px;height:8px;border-radius:4px;background:linear-gradient(to right,var(--color-neutral-900),var(--color-accent-500))"></span> 0 → 90%</span>
+                      <span style="display:flex;align-items:center;gap:6px"><span style="width:12px;height:12px;border-radius:3px;background:color-mix(in oklab,var(--wh-warn) 70%,var(--color-neutral-900))"></span>over 90%</span>
+                      <span style="display:flex;align-items:center;gap:6px"><span style="width:12px;height:12px;border-radius:3px;background:repeating-linear-gradient(135deg,var(--color-neutral-800) 0 3px,transparent 3px 6px);box-shadow:inset 0 0 0 1px var(--color-divider)"></span>inactive</span>
+                      <span>Each row is a rack; cells are its levels, lowest first</span>
+                    </div>
+                  </section>
+                </sc-if>
+                <sc-if value="{{ L.vTree }}">
+                  <section style="padding:6px;border-radius:var(--radius-md);background:var(--color-surface);box-shadow:var(--shadow-sm)">
+                    <div style="display:flex;padding:4px 8px 6px 34px;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-neutral-500)"><span style="flex:1">Location</span><span style="width:60px;text-align:right">Fill</span><span style="width:48px;text-align:right">Units</span></div>
+                    <sc-for list="{{ tree }}" as="n" hint-placeholder-count="10">
+                      <div onClick="{{ n.select }}" style="display:flex;align-items:center;gap:6px;padding:5px 8px 5px {{ n.indent }};cursor:pointer;border-radius:6px;background:{{ n.bg }};box-shadow:inset 2px 0 0 {{ n.bar }};opacity:{{ n.op }}" style-hover="background:color-mix(in srgb,var(--color-text) 5%,transparent)">
+                        <button onClick="{{ n.toggle }}" aria-label="Expand" style="width:16px;height:16px;border:0;background:transparent;padding:0;color:var(--color-neutral-500);cursor:pointer;display:grid;place-items:center;visibility:{{ n.caretVis }}"><i class="ph-bold ph-caret-right" style="font-size:10px;transition:transform .15s;transform:{{ n.caretRot }}"></i></button>
+                        <i class="ph-duotone {{ n.icon }}" style="font-size:15px;color:{{ n.ic }}"></i>
+                        <span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ n.name }} <span style="font-family:ui-monospace,Menlo,monospace;font-size:11px;color:var(--color-neutral-500)">{{ n.code }}</span></span>
+                        <span style="font-size:9px;letter-spacing:.06em;padding:1px 5px;border-radius:4px;background:var(--color-neutral-900);color:var(--color-neutral-400)">{{ n.type }}</span>
+                        <span style="width:60px;height:4px;border-radius:2px;background:var(--color-neutral-800);overflow:hidden"><span style="display:block;height:100%;width:{{ n.fillW }};background:{{ n.fillC }}"></span></span>
+                        <span style="width:48px;text-align:right;font-size:11px;font-variant-numeric:tabular-nums;color:var(--color-neutral-400)">{{ n.unitsS }}</span>
+                      </div>
+                    </sc-for>
+                  </section>
+                </sc-if>
+              </div>
+              <section style="border-radius:var(--radius-md);background:var(--color-surface);box-shadow:var(--shadow-sm);min-width:0">
+                <div style="padding:12px 14px 10px">
+                  <div style="display:flex;align-items:center;gap:8px"><h2 style="font-size:17px;margin:0;flex:1">{{ locDetail.name }}</h2><span style="font-size:11px;padding:2px 8px;border-radius:6px;background:{{ locDetail.stBg }};color:{{ locDetail.stFg }}">{{ locDetail.statusS }}</span></div>
+                  <div style="font-size:12px;color:var(--color-neutral-400);margin-top:2px">{{ locDetail.crumbs }}</div>
+                  <div style="display:flex;align-items:center;gap:8px;margin-top:10px"><div style="flex:1;height:6px;border-radius:3px;background:var(--color-neutral-800);overflow:hidden"><div style="height:100%;width:{{ locDetail.fillW }};background:var(--color-accent-500)"></div></div><span style="font-size:11px;color:var(--color-neutral-400);white-space:nowrap">{{ locDetail.fillS }}</span></div>
+                </div>
+                <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border-top:1px solid var(--color-neutral-900);border-bottom:1px solid var(--color-neutral-900)">
+                  <sc-for list="{{ locDetail.facts }}" as="f"><div style="padding:8px 14px;box-shadow:1px 0 0 var(--color-neutral-900),0 1px 0 var(--color-neutral-900)"><div style="font-size:11px;color:var(--color-neutral-500)">{{ f.l }}</div><div style="font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ f.v }}</div></div></sc-for>
+                </div>
+                <div style="display:flex;flex-wrap:wrap;gap:6px;padding:10px 14px">
+                  <button class="btn btn-secondary" onClick="{{ locDetail.addChild }}" style="white-space:nowrap;flex:none;font-size:12px;padding:4px 9px"><i class="ph ph-plus"></i>Add child</button>
+                  <button class="btn btn-secondary" onClick="{{ locDetail.levels }}" style="white-space:nowrap;flex:none;font-size:12px;padding:4px 9px"><i class="ph ph-stack-plus"></i>Create levels</button>
+                  <button class="btn btn-secondary" onClick="{{ locDetail.edit }}" style="white-space:nowrap;flex:none;font-size:12px;padding:4px 9px"><i class="ph ph-pencil-simple"></i>Edit</button>
+                  <button class="btn btn-secondary" onClick="{{ locDetail.move }}" style="white-space:nowrap;flex:none;font-size:12px;padding:4px 9px"><i class="ph ph-arrows-out-cardinal"></i>Move</button>
+                  <sc-if value="{{ locDetail.isLeaf }}"><button class="btn btn-secondary" onClick="{{ locDetail.receiveHere }}" style="white-space:nowrap;flex:none;font-size:12px;padding:4px 9px"><i class="ph ph-box-arrow-down"></i>Receive here</button><button class="btn btn-secondary" onClick="{{ locDetail.countHere }}" style="white-space:nowrap;flex:none;font-size:12px;padding:4px 9px"><i class="ph ph-list-checks"></i>Count</button></sc-if>
+                  <button class="btn btn-secondary" onClick="{{ locDetail.toggle }}" style="white-space:nowrap;flex:none;font-size:12px;padding:4px 9px;color:{{ locDetail.toggleColor }}"><i class="ph {{ locDetail.toggleIcon }}"></i>{{ locDetail.toggleLabel }}</button>
+                </div>
+                <div style="padding:4px 14px 6px;font-size:13px;font-weight:500">Stock in this location</div>
+                <sc-if value="{{ locDetail.noStock }}"><div style="padding:6px 14px 14px;font-size:12px;color:var(--color-neutral-400)">Stock sits on storage slots. Pick a level or zone to see its products.</div></sc-if>
+                <sc-if value="{{ locDetail.hasStock }}"><sc-for list="{{ locDetail.stock }}" as="r"><button onClick="{{ r.open }}" style="width:100%;display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:14px;align-items:center;padding:7px 14px;border:0;border-top:1px solid var(--color-neutral-900);background:transparent;font:inherit;color:inherit;text-align:left;cursor:pointer" style-hover="background:color-mix(in srgb,var(--color-text) 4%,transparent)"><div style="min-width:0"><div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.name }}</div><div style="font-size:11px;color:var(--color-neutral-500)">{{ r.sku }}</div></div><span style="font-variant-numeric:tabular-nums">{{ r.onHand }}</span><span style="font-variant-numeric:tabular-nums;color:var(--color-accent-300);min-width:56px;text-align:right">{{ r.avail }} avail.</span></button></sc-for></sc-if>
+              </section>
+            </div>
+          </sc-if>
+          <sc-if value="{{ listContent }}">
+            <sc-if value="{{ L.empty }}"><div style="padding:32px 16px;border-radius:var(--radius-md);background:var(--color-surface);box-shadow:var(--shadow-sm)"><div style="font-size:15px;font-weight:500">{{ L.emptyTitle }}</div><div style="font-size:12px;color:var(--color-neutral-400);margin:4px 0 10px">{{ L.emptyMsg }}</div><button class="btn btn-secondary" onClick="{{ L.clearAll }}" style="white-space:nowrap;font-size:12px;padding:4px 10px">Clear filters</button></div></sc-if>
+            <sc-if value="{{ L.vTable }}"><sc-if value="{{ L.notEmpty }}">
+              <div style="border-radius:var(--radius-md);background:var(--color-surface);box-shadow:var(--shadow-sm);overflow-x:auto;overflow-y:hidden">
+                <table class="table" style="font-size:13px">
+                  <thead><tr><sc-for list="{{ L.columns }}" as="col"><th onClick="{{ col.click }}" style="text-align:{{ col.align }};display:{{ col.display }};width:{{ col.width }};cursor:{{ col.cursor }};white-space:nowrap;padding-left:12px">{{ col.label }}<sc-if value="{{ col.hasArrow }}"> <i class="ph-bold {{ col.arrow }}" style="font-size:10px"></i></sc-if></th></sc-for></tr></thead>
+                  <tbody><sc-for list="{{ L.rows }}" as="r" hint-placeholder-count="8"><tr onClick="{{ r.open }}" style="cursor:{{ r.cursor }}"><sc-for list="{{ r.cells }}" as="c"><td style="text-align:{{ c.align }};display:{{ c.display }};padding-left:12px;vertical-align:middle">
+                    <sc-if value="{{ c.isText }}"><div style="font-family:{{ c.font }};font-size:{{ c.size }};color:{{ c.color }};font-weight:{{ c.weight }}">{{ c.v }}</div><sc-if value="{{ c.hasSub }}"><div style="font-size:11px;color:var(--color-neutral-500)">{{ c.sub }}</div></sc-if></sc-if>
+                    <sc-if value="{{ c.isTag }}"><span style="display:inline-block;font-size:11px;padding:2px 8px;border-radius:6px;white-space:nowrap;background:{{ c.bg }};color:{{ c.fg }}">{{ c.v }}</span></sc-if>
+                    <sc-if value="{{ c.isTags }}"><div style="display:flex;flex-wrap:wrap;gap:4px"><sc-for list="{{ c.tags }}" as="t"><span style="font-size:10px;padding:1px 7px;border-radius:6px;white-space:nowrap;background:{{ t.bg }};color:{{ t.fg }}">{{ t.v }}</span></sc-for></div></sc-if>
+                    <sc-if value="{{ c.isBar }}"><div style="display:flex;align-items:center;gap:8px;min-width:120px"><span style="min-width:34px;text-align:right;font-variant-numeric:tabular-nums;font-size:12px;color:{{ c.labelColor }}">{{ c.label }}</span><div style="flex:1;position:relative;height:5px;border-radius:3px;background:var(--color-neutral-800)"><div style="height:100%;border-radius:3px;width:{{ c.w }};background:{{ c.c }}"></div><div title="Minimum" style="position:absolute;left:50%;top:-3px;width:1px;height:11px;background:var(--color-neutral-400);display:{{ c.marker }}"></div></div></div></sc-if>
+                    <sc-if value="{{ c.isAvatar }}"><div style="display:flex;align-items:center;gap:9px"><div style="width:28px;height:28px;flex:none;border-radius:8px;background:var(--color-neutral-800);color:var(--color-neutral-200);display:grid;place-items:center;font-size:11px;font-weight:600">{{ c.initials }}</div><div style="min-width:0"><div style="font-weight:500">{{ c.v }}</div><div style="font-size:11px;color:var(--color-neutral-500)">{{ c.sub }}</div></div></div></sc-if>
+                    <sc-if value="{{ c.isThumb }}"><div style="width:28px;height:28px;border-radius:6px;background:var(--color-neutral-900);display:grid;place-items:center;color:var(--color-neutral-500)"><i class="ph-duotone {{ c.icon }}" style="font-size:15px"></i></div></sc-if>
+                    <sc-if value="{{ c.isActions }}"><div style="display:flex;gap:2px;justify-content:flex-end"><sc-for list="{{ c.actions }}" as="b"><button onClick="{{ b.fn }}" title="{{ b.label }}" aria-label="{{ b.label }}" style="display:inline-flex;align-items:center;gap:5px;height:28px;min-width:28px;justify-content:center;padding:0 7px;border-radius:7px;border:1px solid {{ b.border }};background:transparent;color:{{ b.color }};font:inherit;font-size:12px;cursor:pointer;white-space:nowrap" style-hover="background:color-mix(in srgb,var(--color-text) 8%,transparent)"><i class="ph {{ b.icon }}" style="font-size:15px"></i><sc-if value="{{ b.hasText }}"><span>{{ b.text }}</span></sc-if></button></sc-for></div></sc-if>
+                  </td></sc-for></tr></sc-for></tbody>
+                </table>
+              </div>
+            </sc-if></sc-if>
+            <sc-if value="{{ L.vList }}"><sc-if value="{{ L.notEmpty }}">
+              <div style="border-radius:var(--radius-md);background:var(--color-surface);box-shadow:var(--shadow-sm);overflow:hidden">
+                <sc-for list="{{ L.listRows }}" as="r" hint-placeholder-count="8">
+                  <div onClick="{{ r.open }}" style="display:grid;grid-template-columns:32px minmax(0,1fr) auto;gap:10px;align-items:center;padding:9px 12px;border-bottom:1px solid var(--color-neutral-900);cursor:pointer" style-hover="background:color-mix(in srgb,var(--color-text) 4%,transparent)">
+                    <div style="width:32px;height:32px;border-radius:8px;background:var(--color-neutral-900);display:grid;place-items:center;color:{{ r.iconColor }}"><i class="ph-duotone {{ r.icon }}" style="font-size:17px"></i></div>
+                    <div style="min-width:0"><div style="font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.title }}</div><div style="font-size:11px;color:var(--color-neutral-500);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.sub }}</div>
+                      <sc-if value="{{ r.hasActions }}"><div style="display:flex;gap:6px;margin-top:7px;flex-wrap:wrap"><sc-for list="{{ r.actions }}" as="b"><button onClick="{{ b.fn }}" style="display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 10px;border-radius:7px;border:1px solid {{ b.border }};background:transparent;color:{{ b.color }};font:inherit;font-size:12px;cursor:pointer;white-space:nowrap"><i class="ph {{ b.icon }}" style="font-size:14px"></i>{{ b.text }}</button></sc-for></div></sc-if>
+                    </div>
+                    <div style="text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:3px"><div style="font-variant-numeric:tabular-nums;white-space:nowrap;color:{{ r.rightColor }}">{{ r.right }}</div><div style="font-size:11px;color:var(--color-neutral-500);white-space:nowrap">{{ r.rightSub }}</div><sc-if value="{{ r.hasTag }}"><span style="font-size:10px;padding:1px 7px;border-radius:6px;white-space:nowrap;background:{{ r.tag.bg }};color:{{ r.tag.fg }}">{{ r.tag.v }}</span></sc-if></div>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if></sc-if>
+            <sc-if value="{{ L.vGrid }}"><sc-if value="{{ L.notEmpty }}">
+              <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px">
+                <sc-for list="{{ L.cards }}" as="k" hint-placeholder-count="8">
+                  <div onClick="{{ k.open }}" style="display:flex;flex-direction:column;gap:10px;padding:12px;border-radius:var(--radius-md);background:var(--color-surface);box-shadow:var(--shadow-sm);cursor:pointer;min-width:0" style-hover="box-shadow:var(--shadow-md)">
+                    <div style="display:flex;gap:10px;align-items:flex-start"><div style="width:34px;height:34px;flex:none;border-radius:9px;background:var(--color-accent-900);display:grid;place-items:center;color:{{ k.iconColor }}"><i class="ph-duotone {{ k.icon }}" style="font-size:18px"></i></div><div style="flex:1;min-width:0"><div style="font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ k.title }}</div><div style="font-size:11px;color:var(--color-neutral-500);overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">{{ k.sub }}</div></div><sc-if value="{{ k.hasTag }}"><span style="font-size:10px;padding:1px 7px;border-radius:6px;white-space:nowrap;background:{{ k.tag.bg }};color:{{ k.tag.fg }}">{{ k.tag.v }}</span></sc-if></div>
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(60px,1fr));gap:6px"><sc-for list="{{ k.metrics }}" as="m"><div style="min-width:0"><div style="font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--color-neutral-500)">{{ m.l }}</div><div style="font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:{{ m.c }}">{{ m.v }}</div></div></sc-for></div>
+                    <sc-if value="{{ k.hasBar }}"><div style="height:4px;border-radius:2px;background:var(--color-neutral-800);overflow:hidden"><div style="height:100%;width:{{ k.bar.w }};background:{{ k.bar.c }}"></div></div></sc-if>
+                    <sc-if value="{{ k.hasActions }}"><div style="display:flex;gap:6px;flex-wrap:wrap"><sc-for list="{{ k.actions }}" as="b"><button onClick="{{ b.fn }}" style="display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 10px;border-radius:7px;border:1px solid {{ b.border }};background:transparent;color:{{ b.color }};font:inherit;font-size:12px;cursor:pointer;white-space:nowrap"><i class="ph {{ b.icon }}" style="font-size:14px"></i>{{ b.text }}</button></sc-for></div></sc-if>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if></sc-if>
+            <sc-if value="{{ L.notEmpty }}"><div style="display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:8px;font-size:11px;color:var(--color-neutral-500)"><span>{{ L.countText }}</span><sc-if value="{{ L.hasFootNote }}"><span>· {{ L.footNote }}</span></sc-if></div></sc-if>
+          </sc-if>
+        </div>
+      </sc-if>
+      <sc-if value="{{ isSettings }}">
+        <div data-screen-label="Settings" style="max-width:920px">
+          <h1 style="font-size:22px;margin:0 0 12px">Settings</h1>
+          <div style="display:grid;gap:14px;align-items:start;grid-template-columns:{{ settingsCols }}">
+            <nav style="display:flex;gap:2px;overflow-x:auto;flex-direction:{{ secDir }}">
+              <sc-for list="{{ secs }}" as="o"><button onClick="{{ o.click }}" style="display:flex;align-items:center;gap:8px;padding:7px 10px;border:0;border-radius:6px;font:inherit;font-size:13px;cursor:pointer;text-align:left;white-space:nowrap;background:{{ o.bg }};color:{{ o.color }};box-shadow:inset 2px 0 0 {{ o.bar }}"><i class="ph-duotone {{ o.icon }}" style="font-size:15px"></i>{{ o.label }}</button></sc-for>
+            </nav>
+            <section style="padding:14px 16px;border-radius:var(--radius-md);background:var(--color-surface);box-shadow:var(--shadow-sm)">
+              <sc-if value="{{ sec.profile }}">
+                <h2 style="font-size:16px;margin:0 0 10px">Profile</h2>
+                <div style="display:grid;grid-template-columns:110px minmax(0,1fr);gap:8px 12px;font-size:13px"><span style="color:var(--color-neutral-400)">Name</span><span>Nomsa Mahlangu</span><span style="color:var(--color-neutral-400)">Email</span><span>nomsa.mahlangu@warehouse.example</span><span style="color:var(--color-neutral-400)">Roles</span><span><span class="tag tag-accent" style="font-size:11px;padding:1px 8px">Warehouse Manager</span></span><span style="color:var(--color-neutral-400)">Warehouses</span><span>Main Warehouse · JHB-01</span></div>
+              </sc-if>
+              <sc-if value="{{ sec.appearance }}">
+                <h2 style="font-size:16px;margin:0 0 4px">Appearance</h2>
+                <div style="font-size:12px;color:var(--color-neutral-400);margin-bottom:12px">Saved on this device. Also available from the sun/moon button in the top bar.</div>
+                <div class="field"><label>Theme</label><div class="seg"><sc-for list="{{ themeOpts }}" as="o"><button onClick="{{ o.click }}" style="border:0;border-right:1px solid var(--color-divider);white-space:nowrap;padding:7px 16px;font:inherit;font-size:13px;cursor:pointer;background:{{ o.bg }};color:{{ o.color }}">{{ o.label }}</button></sc-for></div></div>
+              </sc-if>
+              <sc-if value="{{ sec.branding }}">
+                <h2 style="font-size:16px;margin:0 0 4px">Report branding</h2>
+                <div style="font-size:12px;color:var(--color-neutral-400);margin-bottom:12px">Printed at the top of every PDF and Excel export, and on pick lists.</div>
+                <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
+                  <div style="width:64px;height:64px;border-radius:12px;background:var(--color-bg);display:grid;place-items:center;box-shadow:var(--shadow-sm);overflow:hidden"><img src="{{ logoSrc }}" alt="Logo" style="max-width:52px;max-height:52px"></div>
+                  <div style="display:flex;gap:8px;flex-wrap:wrap"><label class="btn btn-secondary" style="white-space:nowrap;cursor:pointer"><i class="ph ph-upload-simple"></i>Upload logo<input type="file" accept="image/png,image/jpeg,image/svg+xml" onChange="{{ onLogo }}" style="display:none"></label><button class="btn btn-ghost" onClick="{{ resetLogo }}" style="white-space:nowrap;color:var(--color-neutral-400)">Use default</button></div>
+                </div>
+                <div class="field" style="max-width:380px"><label>Company name on reports</label><input class="input" value="{{ company }}" onChange="{{ setCompany }}" style="font-size:13px"></div>
+              </sc-if>
+              <sc-if value="{{ sec.contact }}">
+                <h2 style="font-size:16px;margin:0 0 4px">Contact &amp; alerts</h2>
+                <div style="font-size:12px;color:var(--color-neutral-400);margin-bottom:12px">Where we send low-stock and approval alerts.</div>
+                <div style="display:grid;gap:12px;max-width:420px">
+                  <div class="field"><label>Mobile number</label><input class="input" value="+27 82 555 0142" style="font-size:13px"></div>
+                  <div class="field"><label>Send alerts by</label><div class="seg"><sc-for list="{{ channels }}" as="o"><button onClick="{{ o.click }}" style="border:0;border-right:1px solid var(--color-divider);padding:6px 12px;font:inherit;font-size:12px;cursor:pointer;background:{{ o.bg }};color:{{ o.color }}">{{ o.label }}</button></sc-for></div></div>
+                  <div><button class="btn btn-primary" onClick="{{ saveContact }}">Save</button></div>
+                </div>
+              </sc-if>
+              <sc-if value="{{ sec.mfa }}">
+                <h2 style="font-size:16px;margin:0 0 4px">Sign-in check</h2>
+                <div style="font-size:12px;color:var(--color-neutral-400);margin-bottom:12px">A second step after your password, required for approvals.</div>
+                <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;border:1px solid var(--color-divider)"><i class="ph-duotone ph-device-mobile" style="font-size:20px;color:var(--color-accent-400)"></i><div style="flex:1"><div style="font-weight:500">Authenticator app</div><div style="font-size:11px;color:var(--color-neutral-500)">Set up 14 Aug 2026</div></div><span style="font-size:11px;padding:2px 8px;border-radius:6px;background:color-mix(in oklab,var(--wh-ok) 15%,transparent);color:var(--wh-ok)">On</span></div>
+                <div style="margin-top:12px"><button class="btn btn-secondary" onClick="{{ reconfigure }}">Reconfigure</button></div>
+              </sc-if>
+              <sc-if value="{{ sec.password }}">
+                <h2 style="font-size:16px;margin:0 0 10px">Password</h2>
+                <div style="display:grid;gap:12px;max-width:380px">
+                  <div class="field"><label>Current password</label><input class="input" type="password" style="font-size:13px"></div>
+                  <div class="field"><label>New password</label><input class="input" type="password" style="font-size:13px"><div style="font-size:11px;color:var(--color-neutral-500);margin-top:4px">At least 8 characters.</div></div>
+                  <div class="field"><label>Confirm new password</label><input class="input" type="password" style="font-size:13px"></div>
+                  <div><button class="btn btn-primary" onClick="{{ changePw }}"><i class="ph ph-lock-simple"></i>Change password</button></div>
+                </div>
+              </sc-if>
+              <sc-if value="{{ sec.keys }}">
+                <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:10px;flex-wrap:wrap"><div style="flex:1;min-width:200px"><h2 style="font-size:16px;margin:0">API keys</h2><div style="font-size:12px;color:var(--color-neutral-400);margin-top:3px">Scoped keys the back-office uses to call this warehouse. The raw key is shown once.</div></div><button class="btn btn-primary" onClick="{{ newKey }}" style="white-space:nowrap;flex:none;font-size:13px;padding:5px 10px"><i class="ph ph-key"></i>New key</button></div>
+                <div style="display:flex;flex-direction:column;gap:8px">
+                  <sc-for list="{{ keyList }}" as="k"><div style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:8px;border:1px solid var(--color-divider)">
+                    <div style="flex:1;min-width:0">
+                      <div style="display:flex;align-items:center;gap:8px"><span style="font-weight:500">{{ k.name }}</span><span style="font-size:11px;padding:1px 7px;border-radius:6px;background:{{ k.stBg }};color:{{ k.stFg }}">{{ k.statusS }}</span></div>
+                      <div style="display:flex;flex-wrap:wrap;gap:4px;margin:6px 0"><sc-for list="{{ k.scopeTags }}" as="t"><span style="font-family:ui-monospace,Menlo,monospace;font-size:11px;padding:1px 6px;border-radius:4px;background:var(--color-neutral-900);color:var(--color-neutral-300)">{{ t.x }}</span></sc-for></div>
+                      <div style="font-size:11px;color:var(--color-neutral-500)">Created {{ k.created }} by {{ k.by }} · last used {{ k.used }}</div>
+                    </div>
+                    <sc-if value="{{ k.active }}"><button class="btn btn-secondary" onClick="{{ k.revoke }}" style="white-space:nowrap;flex:none;font-size:12px;padding:4px 9px;color:var(--wh-bad)">Revoke</button></sc-if>
+                  </div></sc-for>
+                </div>
+              </sc-if>
+            </section>
+          </div>
+        </div>
+      </sc-if>
+    </main>
+  </div>
+  <sc-if value="{{ phone }}" hint-placeholder-val="{{ false }}">
+    <nav style="flex:none;height:58px;display:flex;border-top:1px solid var(--color-neutral-900);background:var(--color-bg)">
+      <sc-for list="{{ bottom }}" as="b"><button onClick="{{ b.go }}" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border:0;background:transparent;font:inherit;font-size:10px;cursor:pointer;color:{{ b.color }};box-shadow:inset 0 2px 0 {{ b.bar }}"><i class="ph-duotone {{ b.icon }}" style="font-size:21px"></i><span>{{ b.label }}</span></button></sc-for>
+    </nav>
+  </sc-if>
+  <sc-if value="{{ hasFlyout }}">
+    <div onClick="{{ closeFlyout }}" style="position:fixed;inset:50px 0 0 0;z-index:30"></div>
+    <div style="position:fixed;left:78px;z-index:31;width:230px;padding:6px;border-radius:var(--radius-md);background:var(--color-surface);box-shadow:var(--shadow-md);animation:wPop .14s ease-out;top:{{ fly.top }}">
+      <div style="padding:6px 8px;font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--color-neutral-400)">{{ fly.title }}</div>
+      <sc-for list="{{ fly.items }}" as="it"><button onClick="{{ it.go }}" style="width:100%;display:flex;align-items:center;gap:9px;padding:7px 10px;border:0;border-radius:6px;cursor:pointer;font:inherit;font-size:13px;text-align:left;background:{{ it.bg }};color:{{ it.color }};box-shadow:inset 2px 0 0 {{ it.bar }}"><i class="ph-duotone {{ it.icon }}" style="font-size:15px;color:{{ it.ic }}"></i><span style="flex:1">{{ it.label }}</span><sc-if value="{{ it.hasBadge }}"><span style="min-width:18px;padding:0 5px;height:16px;border-radius:8px;background:color-mix(in oklab,var(--wh-warn) 18%,transparent);color:var(--wh-warn);font-size:10px;font-weight:600;line-height:16px;text-align:center">{{ it.badge }}</span></sc-if></button></sc-for>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ drawer }}">
+    <div onClick="{{ closeDrawer }}" style="position:fixed;inset:0;z-index:40;background:color-mix(in srgb,var(--color-neutral-900) 65%,transparent);animation:wFade .15s"></div>
+    <aside style="position:fixed;top:0;bottom:0;left:0;z-index:41;width:284px;max-width:86vw;display:flex;flex-direction:column;background:var(--color-bg);box-shadow:var(--shadow-lg);animation:wSlideL .18s ease-out">
+      <div style="padding:14px 14px 12px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--color-neutral-900)">
+        <div style="width:30px;height:30px;border-radius:8px;border:1px solid var(--color-accent);display:grid;place-items:center;color:var(--color-accent)"><i class="ph-bold ph-warehouse" style="font-size:15px"></i></div>
+        <div style="flex:1;min-width:0;line-height:1.3"><div style="font-weight:500">Warehouse System</div><div style="font-size:11px;color:var(--color-neutral-400)">Nomsa Mahlangu · Warehouse Manager</div></div>
+        <button class="btn btn-icon" onClick="{{ closeDrawer }}" aria-label="Close menu" style="white-space:nowrap;flex:none;width:30px;height:30px;color:var(--color-neutral-400)"><i class="ph ph-x"></i></button>
+      </div>
+      <div style="flex:1;overflow:auto;padding:8px">
+        <sc-for list="{{ nav }}" as="g">
+          <sc-if value="{{ g.flat }}"><button onClick="{{ g.first.go }}" style="width:100%;display:flex;align-items:center;gap:10px;padding:10px 10px;border:0;border-radius:6px;cursor:pointer;font:inherit;font-size:14px;text-align:left;background:{{ g.first.bg }};color:{{ g.first.color }};box-shadow:inset 2px 0 0 {{ g.first.bar }}"><i class="ph-duotone {{ g.first.icon }}" style="font-size:18px;color:{{ g.first.ic }}"></i>{{ g.first.label }}</button></sc-if>
+          <sc-if value="{{ g.notFlat }}">
+            <div style="margin-top:6px">
+              <button onClick="{{ g.toggle }}" style="width:100%;display:flex;align-items:center;gap:10px;padding:9px 10px;border:0;background:transparent;cursor:pointer;font:inherit;font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--color-neutral-400);box-shadow:inset 2px 0 0 {{ g.cue }}"><i class="ph-duotone {{ g.icon }}" style="font-size:16px;color:{{ g.iconColor }}"></i><span style="flex:1;text-align:left">{{ g.title }}</span><sc-if value="{{ g.hasGroupBadge }}"><span style="min-width:18px;padding:0 5px;height:16px;border-radius:8px;background:color-mix(in oklab,var(--wh-warn) 18%,transparent);color:var(--wh-warn);font-size:10px;font-weight:600;line-height:16px;text-align:center">{{ g.groupBadge }}</span></sc-if><i class="ph-bold ph-caret-down" style="font-size:10px;transform:{{ g.caret }}"></i></button>
+              <sc-if value="{{ g.open }}"><sc-for list="{{ g.items }}" as="it"><button onClick="{{ it.go }}" style="width:100%;display:flex;align-items:center;gap:10px;padding:10px 10px 10px 18px;border:0;border-radius:6px;cursor:pointer;font:inherit;font-size:14px;text-align:left;background:{{ it.bg }};color:{{ it.color }};box-shadow:inset 2px 0 0 {{ it.bar }}"><i class="ph-duotone {{ it.icon }}" style="font-size:17px;color:{{ it.ic }}"></i><span style="flex:1">{{ it.label }}</span><sc-if value="{{ it.hasBadge }}"><span style="min-width:18px;padding:0 5px;height:16px;border-radius:8px;background:color-mix(in oklab,var(--wh-warn) 18%,transparent);color:var(--wh-warn);font-size:10px;font-weight:600;line-height:16px;text-align:center">{{ it.badge }}</span></sc-if></button></sc-for></sc-if>
+            </div>
+          </sc-if>
+        </sc-for>
+      </div>
+      <div style="padding:10px;border-top:1px solid var(--color-neutral-900)"><button class="btn btn-secondary btn-block" onClick="{{ askSignOut }}" style="white-space:nowrap;flex:none;margin:0;color:var(--color-neutral-300)"><i class="ph ph-sign-out"></i>Sign out</button></div>
+    </aside>
+  </sc-if>
+
+  <sc-if value="{{ notif }}">
+    <div onClick="{{ toggleNotif }}" style="position:fixed;inset:0;z-index:50"></div>
+    <div style="position:fixed;top:54px;z-index:51;border-radius:var(--radius-lg);background:var(--color-surface);box-shadow:var(--shadow-lg);animation:wPop .15s ease-out;overflow:hidden;left:{{ notifPos.l }};right:{{ notifPos.r }};width:{{ notifPos.w }}">
+      <div style="display:flex;align-items:center;padding:12px 14px 8px"><div style="flex:1;font-weight:500;font-size:14px">Notifications</div><button class="btn btn-ghost" onClick="{{ markRead }}" style="white-space:nowrap;flex:none;font-size:12px">Mark all read</button></div>
+      <sc-for list="{{ notes }}" as="n"><button onClick="{{ n.click }}" style="width:100%;display:grid;grid-template-columns:30px minmax(0,1fr) auto;gap:10px;align-items:start;padding:10px 14px;border:0;border-top:1px solid var(--color-neutral-800);background:transparent;font:inherit;color:inherit;text-align:left;cursor:pointer" style-hover="background:color-mix(in srgb,var(--color-text) 5%,transparent)"><span style="width:30px;height:30px;border-radius:8px;display:grid;place-items:center;background:{{ n.bg }};color:{{ n.fg }}"><i class="ph-fill {{ n.icon }}" style="font-size:15px"></i></span><span style="min-width:0"><span style="display:block;font-weight:500">{{ n.title }}</span><span style="display:block;font-size:12px;color:var(--color-neutral-400)">{{ n.msg }}</span></span><span style="font-size:11px;color:var(--color-neutral-500);white-space:nowrap">{{ n.time }}</span></button></sc-for>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ hasSheet }}">
+    <div onClick="{{ closeSheet }}" style="position:fixed;inset:0;z-index:60;background:color-mix(in srgb,var(--color-neutral-900) 55%,transparent);animation:wFade .15s"></div>
+    <aside style="position:fixed;top:0;right:0;bottom:0;z-index:61;max-width:100%;display:flex;flex-direction:column;background:var(--color-bg);box-shadow:var(--shadow-lg);animation:wSlide .2s ease-out;width:{{ sheetW }}">
+      <div style="display:flex;align-items:center;gap:8px;padding:10px 12px 10px 16px;border-bottom:1px solid var(--color-neutral-900)"><div style="flex:1;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-neutral-400)">{{ sheetKicker }}</div><button class="btn btn-icon" onClick="{{ closeSheet }}" aria-label="Close" style="width:30px;height:30px;color:var(--color-neutral-400)"><i class="ph ph-x" style="font-size:16px"></i></button></div>
+      <div style="flex:1;overflow:auto;padding:16px">
+        <sc-if value="{{ sheetProduct }}">
+          <div style="display:flex;gap:12px;align-items:flex-start;margin-bottom:12px">
+            <div style="width:56px;height:56px;flex:none;border-radius:10px;display:grid;place-items:center;background:radial-gradient(circle at 50% 40%,var(--color-neutral-800),var(--color-neutral-900));color:var(--color-neutral-500)"><i class="ph-duotone ph-package" style="font-size:24px"></i></div>
+            <div style="flex:1;min-width:0"><h2 style="font-size:18px;margin:0">{{ sp.name }}</h2><div style="font-size:12px;color:var(--color-neutral-400);margin-top:2px">{{ sp.sku }} · {{ sp.catS }} · {{ sp.uom }}</div><span style="display:inline-block;margin-top:6px;font-size:11px;padding:2px 8px;border-radius:6px;background:{{ sp.stBg }};color:{{ sp.stFg }}">{{ sp.status }}</span></div>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px">
+            <button class="btn btn-secondary" onClick="{{ sp.edit }}" style="white-space:nowrap;font-size:12px;padding:4px 9px"><i class="ph ph-pencil-simple"></i>Edit</button>
+            <button class="btn btn-secondary" onClick="{{ sp.receive }}" style="white-space:nowrap;font-size:12px;padding:4px 9px"><i class="ph ph-box-arrow-down"></i>Receive</button>
+            <button class="btn btn-secondary" onClick="{{ sp.whereIs }}" style="white-space:nowrap;font-size:12px;padding:4px 9px"><i class="ph ph-map-pin"></i>Where is it?</button>
+            <sc-if value="{{ sp.active }}"><button class="btn btn-secondary" onClick="{{ sp.deactivate }}" style="white-space:nowrap;font-size:12px;padding:4px 9px;color:var(--wh-bad)"><i class="ph ph-prohibit"></i>Deactivate</button></sc-if>
+            <sc-if value="{{ sp.inactive }}"><button class="btn btn-primary" onClick="{{ sp.reactivate }}" style="white-space:nowrap;font-size:12px;padding:4px 9px"><i class="ph ph-check-circle"></i>Reactivate</button></sc-if>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));border-radius:var(--radius-md);overflow:hidden;background:var(--color-surface);margin-bottom:16px">
+            <sc-for list="{{ sp.facts }}" as="f"><div style="padding:10px 12px;box-shadow:1px 0 0 var(--color-neutral-800),0 1px 0 var(--color-neutral-800)"><div style="font-size:11px;color:var(--color-neutral-400)">{{ f.l }}</div><div style="font-size:16px;font-weight:500;font-variant-numeric:tabular-nums;color:{{ f.c }}">{{ f.v }}</div></div></sc-for>
+          </div>
+          <h3 style="font-size:13px;margin:0 0 6px">Stock by location</h3>
+          <sc-if value="{{ sp.noRows }}"><div style="font-size:12px;color:var(--color-neutral-400);margin-bottom:16px">No stock yet — receive some to place it.</div></sc-if>
+          <sc-if value="{{ sp.hasRows }}"><div style="border-radius:var(--radius-md);background:var(--color-surface);margin-bottom:16px"><sc-for list="{{ sp.rows }}" as="r"><div style="display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:14px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--color-neutral-900)"><div style="min-width:0"><div>{{ r.path }}</div><div style="font-size:11px;color:var(--color-neutral-500);font-family:ui-monospace,Menlo,monospace">{{ r.code }}</div></div><span style="font-variant-numeric:tabular-nums;font-size:12px;color:var(--color-neutral-400)">{{ r.reserved }} res.</span><span style="font-variant-numeric:tabular-nums;font-weight:500">{{ r.onHand }}</span></div></sc-for></div></sc-if>
+          <h3 style="font-size:13px;margin:0 0 6px">Recent movements</h3>
+          <sc-if value="{{ sp.noActs }}"><div style="font-size:12px;color:var(--color-neutral-400)">No receipts or transfers on record.</div></sc-if>
+          <sc-for list="{{ sp.acts }}" as="x"><div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--color-neutral-900)"><span style="font-size:10px;padding:2px 7px;border-radius:6px;background:{{ x.bg }};color:{{ x.fg }}">{{ x.type }}</span><span style="flex:1;font-size:12px;color:var(--color-neutral-400)">{{ x.where }} · {{ x.by }} · {{ x.when }}</span><span style="font-variant-numeric:tabular-nums">{{ x.qty }}</span></div></sc-for>
+        </sc-if>
+        <sc-if value="{{ sheetCount }}">
+          <h2 style="font-size:18px;margin:0">{{ sc.locName }}</h2>
+          <div style="font-size:12px;color:var(--color-neutral-400);margin:2px 0 10px">{{ sc.id }} · started {{ sc.started }} by {{ sc.by }}</div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px"><div style="flex:1;height:6px;border-radius:3px;background:var(--color-neutral-800);overflow:hidden"><div style="height:100%;width:{{ sc.progW }};background:var(--color-accent-500)"></div></div><span style="font-size:12px;color:var(--color-neutral-400)">{{ sc.prog }} counted</span></div>
+          <sc-if value="{{ sc.noItems }}"><div style="font-size:12px;color:var(--color-neutral-400)">This location held no stock when the count started.</div></sc-if>
+          <div style="border-radius:var(--radius-md);background:var(--color-surface)">
+            <div style="display:grid;grid-template-columns:minmax(0,1fr) 62px 78px 48px;gap:8px;padding:7px 12px;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-neutral-500);border-bottom:1px solid var(--color-neutral-900)"><span>Product</span><span style="text-align:right">Expected</span><span style="text-align:right">Counted</span><span style="text-align:right">Var.</span></div>
+            <sc-for list="{{ sc.items }}" as="i"><div style="display:grid;grid-template-columns:minmax(0,1fr) 62px 78px 48px;gap:8px;align-items:center;padding:7px 12px;border-bottom:1px solid var(--color-neutral-900);font-variant-numeric:tabular-nums"><div style="min-width:0"><div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ i.name }}</div><div style="font-size:11px;color:var(--color-neutral-500)">{{ i.sku }}</div></div><span style="text-align:right;color:var(--color-neutral-400)">{{ i.exp }}</span><input class="input" type="number" min="0" value="{{ i.val }}" onChange="{{ i.set }}" disabled="{{ i.done }}" style="min-height:30px;padding:3px 8px;font-size:13px;text-align:right"><span style="text-align:right;color:{{ i.vc }}">{{ i.v }}</span></div></sc-for>
+          </div>
+          <sc-if value="{{ sc.inProgress }}"><div style="margin-top:14px;display:flex;gap:8px"><button class="btn btn-primary" onClick="{{ sc.submit }}"><i class="ph ph-check"></i>Submit count</button></div></sc-if>
+        </sc-if>
+        <sc-if value="{{ sheetRole }}">
+          <div style="display:flex;align-items:center;gap:8px"><h2 style="font-size:18px;margin:0">{{ sr.name }}</h2><sc-if value="{{ sr.system }}"><span class="tag tag-neutral" style="font-size:10px;padding:1px 6px">System</span></sc-if></div>
+          <div style="font-size:12px;color:var(--color-neutral-400);margin:2px 0 14px">{{ sr.desc }} · {{ sr.n }} of {{ sr.of }} permissions · {{ sr.users }} users</div>
+          <sc-if value="{{ sr.locked }}"><div style="font-size:12px;padding:8px 10px;border-radius:8px;background:var(--color-accent-900);color:var(--color-accent-200);margin-bottom:12px">Admin always holds every permission.</div></sc-if>
+          <sc-for list="{{ sr.groups }}" as="g"><div style="margin-bottom:12px"><div style="font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-neutral-500);margin-bottom:4px">{{ g.g }}</div><sc-for list="{{ g.ks }}" as="k"><button onClick="{{ k.toggle }}" style="width:100%;display:flex;align-items:center;gap:8px;padding:5px 4px;border:0;border-radius:6px;background:transparent;font:inherit;cursor:pointer;text-align:left" style-hover="background:color-mix(in srgb,var(--color-text) 5%,transparent)"><i class="ph-fill {{ k.icon }}" style="font-size:17px;color:{{ k.c }}"></i><span style="font-family:ui-monospace,Menlo,monospace;font-size:12px;color:{{ k.tc }}">{{ k.k }}</span></button></sc-for></div></sc-for>
+          <sc-if value="{{ sr.editable }}"><div style="display:flex;gap:8px;margin-top:6px"><button class="btn btn-primary" onClick="{{ sr.save }}" disabled="{{ sr.clean }}">Save permissions</button><button class="btn btn-ghost" onClick="{{ sr.reset }}" disabled="{{ sr.clean }}" style="color:var(--color-neutral-400)">Discard</button></div></sc-if>
+        </sc-if>
+        <sc-if value="{{ sheetPacking }}">
+          <h2 style="font-size:18px;margin:0">{{ spk.title }}</h2>
+          <div style="font-size:12px;color:var(--color-neutral-400);margin:2px 0 14px">Reserved {{ spk.reserved }} · {{ spk.ref }}</div>
+          <div style="border-radius:var(--radius-md);background:var(--color-surface)">
+            <sc-for list="{{ spk.lines }}" as="l"><div style="display:grid;grid-template-columns:76px minmax(0,1fr) auto;gap:10px;align-items:start;padding:10px 12px;border-bottom:1px solid var(--color-neutral-900)"><span style="font-size:15px;font-weight:500;font-variant-numeric:tabular-nums">{{ l.qtyS }}</span><div style="min-width:0"><div>{{ l.name }}</div><div style="font-size:11px;color:var(--color-neutral-500)">{{ l.sku }} · pick from {{ l.loc }} · {{ l.path }}</div></div><span class="tag tag-neutral" style="font-size:10px;padding:1px 7px">{{ l.wsName }}</span></div></sc-for>
+          </div>
+          <sc-if value="{{ spk.hasOthers }}"><div style="font-size:12px;color:var(--color-neutral-400);margin-top:10px">{{ spk.othersS }}</div></sc-if>
+          <div style="font-size:11px;color:var(--color-neutral-500);margin-top:10px">Read-only. Dispatch still happens in the ordering system.</div>
+          <div style="margin-top:14px"><button class="btn btn-primary" onClick="{{ spk.print }}"><i class="ph ph-printer"></i>Print pick list (PDF)</button></div>
+        </sc-if>
+        <sc-if value="{{ sheetReceive }}">
+          <div style="font-size:12px;color:var(--color-neutral-400);margin-bottom:12px">Records a RECEIVE transaction and increases on-hand at the destination.</div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px">
+            <div class="field" style="grid-column:1/-1"><label>Product</label><select class="input" onChange="{{ rcvV.set.pid }}" style="font-size:13px"><sc-for list="{{ rcvV.prodOpts }}" as="o"><option value="{{ o.id }}" selected="{{ o.sel }}">{{ o.label }}</option></sc-for></select></div>
+            <div class="field"><label>Quantity ({{ rcvV.uom }})</label><input class="input" type="number" min="0" value="{{ rcvV.qty }}" onChange="{{ rcvV.set.qty }}" placeholder="0" style="font-size:13px"></div>
+            <div class="field"><label>Destination</label><select class="input" onChange="{{ rcvV.set.dest }}" style="font-size:13px"><sc-for list="{{ rcvV.leafOpts }}" as="o"><option value="{{ o.id }}" selected="{{ o.sel }}">{{ o.label }}</option></sc-for></select></div>
+            <div class="field"><label>Supplier</label><input class="input" value="{{ rcvV.supplier }}" onChange="{{ rcvV.set.supplier }}" placeholder="Required" style="font-size:13px"></div>
+            <div class="field"><label>Reference (optional)</label><input class="input" value="{{ rcvV.ref }}" onChange="{{ rcvV.set.ref }}" placeholder="GRN-2026-00050" style="font-size:13px"></div>
+          </div>
+          <section style="margin-top:14px;padding:12px 14px;border-radius:var(--radius-md);background:linear-gradient(160deg,color-mix(in srgb,var(--color-accent-900) 70%,var(--color-surface)),var(--color-surface));box-shadow:var(--shadow-sm)">
+            <div style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--color-accent-300);margin-bottom:6px">Balance preview</div>
+            <div style="font-size:12px;color:var(--color-neutral-400);margin-bottom:4px">{{ rcvV.prevName }}</div>
+            <div style="display:flex;align-items:baseline;gap:10px;font-variant-numeric:tabular-nums"><span style="font-size:19px;color:var(--color-neutral-400)">{{ rcvV.before }}</span><i class="ph ph-arrow-right" style="color:var(--color-neutral-500)"></i><span style="font-size:23px;font-weight:500">{{ rcvV.after }}</span><span style="font-size:12px;color:var(--wh-ok)">{{ rcvV.delta }}</span></div>
+          </section>
+          <div style="display:flex;gap:8px;margin-top:14px"><button class="btn btn-primary" onClick="{{ submitRcv }}"><i class="ph ph-box-arrow-down"></i>Receive stock</button><button class="btn btn-ghost" onClick="{{ closeSheet }}" style="color:var(--color-neutral-400)">Cancel</button></div>
+        </sc-if>
+        <sc-if value="{{ sheetTransfer }}">
+          <div style="font-size:12px;color:var(--color-neutral-400);margin-bottom:12px">Moves available stock between two locations as one TRANSFER transaction.</div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px">
+            <div class="field" style="grid-column:1/-1"><label>Product</label><select class="input" onChange="{{ trfV.set.pid }}" style="font-size:13px"><sc-for list="{{ trfV.prodOpts }}" as="o"><option value="{{ o.id }}" selected="{{ o.sel }}">{{ o.label }}</option></sc-for></select></div>
+            <div class="field" style="grid-column:1/-1"><label>From — where this product has stock</label>
+              <div style="display:flex;flex-direction:column;gap:6px">
+                <sc-for list="{{ trfV.sources }}" as="o"><button onClick="{{ o.pick }}" style="display:grid;grid-template-columns:14px minmax(0,1fr) auto;gap:9px;align-items:center;padding:7px 10px;border-radius:8px;border:1px solid {{ o.border }};background:{{ o.bg }};font:inherit;font-size:13px;color:inherit;text-align:left;cursor:pointer"><span style="width:14px;height:14px;border-radius:50%;border:1.5px solid {{ o.border }};box-shadow:inset 0 0 0 3px var(--color-surface);background:{{ o.dot }}"></span><span style="min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ o.path }}</span><span style="font-size:12px;color:var(--color-neutral-400);font-variant-numeric:tabular-nums;white-space:nowrap">{{ o.availS }} avail.</span></button></sc-for>
+                <sc-if value="{{ trfV.noSrc }}"><div style="font-size:12px;color:var(--color-neutral-400)">This product has no stock anywhere.</div></sc-if>
+              </div>
+            </div>
+            <div class="field"><label>Quantity ({{ trfV.uom }})</label><input class="input" type="number" min="0" value="{{ trfV.qty }}" onChange="{{ trfV.set.qty }}" placeholder="0" style="font-size:13px"></div>
+            <div class="field"><label>To location</label><select class="input" onChange="{{ trfV.set.to }}" style="font-size:13px"><sc-for list="{{ trfV.leafOpts }}" as="o"><option value="{{ o.id }}" selected="{{ o.sel }}">{{ o.label }}</option></sc-for></select></div>
+          </div>
+          <section style="margin-top:14px;padding:12px 14px;border-radius:var(--radius-md);background:linear-gradient(160deg,color-mix(in srgb,var(--color-accent-900) 70%,var(--color-surface)),var(--color-surface));box-shadow:var(--shadow-sm)">
+            <div style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--color-accent-300);margin-bottom:8px">Balance preview</div>
+            <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 12px;align-items:baseline;font-variant-numeric:tabular-nums">
+              <span style="font-size:11px;color:var(--color-neutral-400)">From {{ trfV.from }}</span><span style="font-size:15px">{{ trfV.fromBefore }} <i class="ph ph-arrow-right" style="font-size:11px;color:var(--color-neutral-500)"></i> <span style="font-weight:500">{{ trfV.fromAfter }}</span></span>
+              <span style="font-size:11px;color:var(--color-neutral-400)">To {{ trfV.to }}</span><span style="font-size:15px">{{ trfV.toBefore }} <i class="ph ph-arrow-right" style="font-size:11px;color:var(--color-neutral-500)"></i> <span style="font-weight:500">{{ trfV.toAfter }}</span></span>
+            </div>
+            <div style="font-size:11px;color:var(--color-neutral-500);margin-top:6px">{{ trfV.avail }} available to move from the source</div>
+            <sc-if value="{{ trfV.over }}"><div style="font-size:12px;color:var(--wh-warn);margin-top:6px"><i class="ph ph-warning"></i> Quantity is more than what's available.</div></sc-if>
+          </section>
+          <div style="display:flex;gap:8px;margin-top:14px"><button class="btn btn-primary" onClick="{{ submitTrf }}"><i class="ph ph-arrows-left-right"></i>Transfer stock</button><button class="btn btn-ghost" onClick="{{ closeSheet }}" style="color:var(--color-neutral-400)">Cancel</button></div>
+        </sc-if>
+        <sc-if value="{{ sheetReport }}">
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px"><h2 style="font-size:18px;margin:0;flex:1;min-width:180px">{{ rp.title }}</h2><button class="btn btn-secondary" onClick="{{ rp.xlsx }}" style="white-space:nowrap;font-size:13px;padding:5px 10px"><i class="ph ph-microsoft-excel-logo"></i>Export Excel</button><button class="btn btn-primary" onClick="{{ rp.pdf }}" style="white-space:nowrap;font-size:13px;padding:5px 10px"><i class="ph ph-file-pdf"></i>Export PDF</button></div>
+          <div style="padding:22px 24px;border-radius:6px;background:#f8f9fd;color:#1f2127;box-shadow:var(--shadow-md);font-size:11px;overflow:auto">
+            <div style="display:flex;gap:10px;align-items:center;padding-bottom:10px;border-bottom:1px solid #d6d9e7"><img src="{{ logoSrc }}" alt="Logo" style="width:34px;height:34px;object-fit:contain"><div><div style="font-size:13px;font-weight:600">{{ company }}</div><div style="color:#6b6f80">Main Warehouse (JHB-01) · Generated {{ today }} by Nomsa Mahlangu</div></div></div>
+            <div style="font-size:16px;font-weight:600;margin-top:12px">{{ rp.title }}</div>
+            <div style="color:#6b6f80;margin-bottom:10px">{{ rp.desc }}<sc-if value="{{ rp.hasNote }}"> {{ rp.note }}</sc-if></div>
+            <table style="width:100%;border-collapse:collapse;font-size:10.5px">
+              <thead><tr><sc-for list="{{ rp.head }}" as="hd"><th style="text-align:{{ hd.align }};padding:5px 6px;background:#2b2741;color:#f5f4ff;font-weight:600;white-space:nowrap">{{ hd.h }}</th></sc-for></tr></thead>
+              <tbody><sc-for list="{{ rp.body }}" as="rw"><tr><sc-for list="{{ rw.cells }}" as="cl"><td style="text-align:{{ cl.align }};padding:4px 6px;border-bottom:1px solid #e2e5f0;white-space:nowrap">{{ cl.v }}</td></sc-for></tr></sc-for></tbody>
+              <sc-if value="{{ rp.hasFoot }}"><tfoot><tr><sc-for list="{{ rp.foot }}" as="ft"><td style="text-align:{{ ft.align }};padding:5px 6px;background:#eceef7;font-weight:600">{{ ft.v }}</td></sc-for></tr></tfoot></sc-if>
+            </table>
+            <sc-if value="{{ rp.hasMore }}"><div style="color:#6b6f80;margin-top:8px">{{ rp.more }}</div></sc-if>
+          </div>
+          <div style="font-size:11px;color:var(--color-neutral-500);margin-top:10px">{{ rp.n }} rows. Change the logo and company name in Settings › Report branding.</div>
+        </sc-if>
+      </div>
+    </aside>
+  </sc-if>
+  <sc-if value="{{ hasDialog }}">
+    <div class="dialog-backdrop" onClick="{{ closeDialog }}" style="z-index:70;animation:wFade .15s;backdrop-filter:blur(2px)">
+      <div class="dialog" onClick="{{ stop }}" style="animation:wPop .18s ease-out;max-height:calc(100vh - 32px);overflow:auto;width:{{ dlgW }}">
+        <sc-if value="{{ dlgForm }}">
+          <div><div class="dialog-title">{{ fm.title }}</div><div style="font-size:12px;color:var(--color-neutral-400);margin-top:3px">{{ fm.sub }}</div></div>
+          <div style="display:grid;gap:12px;grid-template-columns:{{ formCols }}">
+            <sc-for list="{{ formFields }}" as="f">
+              <div class="field" style="grid-column:{{ f.span }};min-width:0">
+                <label>{{ f.label }}<sc-if value="{{ f.required }}"> <span style="color:var(--color-accent-300)">*</span></sc-if></label>
+                <sc-if value="{{ f.isText }}"><input class="input" type="{{ f.inputType }}" value="{{ f.value }}" onChange="{{ f.onChange }}" placeholder="{{ f.placeholder }}" disabled="{{ f.disabled }}" style="font-size:13px;border-color:{{ f.border }}"></sc-if>
+                <sc-if value="{{ f.isTextarea }}"><textarea class="input" value="{{ f.value }}" onChange="{{ f.onChange }}" placeholder="{{ f.placeholder }}" style="min-height:64px;font-size:13px;border-color:{{ f.border }}"></textarea></sc-if>
+                <sc-if value="{{ f.isSelect }}"><select class="input" onChange="{{ f.onChange }}" disabled="{{ f.disabled }}" style="font-size:13px;border-color:{{ f.border }}"><sc-for list="{{ f.options }}" as="o"><option value="{{ o.v }}" selected="{{ o.sel }}">{{ o.l }}</option></sc-for></select></sc-if>
+                <sc-if value="{{ f.isSeg }}"><div class="seg" style="max-width:100%;overflow-x:auto"><sc-for list="{{ f.segs }}" as="o"><button onClick="{{ o.click }}" style="border:0;border-right:1px solid var(--color-divider);white-space:nowrap;padding:6px 11px;font:inherit;font-size:12px;cursor:pointer;background:{{ o.bg }};color:{{ o.color }}">{{ o.label }}</button></sc-for></div></sc-if>
+                <sc-if value="{{ f.isMulti }}"><div style="display:flex;flex-wrap:wrap;gap:6px"><sc-for list="{{ f.chips }}" as="o"><button onClick="{{ o.toggle }}" style="display:inline-flex;align-items:center;gap:5px;white-space:nowrap;padding:4px 10px;border-radius:14px;font:inherit;font-size:12px;cursor:pointer;background:{{ o.bg }};color:{{ o.color }};border:1px solid {{ o.border }}"><i class="ph {{ o.icon }}" style="font-size:11px"></i>{{ o.l }}</button></sc-for></div></sc-if>
+                <sc-if value="{{ f.hasHint }}"><div style="font-size:11px;color:var(--color-neutral-500);margin-top:4px">{{ f.hint }}</div></sc-if>
+                <sc-if value="{{ f.hasErr }}"><div style="font-size:11px;color:var(--wh-bad);margin-top:4px">{{ f.err }}</div></sc-if>
+              </div>
+            </sc-for>
+          </div>
+          <div class="dialog-actions"><button class="btn btn-secondary" onClick="{{ closeDialog }}">Cancel</button><button class="btn btn-primary" onClick="{{ submitForm }}">{{ fm.submit }}</button></div>
+        </sc-if>
+        <sc-if value="{{ dlgConfirm }}">
+          <div class="dialog-title">{{ dlg.title }}</div>
+          <div class="dialog-body">{{ dlg.body }}</div>
+          <div class="dialog-actions"><button class="btn btn-secondary" onClick="{{ closeDialog }}">Cancel</button><button class="btn" onClick="{{ dlgOk }}" style="border:1px solid {{ dlgOkColor }};color:{{ dlgOkColor }}">{{ dlg.label }}</button></div>
+        </sc-if>
+        <sc-if value="{{ dlgReview }}">
+          <div class="dialog-title">{{ reviewTitle }}</div>
+          <div style="display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;align-items:center;padding:10px 12px;border-radius:8px;background:var(--color-bg)"><span style="font-size:20px;font-weight:500;font-variant-numeric:tabular-nums;color:{{ dAdj.dFg }}">{{ dAdj.deltaS }}</span><div style="min-width:0"><div style="font-weight:500">{{ dAdj.product }}</div><div style="font-size:12px;color:var(--color-neutral-400)">{{ dAdj.bucketS }} · {{ dAdj.loc }} · by {{ dAdj.by }}</div></div></div>
+          <div style="font-size:12px;color:var(--color-neutral-300)">“{{ dAdj.reason }}”</div>
+          <div style="font-size:12px;color:var(--color-neutral-400)">{{ reviewEffect }}</div>
+          <div class="field"><label>{{ reviewNoteLabel }}</label><textarea class="input" value="{{ note }}" onChange="{{ setNote }}" style="min-height:70px;font-size:13px;border-color:{{ noteBorder }}"></textarea><sc-if value="{{ noteErr }}"><div style="font-size:12px;color:var(--wh-bad);margin-top:4px">Add a note so the requester knows why.</div></sc-if></div>
+          <div class="dialog-actions"><button class="btn btn-secondary" onClick="{{ closeDialog }}">Cancel</button><button class="btn" onClick="{{ reviewOk }}" style="border:1px solid {{ reviewColor }};color:{{ reviewColor }}">{{ reviewLabel }}</button></div>
+        </sc-if>
+        <sc-if value="{{ dlgStart }}">
+          <div class="dialog-title">Start a stock count</div>
+          <div class="dialog-body" style="font-size:13px">Snapshots the current on-hand quantity for every product with a balance at the chosen location. Only a storage slot (leaf location) can be counted.</div>
+          <div class="field"><label>Location</label><select class="input" onChange="{{ setStartLoc }}" style="font-size:13px"><sc-for list="{{ startLeafs }}" as="o"><option value="{{ o.id }}" selected="{{ o.sel }}">{{ o.label }}</option></sc-for></select></div>
+          <div class="dialog-actions"><button class="btn btn-secondary" onClick="{{ closeDialog }}">Cancel</button><button class="btn btn-primary" onClick="{{ startOk }}">Start count</button></div>
+        </sc-if>
+        <sc-if value="{{ dlgAudit }}">
+          <div class="dialog-title" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-size:11px;letter-spacing:.05em;padding:2px 8px;border-radius:6px;background:{{ dAudit.bg }};color:{{ dAudit.fg }}">{{ dAudit.action }}</span>{{ dAudit.entity }} <span style="font-family:ui-monospace,Menlo,monospace;font-size:14px;color:var(--color-neutral-400)">{{ dAudit.idS }}</span></div>
+          <div style="font-size:12px;color:var(--color-neutral-400)">{{ dAudit.date }} {{ dAudit.time }} · {{ dAudit.who }}</div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px">
+            <div><div style="font-size:11px;color:var(--color-neutral-500);margin-bottom:4px">Old value</div><pre style="margin:0;padding:10px;border-radius:8px;background:var(--color-bg);font-size:12px;color:var(--color-neutral-300);white-space:pre-wrap;min-height:60px">{{ dAudit.oldS }}</pre></div>
+            <div><div style="font-size:11px;color:var(--color-neutral-500);margin-bottom:4px">New value</div><pre style="margin:0;padding:10px;border-radius:8px;background:var(--color-bg);font-size:12px;color:var(--color-accent-200);white-space:pre-wrap;min-height:60px">{{ dAudit.newS }}</pre></div>
+          </div>
+          <div class="dialog-actions"><button class="btn btn-secondary" onClick="{{ closeDialog }}">Close</button></div>
+        </sc-if>
+      </div>
+    </div>
+  </sc-if>
+  <div style="position:fixed;z-index:80;display:flex;flex-direction:column;gap:8px;pointer-events:none;top:{{ tPos.t }};bottom:{{ tPos.b }};left:{{ tPos.l }};right:{{ tPos.r }};width:{{ tPos.w }};transform:{{ tPos.x }}">
+    <sc-for list="{{ toasts }}" as="t">
+      <div style="pointer-events:auto;position:relative;overflow:hidden;display:flex;gap:10px;align-items:flex-start;padding:10px 10px 12px 12px;border-radius:var(--radius-md);background:var(--color-surface);box-shadow:var(--shadow-md);animation:wIn .22s ease-out">
+        <div style="width:28px;height:28px;border-radius:8px;flex:none;display:grid;place-items:center;background:{{ t.bg }};color:{{ t.fg }}"><i class="ph-fill {{ t.icon }}" style="font-size:16px"></i></div>
+        <div style="flex:1;min-width:0;padding-top:1px"><div style="font-weight:500;font-size:13px">{{ t.title }}</div><sc-if value="{{ t.hasMsg }}"><div style="font-size:12px;color:var(--color-neutral-400);margin-top:1px">{{ t.msg }}</div></sc-if><sc-if value="{{ t.hasAction }}"><button class="btn btn-ghost" onClick="{{ t.act }}" style="white-space:nowrap;flex:none;font-size:12px;margin:4px 0 0 -3px;padding:2px 4px">{{ t.actionLabel }}<i class="ph ph-arrow-right"></i></button></sc-if></div>
+        <button class="btn btn-icon" onClick="{{ t.close }}" aria-label="Dismiss" style="white-space:nowrap;flex:none;width:24px;height:24px;color:var(--color-neutral-500)"><i class="ph ph-x" style="font-size:13px"></i></button>
+        <div style="position:absolute;left:0;right:0;bottom:0;height:2px;transform-origin:left;animation:wShrink 5s linear forwards;opacity:.7;background:{{ t.fg }}"></div>
+      </div>
+    </sc-for>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;dashboardLayout&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;a&quot;,&quot;b&quot;,&quot;c&quot;],&quot;default&quot;:&quot;a&quot;,&quot;tsType&quot;:&quot;'a'|'b'|'c'&quot;,&quot;section&quot;:&quot;Dashboard&quot;},&quot;toastPosition&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;bottom-right&quot;,&quot;top-center&quot;],&quot;default&quot;:&quot;bottom-right&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Notifications&quot;},&quot;openGroupsByDefault&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Navigation&quot;}}">
+class Component extends DCLogic {
+  state = { ready: !!(window.WH && window.WHA), screen: 'dashboard', dash: null, open: { stock: true }, drawer: false, flyout: null, notif: false, unread: 3,
+    toasts: [], dialog: null, sheet: null, note: '', noteErr: false, ls: {}, db: null, form: null, exports: {}, theme: 'dark', logo: null, company: 'Warehouse System',
+    locSel: 'A-02-03', showInactive: false, collapsed: {}, sec: 'profile', channel: 'Email', startLoc: 'A-02-02', permDraft: null, countDraft: {},
+    rcv: { pid: 'P-1001', qty: '', dest: 'RCV', supplier: '', ref: '' }, trf: { pid: 'P-1002', from: null, to: 'DSP', qty: '' },
+    w: typeof window !== 'undefined' ? window.innerWidth : 1440 };
+
+  initDb() {
+    const W = window.WH, c = x => JSON.parse(JSON.stringify(x));
+    return { products: W.PRODUCTS.map(p => ({ ...p })), workstreams: c(W.WORKSTREAMS), categories: c(W.CATEGORIES), attrs: c(W.ATTR_TYPES), warehouses: c(W.WAREHOUSES),
+      locs: W.LOCS.map(l => ({ id: l.id, code: l.code, name: l.name, type: l.type, parent: l.parent, inactive: l.inactive })), users: c(W.USERS), roles: c(W.ROLES), keys: c(W.KEYS),
+      pending: c(W.PEND), hist: c(W.HIST), receipts: c(W.RECEIPTS), transfers: c(W.TRANSFERS), counts: c(W.COUNTS), packing: c(W.PACKING) };
+  }
+  componentDidMount() {
+    const boot = () => {
+      const p = new URLSearchParams(location.search), up = { ready: true, db: this.initDb() };
+      let theme = 'dark'; try { theme = localStorage.getItem('wh-theme') || 'dark'; up.logo = localStorage.getItem('wh-logo'); up.company = localStorage.getItem('wh-company') || 'Warehouse System'; } catch (e) {}
+      if (p.get('theme')) theme = p.get('theme');
+      up.theme = theme; window.WHA.applyTheme(theme);
+      if (p.get('screen')) up.screen = p.get('screen');
+      if (p.get('dash')) up.dash = p.get('dash');
+      if (p.get('view')) up.ls = { [up.screen || 'dashboard']: { view: p.get('view') } };
+      if (p.get('sheet')) up.sheet = { kind: p.get('sheet'), id: p.get('id') || (p.get('sheet') === 'product' ? 'P-1002' : p.get('sheet') === 'report' ? 'soh' : p.get('sheet') === 'packing' ? 'a1f3c9e2-7b41' : null) };
+      if (p.get('dialog') === 'review') up.dialog = { kind: 'review', mode: 'approve', id: 'ADJ-311' };
+      const g = window.WH.GROUPS.find(x => x.items.some(i => i.id === (up.screen || 'dashboard')));
+      up.open = { ...this.state.open, ...(g ? { [g.id]: true } : {}), ...(up.screen === 'reports' ? { system: true } : {}) };
+      if (this.props.openGroupsByDefault) up.open = { catalogue: true, warehousing: true, stock: true, usermgmt: true, system: true };
+      this.setState(up, () => { if (p.get('dialog') === 'form') window.WHA.FORMS.product(this.ctx()); });
+      if (p.get('toast')) setTimeout(() => this.toast('ok', 'Approved — stock moved for Sunflower Oil 2L.', '−6 on hand at A-02-03 · ADJ-311', { label: 'View in inventory', fn: () => this.go('inventory') }, 600000), 300);
+    };
+    if (window.WH && window.WHA) boot(); else this.poll = setInterval(() => { if (window.WH && window.WHA) { clearInterval(this.poll); boot(); } }, 40);
+    this.onR = () => this.setState({ w: window.innerWidth });
+    window.addEventListener('resize', this.onR);
+  }
+  componentWillUnmount() { window.removeEventListener('resize', this.onR); clearInterval(this.poll); }
+
+  toast(tone, title, msg, action, ms) {
+    const id = Math.random().toString(36).slice(2);
+    this.setState(s => ({ toasts: [...s.toasts.slice(-2), { id, tone, title, msg, action }] }));
+    setTimeout(() => this.dismiss(id), ms || 5000);
+  }
+  dismiss(id) { this.setState(s => ({ toasts: s.toasts.filter(t => t.id !== id) })); }
+  go(screen, patch) {
+    const g = window.WH.GROUPS.find(x => x.items.some(i => i.id === screen));
+    this.setState(s => ({ screen, drawer: false, flyout: null, sheet: null, notif: false, open: { ...s.open, ...(g ? { [g.id]: true } : {}), ...(screen === 'reports' ? { system: true } : {}) }, ...(patch || {}) }));
+    const m = document.querySelector('main'); if (m) m.scrollTop = 0;
+  }
+  confirm(title, body, label, destructive, onOk) { this.setState({ dialog: { kind: 'confirm', title, body, label, destructive, onOk } }); }
+  ctx() {
+    const s = this.state, w = s.w;
+    return { W: window.WH, s, db: s.db, phone: w < 600, tablet: w >= 600 && w < 1024, desktop: w >= 1024,
+      setLs: (sc, p) => this.setState(st => ({ ls: { ...st.ls, [sc]: { ...(st.ls[sc] || {}), ...p } } })),
+      update: (k, fn) => this.setState(st => ({ db: { ...st.db, [k]: fn(st.db[k]) } })),
+      openForm: def => this.setState({ dialog: { kind: 'form' }, form: { ...def, values: { ...(def.values || {}) }, errors: {} } }),
+      confirm: (...a) => this.confirm(...a), toast: (...a) => this.toast(...a), sheet: (kind, id) => this.setState({ sheet: { kind, id }, permDraft: null, countDraft: {} }),
+      go: (id, p) => this.go(id, p), setState: x => this.setState(x) };
+  }
+  setTheme(t) { window.WHA.applyTheme(t); try { localStorage.setItem('wh-theme', t); } catch (e) {} this.setState({ theme: t }); }
+
+  renderVals() {
+    const s = this.state; if (!s.ready || !s.db) return { pad: '16px' };
+    const W = window.WH, A = window.WHA, { fmt, money, pct, sum } = A, TONE = W.TONE;
+    const OK = 'var(--wh-ok)', WARN = 'var(--wh-warn)', BAD = 'var(--wh-bad)';
+    const w = s.w, phone = w < 600, tablet = w >= 600 && w < 1024, desktop = w >= 1024;
+    const ctx = this.ctx(), db = s.db;
+    const go = id => () => this.go(id), set = (k, v) => () => this.setState({ [k]: v });
+    const tag = t => TONE[t] || TONE.neutral;
+    const seg = (cur, opts, click) => opts.map(([v, label]) => ({ label, click: () => click(v), color: cur === v ? 'var(--color-accent-200)' : 'var(--color-neutral-400)', bg: cur === v ? 'var(--color-accent-900)' : 'transparent' }));
+    const selO = (list, cur) => list.map(o => ({ ...o, sel: String(o.id) === String(cur) }));
+    const leafOpts = W.LEAVES.map(l => ({ id: l.id, label: l.code + ' — ' + W.path(l.id).join(' › ') }));
+    const prodOpts = db.products.map(p => ({ id: p.id, label: p.sku + ' — ' + p.name }));
+    const P = id => db.products.find(p => p.id === id) || W.PBY[id];
+
+    // nav (Reports added to System)
+    const GROUPS = W.GROUPS.map(g => g.id === 'system' ? { ...g, items: [{ id: 'reports', label: 'Reports', icon: 'ph-chart-bar' }, ...g.items] } : g);
+    const activeGroup = GROUPS.find(g => g.items.some(i => i.id === s.screen));
+    const nav = GROUPS.map((g, gi) => {
+      const holds = g === activeGroup, open = !!s.open[g.id];
+      const badge = g.items.some(i => i.id === 'adjustments') ? db.pending.length : 0;
+      const items = g.items.map(i => { const a = i.id === s.screen, b = i.id === 'adjustments' ? db.pending.length : 0;
+        return { ...i, go: go(i.id), bg: a ? 'var(--color-accent-900)' : 'transparent', color: a ? 'var(--color-text)' : 'var(--color-neutral-300)', weight: a ? 500 : 400, bar: a ? 'var(--color-accent)' : 'transparent', ic: a ? 'var(--color-accent-300)' : 'var(--color-neutral-500)', badge: b, hasBadge: b > 0 }; });
+      return { ...g, items, first: items[0], notFlat: !g.flat, open, groupBadge: badge, hasGroupBadge: !open && badge > 0, hasBadgeAny: badge > 0,
+        toggle: () => this.setState(st => ({ open: { ...st.open, [g.id]: !st.open[g.id] } })), caret: open ? 'rotate(180deg)' : 'none',
+        iconColor: holds ? 'var(--color-accent)' : 'var(--color-neutral-500)', cue: holds && !open ? 'var(--color-accent)' : 'transparent',
+        railBg: holds ? 'var(--color-accent-900)' : 'transparent', railColor: holds ? 'var(--color-accent-200)' : 'var(--color-neutral-400)',
+        railClick: g.flat ? go(g.items[0].id) : () => this.setState(st => ({ flyout: st.flyout === g.id ? null : g.id })), top: (54 + gi * 56) + 'px' };
+    });
+    const fly = nav.find(g => g.id === s.flyout);
+    const curItem = GROUPS.flatMap(g => g.items).find(i => i.id === s.screen) || { label: 'Dashboard', icon: 'ph-gauge' };
+    const BOTTOM = [['dashboard', 'Home', 'ph-gauge'], ['products', 'Products', 'ph-package'], ['inventory', 'Inventory', 'ph-cube'], ['receiving', 'Receive', 'ph-box-arrow-down']];
+    const inBottom = BOTTOM.some(b => b[0] === s.screen);
+    const bottom = [...BOTTOM.map(([id, label, icon]) => ({ label, icon, go: go(id), on: s.screen === id })), { label: 'Menu', icon: 'ph-list', go: set('drawer', true), on: !inBottom }]
+      .map(b => ({ ...b, color: b.on ? 'var(--color-accent-300)' : 'var(--color-neutral-400)', bar: b.on ? 'var(--color-accent)' : 'transparent' }));
+
+    // generic list
+    const LIST_SCREENS = ['products', 'workstreams', 'categories', 'attributes', 'warehouses', 'locations', 'inventory', 'receiving', 'transfers', 'counts', 'adjustments', 'packing', 'users', 'roles', 'audit', 'reports'];
+    const isList = LIST_SCREENS.includes(s.screen);
+    const L = isList ? A.buildList(s.screen, ctx) : { actions: [], stats: [], quick: [], filterFields: [], chips: [], views: [], columns: [], rows: [], listRows: [], cards: [] };
+
+    // structure (tree / map / detail)
+    const idx = A.locIndex(db.locs);
+    const isStruct = s.screen === 'locations' && (L.vTree || L.vMap);
+    const hidden = id => { let c = idx.by[id].parent; while (c && idx.by[c]) { if (s.collapsed[c]) return true; c = idx.by[c].parent; } return false; };
+    const fillBg = (u, inactive) => inactive ? 'repeating-linear-gradient(135deg, var(--color-neutral-900) 0 4px, transparent 4px 8px)' : u <= 0 ? 'var(--color-neutral-900)' : u > 0.9 ? 'color-mix(in oklab, var(--wh-warn) 70%, var(--color-neutral-900))' : `color-mix(in oklab, var(--color-accent-500) ${Math.round(18 + u * 72)}%, var(--color-neutral-900))`;
+    const tree = idx.list.filter(l => (s.showInactive || !l.inactive) && !hidden(l.id)).map(l => { const sel = l.id === s.locSel, u = idx.units(l.id), c = idx.cap(l.id);
+      return { ...l, indent: (8 + l.depth * 18) + 'px', bg: sel ? 'var(--color-accent-900)' : 'transparent', bar: sel ? 'var(--color-accent)' : 'transparent', op: l.inactive ? 0.5 : 1,
+        caretVis: l.leaf ? 'hidden' : 'visible', caretRot: s.collapsed[l.id] ? 'none' : 'rotate(90deg)', icon: l.leaf ? 'ph-cube' : 'ph-folder-simple', ic: sel ? 'var(--color-accent-300)' : 'var(--color-neutral-500)',
+        unitsS: fmt(u), fillW: c ? pct(u / c) : '0%', fillC: c && u / c > 0.9 ? WARN : 'var(--color-accent-500)', hasFill: !!c, select: set('locSel', l.id),
+        toggle: e => { e.stopPropagation(); this.setState(st => ({ collapsed: { ...st.collapsed, [l.id]: !st.collapsed[l.id] } })); } }; });
+    const cellOf = id => { const n = idx.by[id], u = idx.units(id), c = idx.cap(id), f = c ? u / c : 0, sel = id === s.locSel;
+      return { id, code: n.code, short: n.code.split('-').slice(-1)[0], name: n.name, units: fmt(u), pctS: c ? Math.round(f * 100) + '%' : '—', bg: fillBg(f, n.inactive), border: sel ? 'var(--color-accent)' : 'var(--color-divider)', bw: sel ? '2px' : '1px', txt: f > 0.55 && !n.inactive ? 'var(--color-neutral-100)' : 'var(--color-neutral-300)', select: set('locSel', id), title: n.name + ' · ' + n.code + ' · ' + fmt(u) + ' units' + (c ? ' · ' + Math.round(f * 100) + '% full' : '') }; };
+    const roots = idx.list.filter(l => l.depth === 0);
+    const mapZones = roots.filter(r => r.leaf || !['AISLE'].includes(r.type)).filter(r => s.showInactive || !r.inactive).map(r => ({ ...cellOf(r.id), type: r.type }));
+    const mapAisles = roots.filter(r => !r.leaf && r.type === 'AISLE').map(a => { const u = idx.units(a.id), c = idx.cap(a.id), sel = a.id === s.locSel;
+      const racks = a.children.map(rid => idx.by[rid]).filter(r => s.showInactive || !r.inactive).map(r => ({ code: r.code, name: r.name, selectRack: set('locSel', r.id), rackColor: r.id === s.locSel ? 'var(--color-accent-300)' : 'var(--color-neutral-400)',
+        cells: (r.leaf ? [r.id] : r.children).filter(id => s.showInactive || !idx.by[id].inactive).map(cellOf), empty: !r.leaf && !r.children.length }));
+      return { code: a.code, name: a.name, pctS: c ? Math.round(u / c * 100) + '%' : '—', units: fmt(u), barW: c ? pct(u / c) : '0%', select: set('locSel', a.id), border: sel ? 'var(--color-accent)' : 'transparent', racks }; });
+    const LS = idx.by[s.locSel] || idx.list[0];
+    const lsUnits = idx.units(LS.id), lsCap = idx.cap(LS.id), lst = tag(LS.inactive ? 'neutral' : 'ok');
+    const locDetail = { ...LS, crumbs: idx.path(LS.id).join(' › '), statusS: LS.inactive ? 'Inactive' : 'Active', stFg: lst.fg, stBg: lst.bg, fillW: lsCap ? pct(lsUnits / lsCap) : '0%', fillS: lsCap ? Math.round(lsUnits / lsCap * 100) + '% of ' + fmt(lsCap) : 'No capacity',
+      facts: [{ l: 'Code', v: LS.code }, { l: 'Type', v: LS.type }, { l: 'Parent', v: LS.parent ? idx.by[LS.parent].name + ' (' + LS.parent + ')' : '— top level' }, { l: 'Children', v: LS.children.length }, { l: 'Units', v: fmt(lsUnits) }, { l: 'SKUs', v: LS.leaf && W.LBY[LS.id] ? W.locStock(LS.id).length : '—' }],
+      stock: LS.leaf && W.LBY[LS.id] ? W.locStock(LS.id).map(r => ({ name: r.p.name, sku: r.p.sku, onHand: fmt(r.onHand), avail: fmt(r.onHand - r.reserved), open: () => ctx.sheet('product', r.p.id) })) : [],
+      addChild: () => A.FORMS.location(ctx, 'child', LS), levels: () => A.FORMS.levels(ctx, LS), edit: () => A.FORMS.location(ctx, 'edit', LS), move: () => A.FORMS.move(ctx, LS),
+      toggleLabel: LS.inactive ? 'Reactivate' : 'Deactivate', toggleIcon: LS.inactive ? 'ph-arrow-counter-clockwise' : 'ph-prohibit', toggleColor: LS.inactive ? 'var(--color-accent)' : BAD,
+      toggle: () => { const flip = () => { ctx.update('locs', l => l.map(x => x.id === LS.id ? { ...x, inactive: !x.inactive } : x)); this.toast('ok', 'Location ' + (LS.inactive ? 'reactivated' : 'deactivated'), LS.name + ' (' + LS.code + ')'); };
+        if (LS.inactive) flip(); else this.confirm('Deactivate location?', `This marks "${LS.name}" inactive. It is NOT deleted, and its child locations are NOT automatically deactivated.`, 'Deactivate', true, flip); },
+      isLeaf: LS.leaf, receiveHere: () => { this.setState(st => ({ rcv: { ...st.rcv, dest: LS.id } })); ctx.sheet('receive'); }, countHere: () => this.setState({ dialog: { kind: 'start' }, startLoc: LS.id }) };
+    locDetail.hasStock = locDetail.stock.length > 0; locDetail.noStock = !locDetail.hasStock;
+
+    return this.rest({ s, W, A, ctx, db, phone, tablet, desktop, go, set, tag, seg, selO, leafOpts, prodOpts, P, OK, WARN, BAD, fmt, money, pct, sum,
+      nav, fly, curItem, activeGroup, bottom, isList, L, isStruct, tree, mapZones, mapAisles, locDetail });
+  }
+
+  rest(v) {
+    const { s, W, A, ctx, db, phone, tablet, desktop, go, set, tag, seg, selO, leafOpts, prodOpts, P, OK, WARN, BAD, fmt, money, pct, sum } = v;
+    const dash = s.dash || this.props.dashboardLayout || 'a';
+
+    // dashboard
+    const lowAll = db.products.filter(p => p.status === 'Active' && p.stock < p.min);
+    const pendList = db.pending.map(a => { const p = P(a.pid), inc = a.dir === 'INCREASE', wt = a.days >= 3 ? tag('bad') : a.days >= 1 ? tag('warn') : tag('neutral');
+      return { ...a, product: p.name, sku: p.sku, deltaS: (inc ? '+' : '−') + fmt(a.delta), dFg: inc ? OK : BAD, bucketS: a.bucket.toLowerCase().replace('_', ' '), locPath: W.path(a.loc).join(' › '), waitS: a.days === 0 ? 'today' : a.days + 'd waiting', wFg: wt.fg, wBg: wt.bg }; });
+    const valued = db.products.filter(p => p.cost && p.status === 'Active');
+    const openCounts = db.counts.filter(c => c.status !== 'Submitted').length;
+    const kpis = [
+      { icon: 'ph-package', label: 'Active products', value: db.products.filter(p => p.status === 'Active').length, sub: db.categories.filter(c => c.active).length + ' categories · ' + db.workstreams.filter(x => x.active).length + ' workstreams', fg: 'var(--color-accent-400)', valColor: 'var(--color-text)', go: go('products') },
+      { icon: 'ph-warning', label: 'Low stock', value: lowAll.length, sub: 'below minimum level', fg: WARN, valColor: lowAll.length ? WARN : 'var(--color-text)', go: () => { ctx.setLs('products', { f: { low: true } }); this.go('products'); } },
+      { icon: 'ph-hourglass-medium', label: 'Pending adjustments', value: db.pending.length, sub: db.pending.length ? 'oldest ' + Math.max(...db.pending.map(a => a.days)) + 'd waiting' : 'nothing to review', fg: WARN, valColor: db.pending.length ? WARN : 'var(--color-text)', go: go('adjustments') },
+      { icon: 'ph-coins', label: 'Inventory valuation', value: money(sum(valued, p => p.stock * p.cost)), sub: db.products.filter(p => !p.cost).length + ' product without cost excluded', fg: 'var(--color-accent-400)', valColor: 'var(--color-text)', go: go('reports') },
+      { icon: 'ph-list-checks', label: 'Open stock counts', value: openCounts, sub: 'in progress', fg: 'var(--color-accent-400)', valColor: 'var(--color-text)', go: go('counts') }];
+    const lowList = lowAll.map(p => ({ ...p, short: fmt(p.min - p.stock), pctW: Math.round(p.stock / p.min * 100) + '%', onHand: fmt(p.stock), minS: fmt(p.min), open: () => ctx.sheet('product', p.id) }));
+    const maxM = Math.max(...W.MOVES.map(m => m[1]));
+    const moves = W.MOVES.map(([t, n, tn]) => ({ label: t.replace(/_/g, ' ').toLowerCase(), n, w: (n / maxM * 100) + '%', c: tn === 'info' ? 'var(--color-accent-500)' : tag(tn).fg }));
+    const acts = W.ACTS.slice(0, 6).map(a => { const p = P(a.pid), t = tag(W.TYPE_TONE[a.type]); return { typeS: a.type.replace(/_/g, ' '), fg: t.fg, bg: t.bg, product: p.name, sku: p.sku, qtyS: fmt(a.qty), when: a.when, by: a.by, where: [a.from && 'from ' + a.from, a.to && 'to ' + a.to].filter(Boolean).join(' '), open: () => ctx.sheet('product', p.id) }; });
+    const AREAS = { a: ['"kpi kpi kpi" "low pend move" "act act act"', '"kpi kpi" "low pend" "move act"', '"kpi" "low" "pend" "move" "act"'],
+      b: ['"pend pend kpi" "low low move" "act act move"', '"pend pend" "kpi kpi" "low move" "act act"', '"pend" "low" "kpi" "move" "act"'],
+      c: ['"kpi kpi kpi" "act act pend" "act act low" "move move move"', '"kpi kpi" "act act" "pend low" "move move"', '"kpi" "act" "pend" "low" "move"'] }[dash] || [];
+
+    return this.rest2({ ...v, dash, pendList, kpis, lowList, moves, acts, openCounts,
+      dashAreas: desktop ? AREAS[0] : tablet ? AREAS[1] : AREAS[2], dashCols: desktop ? 'repeat(3, minmax(0, 1fr))' : tablet ? 'repeat(2, minmax(0, 1fr))' : 'minmax(0, 1fr)' });
+  }
+
+  rest2(v) {
+    const { s, W, A, ctx, db, phone, tablet, desktop, go, set, tag, seg, selO, leafOpts, prodOpts, P, OK, WARN, BAD, fmt, money, pct, sum, pendList } = v;
+    const sk = s.sheet ? s.sheet.kind : null;
+
+    // product sheet
+    let sp = { facts: [], rows: [], acts: [] };
+    if (sk === 'product') {
+      const p = P(s.sheet.id) || db.products[0], low = p.stock < p.min, st = tag(p.status === 'Active' ? 'ok' : 'neutral');
+      const cat = db.categories.find(c => c.id === p.catId), par = cat && db.categories.find(c => c.id === cat.parent);
+      const margin = p.cost ? Math.round((p.price - p.cost) / p.price * 100) + '%' : '—';
+      const mv = [...db.receipts.filter(r => r.pid === p.id).map(r => ({ type: 'RECEIVE', qty: '+' + fmt(r.qty), when: r.date, by: r.by, where: 'to ' + r.to })), ...db.transfers.filter(r => r.pid === p.id).map(r => ({ type: 'TRANSFER', qty: fmt(r.qty), when: r.date, by: r.by, where: r.from + ' → ' + r.to }))].slice(0, 6)
+        .map(x => ({ ...x, fg: tag(W.TYPE_TONE[x.type]).fg, bg: tag(W.TYPE_TONE[x.type]).bg }));
+      sp = { ...p, catS: (par ? par.name + ' › ' : '') + (cat ? cat.name : p.sub), stFg: st.fg, stBg: st.bg, active: p.status === 'Active', inactive: p.status !== 'Active',
+        facts: [{ l: 'On hand', v: fmt(p.stock) + ' ' + p.uom, c: low ? BAD : 'var(--color-text)' }, { l: 'Minimum', v: fmt(p.min), c: 'var(--color-text)' }, { l: 'Selling price', v: money(p.price), c: 'var(--color-text)' }, { l: 'Cost · margin', v: (p.cost ? money(p.cost) : '—') + ' · ' + margin, c: 'var(--color-text)' }],
+        rows: (W.BD[p.id] || []).map(r => ({ path: W.path(r.loc.id).slice(-2).join(' › '), code: r.loc.code, onHand: fmt(r.onHand), reserved: fmt(r.reserved) })), acts: mv,
+        edit: () => A.FORMS.product(ctx, p), whereIs: () => { ctx.setLs('inventory', { f: { pid: p.id } }); this.go('inventory'); }, receive: () => { this.setState(st => ({ rcv: { ...st.rcv, pid: p.id } })); ctx.sheet('receive'); },
+        deactivate: () => this.confirm('Deactivate product?', `This marks "${p.name}" inactive. It stays visible in historical inventory records — it is not deleted.`, 'Deactivate', true, () => { ctx.update('products', l => l.map(x => x.id === p.id ? { ...x, status: 'Inactive' } : x)); this.toast('ok', 'Product deactivated', p.name, { label: 'Undo', fn: () => ctx.update('products', l => l.map(x => x.id === p.id ? { ...x, status: 'Active' } : x)) }); }),
+        reactivate: () => { ctx.update('products', l => l.map(x => x.id === p.id ? { ...x, status: 'Active' } : x)); this.toast('ok', 'Product reactivated', p.name); } };
+      sp.noRows = !sp.rows.length; sp.hasRows = !sp.noRows; sp.noActs = !sp.acts.length;
+    }
+    // count sheet
+    let sc = { items: [] };
+    if (sk === 'count') {
+      const c = db.counts.find(x => x.id === s.sheet.id) || db.counts[0], done = c.status === 'Submitted';
+      const items = (W.LBY[c.loc] ? W.locStock(c.loc) : []).map((r, i) => { const key = r.p.id; const pre = done || i < Math.min(2, c.counted) ? String(r.onHand + (i === 0 ? c.variance : 0)) : ''; const val = s.countDraft[key] != null ? s.countDraft[key] : pre; const v = val === '' ? null : Number(val) - r.onHand;
+        return { name: r.p.name, sku: r.p.sku, exp: fmt(r.onHand), val, v: v == null ? '' : v === 0 ? '0' : (v > 0 ? '+' : '−') + Math.abs(v), vc: !v ? 'var(--color-neutral-400)' : v > 0 ? OK : BAD, set: e => { const x = e.target.value; this.setState(st => ({ countDraft: { ...st.countDraft, [key]: x } })); }, done, notDone: !done, raw: v, has: val !== '' }; });
+      const counted = items.filter(i => i.has).length, net = sum(items, i => i.raw || 0);
+      sc = { ...c, locName: W.path(c.loc).slice(-2).join(' › '), items, prog: counted + ' / ' + items.length, progW: items.length ? pct(counted / items.length) : '0%', inProgress: !done, done, noItems: !items.length,
+        submit: () => { if (counted < items.length) return this.toast('warn', 'Count every item before submitting', (items.length - counted) + ' still empty.'); ctx.update('counts', l => l.map(x => x.id === c.id ? { ...x, status: 'Submitted', counted: items.length, items: items.length, variance: net } : x)); this.setState({ sheet: null }); this.toast('ok', 'Stock count submitted', c.id + ' at ' + c.loc + (net ? ' — variance ' + (net > 0 ? '+' : '') + net + ' sent for adjustment review.' : ' — no variance.')); } };
+    }
+    // role sheet
+    let sr = { groups: [] };
+    if (sk === 'role') {
+      const r = db.roles.find(x => x.id === s.sheet.id) || db.roles[0], locked = r.id === 'admin', draft = s.permDraft || r.perms;
+      sr = { ...r, locked, editable: !locked, n: draft.length, of: W.ALLP.length, users: db.users.filter(u => u.roles.includes(r.name)).length, dirty: !!s.permDraft && JSON.stringify([...s.permDraft].sort()) !== JSON.stringify([...r.perms].sort()),
+        groups: W.PERMS.map(([g, ks]) => ({ g, ks: ks.map(k => { const on = draft.includes(k); return { k, icon: on ? 'ph-check-square' : 'ph-square', c: on ? 'var(--color-accent)' : 'var(--color-neutral-600)', tc: on ? 'var(--color-text)' : 'var(--color-neutral-400)', toggle: () => { if (locked) return; this.setState({ permDraft: on ? draft.filter(x => x !== k) : [...draft, k] }); } }; }) })),
+        save: () => { ctx.update('roles', l => l.map(x => x.id === r.id ? { ...x, perms: draft } : x)); this.setState({ permDraft: null }); this.toast('ok', 'Permissions saved', r.name + ' · ' + draft.length + ' of ' + W.ALLP.length); }, reset: () => this.setState({ permDraft: null }) };
+      sr.clean = !sr.dirty;
+    }
+    // packing sheet
+    let spk = { lines: [] };
+    if (sk === 'packing') {
+      const o = db.packing.find(x => x.ref === s.sheet.id) || db.packing[0], wsBy = A.byId(db.workstreams);
+      const lines = o.lines.map(l => { const p = P(l.pid); return { ...l, p, name: p.name, sku: p.sku, qtyS: fmt(l.qty) + ' ' + p.uom, path: W.path(l.loc).join(' › '), wsName: wsBy[p.ws] ? wsBy[p.ws].name : '—' }; });
+      const others = o.total - o.lines.length;
+      spk = { ...o, title: o.label || 'Order ' + o.ref.slice(0, 8), lines, others, hasOthers: others > 0, othersS: others + ' more item' + (others === 1 ? ' is' : 's are') + ' packed by other workstreams.', print: () => A.exportPickList([{ ...o, title: o.label || 'Order ' + o.ref.slice(0, 8), lines }], ctx) };
+    }
+    // report sheet
+    let rp = { head: [], body: [], foot: [] };
+    if (sk === 'report') { rp = A.preview(s.sheet.id, ctx); rp.pdf = () => A.exportReport(s.sheet.id, 'pdf', ctx); rp.xlsx = () => A.exportReport(s.sheet.id, 'xlsx', ctx); }
+    // receive / transfer
+    const rpP = P(s.rcv.pid), rq = parseFloat(s.rcv.qty) || 0, rBefore = W.BD[rpP.id] ? W.locQty(rpP.id, s.rcv.dest) : 0;
+    const tp = P(s.trf.pid), srcs = W.BD[tp.id] || [], tFrom = s.trf.from && srcs.find(r => r.loc.id === s.trf.from) ? s.trf.from : (srcs[0] && srcs[0].loc.id);
+    const tq = parseFloat(s.trf.qty) || 0, fromRow = srcs.find(r => r.loc.id === tFrom), fromAvail = fromRow ? fromRow.onHand - fromRow.reserved : 0, toBefore = W.BD[tp.id] ? W.locQty(tp.id, s.trf.to) : 0;
+    const now = () => new Date().toTimeString().slice(0, 5);
+    const submitRcv = () => {
+      if (!(rq > 0)) return this.toast('bad', 'Enter a quantity greater than 0', 'Nothing was received.');
+      if (!s.rcv.supplier.trim()) return this.toast('bad', 'Supplier is required', 'Add the supplier before receiving.');
+      const id = 'GRN-2026-000' + (49 + db.receipts.length - 9);
+      ctx.update('receipts', l => [{ id, date: '29 Sep 2026', time: now(), pid: rpP.id, qty: rq, to: s.rcv.dest, supplier: s.rcv.supplier.trim(), by: 'Nomsa Mahlangu' }, ...l]);
+      ctx.update('products', l => l.map(x => x.id === rpP.id ? { ...x, stock: x.stock + rq } : x));
+      this.setState(st => ({ sheet: null, rcv: { ...st.rcv, qty: '', ref: '' } }));
+      this.toast('ok', `Received ${fmt(rq)} ${rpP.uom} of ${rpP.name}`, `${id} · ${s.rcv.dest} on hand is now ${fmt(rBefore + rq)}.`, { label: 'View stock', fn: () => { ctx.setLs('inventory', { f: { pid: rpP.id } }); this.go('inventory'); } });
+    };
+    const submitTrf = () => {
+      if (!(tq > 0)) return this.toast('bad', 'Enter a quantity greater than 0', 'Nothing was moved.');
+      if (tq > fromAvail) return this.toast('warn', 'Not enough available stock', `Only ${fmt(fromAvail)} ${tp.uom} available at ${tFrom}.`);
+      if (s.trf.to === tFrom) return this.toast('warn', 'Choose a different destination', 'Source and destination are the same location.');
+      const id = 'TRF-00' + (913 + db.transfers.length - 6);
+      ctx.update('transfers', l => [{ id, date: '29 Sep 2026', time: now(), pid: tp.id, qty: tq, from: tFrom, to: s.trf.to, by: 'Nomsa Mahlangu' }, ...l]);
+      this.setState(st => ({ sheet: null, trf: { ...st.trf, qty: '' } }));
+      this.toast('ok', `Moved ${fmt(tq)} ${tp.uom} of ${tp.name}`, `${id} · ${tFrom} → ${s.trf.to}`, { label: 'View stock', fn: () => { ctx.setLs('inventory', { f: { pid: tp.id } }); this.go('inventory'); } });
+    };
+    const inp = (obj, k) => e => { const x = e.target.value; this.setState(st => ({ [obj]: { ...st[obj], [k]: x } })); };
+
+    return this.rest3({ ...v, sk, sp, sc, sr, spk, rp, submitRcv, submitTrf, inp,
+      rcvV: { ...s.rcv, uom: rpP.uom, prodOpts: selO(prodOpts, s.rcv.pid), leafOpts: selO(leafOpts, s.rcv.dest), set: { pid: inp('rcv', 'pid'), qty: inp('rcv', 'qty'), dest: inp('rcv', 'dest'), supplier: inp('rcv', 'supplier'), ref: inp('rcv', 'ref') },
+        prevName: W.path(s.rcv.dest).join(' › '), before: fmt(rBefore), after: fmt(rBefore + rq), delta: rq ? '+' + fmt(rq) : '—' },
+      trfV: { ...s.trf, from: tFrom, uom: tp.uom, prodOpts: selO(prodOpts, s.trf.pid), leafOpts: selO(leafOpts, s.trf.to), set: { pid: e => { const x = e.target.value; this.setState(st => ({ trf: { ...st.trf, pid: x, from: null } })); }, qty: inp('trf', 'qty'), to: inp('trf', 'to') },
+        sources: srcs.map(r => { const on = r.loc.id === tFrom; return { path: W.path(r.loc.id).join(' › '), availS: fmt(r.onHand - r.reserved), border: on ? 'var(--color-accent)' : 'var(--color-divider)', bg: on ? 'color-mix(in srgb, var(--color-accent) 8%, transparent)' : 'transparent', dot: on ? 'var(--color-accent)' : 'transparent', pick: () => this.setState(st => ({ trf: { ...st.trf, from: r.loc.id } })) }; }),
+        noSrc: !srcs.length, fromBefore: fmt(fromRow ? fromRow.onHand : 0), fromAfter: fmt((fromRow ? fromRow.onHand : 0) - tq), toBefore: fmt(toBefore), toAfter: fmt(toBefore + tq), avail: fmt(fromAvail), over: tq > fromAvail } });
+  }
+
+  rest3(v) {
+    const { s, W, A, ctx, db, phone, tablet, desktop, go, set, tag, seg, selO, leafOpts, OK, WARN, BAD, fmt, pendList, sk } = v;
+    // form dialog
+    const fm = s.form;
+    const setFV = (k, nv) => this.setState(st => ({ form: { ...st.form, values: { ...st.form.values, [k]: nv }, errors: { ...st.form.errors, [k]: null } } }));
+    const formFields = fm ? fm.fields.map(f => { const val = fm.values[f.key], t = f.type || 'text', err = fm.errors[f.key];
+      return { label: f.label, required: !!f.required, isText: t === 'text' || t === 'number', inputType: t === 'number' ? 'number' : 'text', isSelect: t === 'select', isTextarea: t === 'textarea', isSeg: t === 'seg', isMulti: t === 'multi',
+        value: val == null ? '' : val, placeholder: f.placeholder || '', disabled: !!f.disabled, onChange: e => setFV(f.key, e.target.value),
+        options: t === 'select' ? (f.options || []).map(([ov, ol]) => ({ v: ov, l: ol, sel: String(val) === String(ov) })) : [],
+        segs: t === 'seg' ? (f.options || []).map(([ov, ol]) => ({ label: ol, click: () => setFV(f.key, ov), color: val === ov ? 'var(--color-accent-200)' : 'var(--color-neutral-400)', bg: val === ov ? 'var(--color-accent-900)' : 'transparent' })) : [],
+        chips: t === 'multi' ? (f.options || []).map(([ov, ol]) => { const on = (val || []).includes(ov); return { l: ol, icon: on ? 'ph-check' : 'ph-plus', bg: on ? 'var(--color-accent-900)' : 'transparent', color: on ? 'var(--color-accent-200)' : 'var(--color-neutral-400)', border: on ? 'var(--color-accent)' : 'var(--color-divider)', toggle: () => setFV(f.key, on ? (val || []).filter(x => x !== ov) : [...(val || []), ov]) }; }) : [],
+        span: phone || f.span === 2 ? '1 / -1' : 'auto', hint: f.hint || '', hasHint: !!f.hint && !err, err: err || '', hasErr: !!err, border: err ? BAD : 'var(--color-divider)' }; }) : [];
+    const submitForm = () => {
+      const errs = {}; fm.fields.forEach(f => { const x = fm.values[f.key]; if (f.required && (x == null || String(x).trim() === '' || (Array.isArray(x) && !x.length))) errs[f.key] = 'Required'; });
+      if (Object.keys(errs).length) return this.setState(st => ({ form: { ...st.form, errors: errs } }));
+      const res = fm.onSubmit(fm.values);
+      if (res && typeof res === 'object' && Object.keys(res).length) return this.setState(st => ({ form: { ...st.form, errors: res } }));
+      this.setState({ dialog: null, form: null });
+    };
+    const d = s.dialog || {};
+    const dAdjRaw = d.kind === 'review' ? pendList.find(x => x.id === d.id) : null;
+    const reviewOk = () => {
+      if (!dAdjRaw) return this.setState({ dialog: null });
+      const approve = d.mode === 'approve';
+      if (!approve && !s.note.trim()) return this.setState({ noteErr: true });
+      const raw = db.pending.find(x => x.id === dAdjRaw.id);
+      ctx.update('pending', l => l.filter(x => x.id !== dAdjRaw.id));
+      ctx.update('hist', l => [{ ...raw, status: approve ? 'Approved' : 'Rejected', reviewer: 'Nomsa Mahlangu', note: s.note.trim() || '—', when: 'Today' }, ...l]);
+      this.setState({ dialog: null });
+      if (approve) this.toast('ok', `Approved — stock moved for ${dAdjRaw.product}.`, `${dAdjRaw.deltaS} ${dAdjRaw.bucketS} at ${dAdjRaw.loc}`, { label: 'View in inventory', fn: () => { ctx.setLs('inventory', { f: { pid: dAdjRaw.pid } }); this.go('inventory'); } });
+      else this.toast('warn', 'Adjustment rejected — no stock moved.', dAdjRaw.product + ' · the requester sees your note.');
+    };
+    const dAuditRaw = d.kind === 'audit' ? W.AUDIT.find(x => x.i === d.i) : null;
+    const dAudit = dAuditRaw ? { ...dAuditRaw, idS: dAuditRaw.entityId || '—', fg: tag(W.ACTION_TONE[dAuditRaw.action]).fg, bg: tag(W.ACTION_TONE[dAuditRaw.action]).bg, oldS: dAuditRaw.oldV ? JSON.stringify(dAuditRaw.oldV, null, 2) : '(none)', newS: dAuditRaw.newV ? JSON.stringify(dAuditRaw.newV, null, 2) : '(none)' } : {};
+    const startOk = () => { const n = db.counts.length, id = 'SC-0' + (143 + n - 5), items = W.LBY[s.startLoc] ? W.locStock(s.startLoc).length : 0;
+      ctx.update('counts', l => [{ id, loc: s.startLoc, items, counted: 0, variance: 0, by: 'Nomsa Mahlangu', started: '29 Sep 2026, ' + new Date().toTimeString().slice(0, 5), status: 'In progress' }, ...l]);
+      this.setState({ dialog: null, sheet: { kind: 'count', id }, countDraft: {} }); this.toast('ok', 'Stock count started', `${items} products snapshotted at ${s.startLoc}.`); };
+
+    // settings
+    const SECS = [['profile', 'Profile', 'ph-user'], ['appearance', 'Appearance', 'ph-palette'], ['branding', 'Report branding', 'ph-image'], ['contact', 'Contact & alerts', 'ph-bell-simple'], ['mfa', 'Sign-in check', 'ph-shield-check'], ['password', 'Password', 'ph-password'], ['keys', 'API keys', 'ph-key']];
+    const secs = SECS.map(([id, label, icon]) => ({ label, icon, click: set('sec', id), bg: s.sec === id ? 'var(--color-accent-900)' : 'transparent', color: s.sec === id ? 'var(--color-text)' : 'var(--color-neutral-400)', bar: s.sec === id ? 'var(--color-accent)' : 'transparent' }));
+    const sec = {}; SECS.forEach(([id]) => sec[id] = s.sec === id);
+    const keyList = db.keys.map(k => { const t = tag(k.active ? 'ok' : 'neutral'); return { ...k, statusS: k.active ? 'Active' : 'Revoked', stFg: t.fg, stBg: t.bg, scopeTags: k.scopes.map(x => ({ x })),
+      revoke: () => this.confirm(`Revoke "${k.name}"?`, 'Any caller still using this key will be rejected immediately.', 'Revoke', true, () => { ctx.update('keys', l => l.map(x => x.id === k.id ? { ...x, active: false } : x)); this.toast('ok', 'API key revoked', k.name); }) }; });
+    const onLogo = e => { const f = e.target.files && e.target.files[0]; if (!f) return; const r = new FileReader(); r.onload = () => { try { localStorage.setItem('wh-logo', r.result); } catch (x) {} this.setState({ logo: r.result }); this.toast('ok', 'Logo updated', 'Used on every PDF and Excel export.'); }; r.readAsDataURL(f); };
+
+    // notifications
+    const notes = [
+      { icon: 'ph-hourglass-medium', fg: WARN, bg: tag('warn').bg, title: db.pending.length + ' adjustments waiting for review', msg: 'Oldest: Sunflower Oil 2L, 4 days', time: '10:40', click: go('adjustments') },
+      { icon: 'ph-warning', fg: WARN, bg: tag('warn').bg, title: 'Laundry Powder 2kg below minimum', msg: '12 on hand · minimum 25', time: '09:15', click: () => this.setState({ sheet: { kind: 'product', id: 'P-1006' }, notif: false }) },
+      { icon: 'ph-check-circle', fg: OK, bg: tag('ok').bg, title: 'Stock count submitted', msg: 'SC-0141 at B-01-01 by Thandi Nkosi', time: 'Yesterday', click: go('counts') }];
+    const toastTop = (this.props.toastPosition || 'bottom-right') === 'top-center' || phone;
+    const tIcon = { ok: 'ph-check-circle', warn: 'ph-warning', bad: 'ph-x-circle', info: 'ph-info' };
+
+    return {
+      ...v, phone, tablet, desktop, notPhone: !phone, notDesktop: !desktop, pad: phone ? '12px 12px 20px' : '16px 20px 28px', brandW: desktop ? '212px' : 'auto',
+      hasFlyout: tablet && !!v.fly, fly: v.fly || { items: [] }, closeFlyout: set('flyout', null),
+      crumbGroup: v.activeGroup && !v.activeGroup.flat ? v.activeGroup.title : '', hasCrumbGroup: !!(v.activeGroup && !v.activeGroup.flat), crumbLabel: v.curItem.label,
+      openDrawer: set('drawer', true), closeDrawer: set('drawer', false), drawer: s.drawer && !desktop,
+      themeIcon: s.theme === 'dark' ? 'ph-sun' : 'ph-moon', themeLabel: s.theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme', toggleTheme: () => this.setTheme(s.theme === 'dark' ? 'light' : 'dark'),
+      themeOpts: seg(s.theme, [['dark', 'Dark'], ['light', 'Light']], t => this.setTheme(t)),
+      notif: s.notif, toggleNotif: () => this.setState(st => ({ notif: !st.notif, unread: 0 })), unread: s.unread, hasUnread: s.unread > 0, notes,
+      markRead: () => { this.setState({ notif: false }); this.toast('info', 'All caught up', 'Notifications marked as read.'); },
+      notifPos: phone ? { l: '8px', r: '8px', w: 'auto' } : { l: 'auto', r: '12px', w: '360px' },
+      onGlobalSearch: e => { if (e.key === 'Enter') { ctx.setLs('products', { q: e.target.value }); this.go('products'); } },
+      askSignOut: () => this.confirm('Sign out?', 'You will need to sign in again, including your sign-in check.', 'Sign out', false, () => this.toast('info', 'Signed out', 'Demo only — you are still here.')),
+      isDash: s.screen === 'dashboard', isSettings: s.screen === 'settings', notStruct: !v.isStruct, listContent: v.isList && !v.isStruct,
+      structCols: phone ? 'minmax(0, 1fr)' : 'minmax(0, 1.35fr) minmax(300px, 1fr)', inactiveBorder: s.showInactive ? 'var(--color-accent)' : 'var(--color-divider)', inactiveColor: s.showInactive ? 'var(--color-accent-200)' : 'var(--color-neutral-400)', inactiveIcon: s.showInactive ? 'ph-check-square' : 'ph-square', toggleInactive: () => this.setState(st => ({ showInactive: !st.showInactive })),
+      goLow: () => { ctx.setLs('products', { f: { low: true } }); this.go('products'); }, goAdj: go('adjustments'), pendCount: pendList.length, pendEmpty: !pendList.length, lowCount: v.lowList.length, moveTotal: fmt(W.MOVES.reduce((a, m) => a + m[1], 0)),
+      refresh: () => this.toast('info', 'Dashboard refreshed', 'Figures as of ' + new Date().toTimeString().slice(0, 5) + '.'),
+      hasSheet: !!s.sheet, closeSheet: set('sheet', null), sheetW: phone ? '100%' : sk === 'report' ? '760px' : '480px',
+      sheetKicker: sk ? { product: 'Product', count: 'Stock count', role: 'Role permissions', receive: 'Receive stock', transfer: 'Transfer stock', packing: 'Packing', report: 'Report preview' }[sk] : '',
+      sheetProduct: sk === 'product', sheetCount: sk === 'count', sheetRole: sk === 'role', sheetReceive: sk === 'receive', sheetTransfer: sk === 'transfer', sheetPacking: sk === 'packing', sheetReport: sk === 'report',
+      logoSrc: s.logo || A.defaultLogo(), company: s.company, setCompany: e => { const x = e.target.value; try { localStorage.setItem('wh-company', x); } catch (er) {} this.setState({ company: x }); }, onLogo,
+      resetLogo: () => { try { localStorage.removeItem('wh-logo'); } catch (e) {} this.setState({ logo: null }); this.toast('info', 'Default logo restored', ''); }, today: new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
+      hasDialog: !!s.dialog, closeDialog: () => this.setState({ dialog: null, form: null }), stop: e => e.stopPropagation(), dlgW: d.kind === 'audit' ? 'min(720px, 100%)' : d.kind === 'form' ? 'min(560px, 100%)' : 'min(460px, 100%)',
+      dlgConfirm: d.kind === 'confirm', dlgReview: d.kind === 'review' && !!dAdjRaw, dlgStart: d.kind === 'start', dlgAudit: d.kind === 'audit', dlgForm: d.kind === 'form' && !!fm, dlg: d,
+      fm: fm || {}, formFields, submitForm, formCols: phone ? 'minmax(0, 1fr)' : 'repeat(2, minmax(0, 1fr))',
+      dlgOkColor: d.destructive ? BAD : 'var(--color-accent)', dlgOk: () => { const f = d.onOk; this.setState({ dialog: null }); if (f) f(); },
+      dAdj: dAdjRaw || {}, reviewTitle: d.mode === 'reject' ? 'Reject adjustment' : 'Approve adjustment', reviewLabel: d.mode === 'reject' ? 'Reject' : 'Approve',
+      reviewNoteLabel: d.mode === 'reject' ? 'Review note (required)' : 'Review note (optional)', reviewColor: d.mode === 'reject' ? BAD : 'var(--color-accent)', reviewEffect: d.mode === 'reject' ? 'No stock moves. The requester sees your note.' : 'Stock moves immediately when you approve.',
+      note: s.note, setNote: e => this.setState({ note: e.target.value, noteErr: false }), noteErr: s.noteErr, noteBorder: s.noteErr ? BAD : 'var(--color-divider)', reviewOk,
+      startLeafs: selO(leafOpts, s.startLoc), setStartLoc: e => this.setState({ startLoc: e.target.value }), startOk, dAudit,
+      secs, sec, settingsCols: desktop ? '196px minmax(0, 680px)' : 'minmax(0, 1fr)', secDir: desktop ? 'column' : 'row', keyList, newKey: () => A.FORMS.apiKey(ctx),
+      channels: seg(s.channel, [['Email', 'Email'], ['SMS', 'SMS']], c => this.setState({ channel: c })), saveContact: () => this.toast('ok', 'Contact details saved', 'Alerts go to ' + s.channel + '.'),
+      changePw: () => this.toast('ok', 'Password changed.', 'Other sessions stay signed in.'), reconfigure: () => this.toast('info', 'Re-scan the QR code in your authenticator app', ''),
+      toasts: s.toasts.map(t => ({ ...t, fg: tag(t.tone).fg, bg: tag(t.tone).bg, icon: tIcon[t.tone], hasAction: !!t.action, actionLabel: t.action ? t.action.label : '', act: () => { if (t.action) t.action.fn(); this.dismiss(t.id); }, close: () => this.dismiss(t.id), hasMsg: !!t.msg })),
+      tPos: toastTop ? { t: phone ? '56px' : '60px', b: 'auto', l: phone ? '8px' : '50%', r: phone ? '8px' : 'auto', w: phone ? 'auto' : '380px', x: phone ? 'none' : 'translateX(-50%)' } : { t: 'auto', b: '16px', l: 'auto', r: '16px', w: '370px', x: 'none' },
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,1114 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/nocturne-be9d3f1f-d5d9-41eb-9548-70d42100af34/styles.css">
+<script src="_ds/nocturne-be9d3f1f-d5d9-41eb-9548-70d42100af34/_ds_bundle.js"></script>
+<script src="https://unpkg.com/@phosphor-icons/web@2.1.1"></script>
+<script src="warehouse-data.js"></script>
+<style>
+html,body{margin:0;height:100%;background:var(--color-bg)}
+a{color:var(--color-accent-300)} a:hover{color:var(--color-accent-200)}
+select.input{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--color-neutral-400) 50%),linear-gradient(135deg,var(--color-neutral-400) 50%,transparent 50%);background-position:calc(100% - 15px) 55%,calc(100% - 10px) 55%;background-size:5px 5px;background-repeat:no-repeat;padding-right:28px}
+@keyframes wIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@keyframes wFade{from{opacity:0}to{opacity:1}}
+@keyframes wPop{from{opacity:0;transform:scale(.97) translateY(6px)}to{opacity:1;transform:none}}
+@keyframes wSlide{from{transform:translateX(28px);opacity:0}to{transform:none;opacity:1}}
+@keyframes wSlideL{from{transform:translateX(-28px);opacity:0}to{transform:none;opacity:1}}
+@keyframes wShrink{from{transform:scaleX(1)}to{transform:scaleX(0)}}
+</style>
+</helmet>
+<div style="height:100vh;display:flex;flex-direction:column;background:var(--color-bg);color:var(--color-text);font-family:var(--font-body);font-size:13px;line-height:1.45;overflow:hidden">
+  <header style="position:relative;flex:none;height:50px;display:flex;align-items:center;gap:10px;padding:0 12px;background:linear-gradient(180deg,color-mix(in srgb,var(--color-surface) 70%,var(--color-bg)),var(--color-bg))">
+    <sc-if value="{{ notDesktop }}" hint-placeholder-val="{{ false }}"><button class="btn btn-icon" onClick="{{ openDrawer }}" aria-label="Menu" style="white-space:nowrap;flex:none;width:34px;height:34px;color:var(--color-neutral-300)"><i class="ph ph-list" style="font-size:20px"></i></button></sc-if>
+    <sc-if value="{{ notPhone }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;align-items:center;gap:9px;flex:none;width:{{ brandW }}">
+        <div style="width:26px;height:26px;border-radius:7px;border:1px solid var(--color-accent);display:grid;place-items:center;color:var(--color-accent);box-shadow:0 0 14px color-mix(in srgb,var(--color-accent) 35%,transparent)"><i class="ph-bold ph-warehouse" style="font-size:14px"></i></div>
+        <div style="font-weight:500;font-size:14px;white-space:nowrap">Warehouse <span style="color:var(--color-neutral-500);font-weight:400">System</span></div>
+      </div>
+      <div style="flex:1;min-width:0;display:flex;align-items:center;gap:7px;font-size:12px;color:var(--color-neutral-400);white-space:nowrap;overflow:hidden">
+        <sc-if value="{{ hasCrumbGroup }}"><span>{{ crumbGroup }}</span><i class="ph ph-caret-right" style="font-size:10px;color:var(--color-neutral-600)"></i></sc-if>
+        <span style="color:var(--color-text);font-weight:500">{{ crumbLabel }}</span>
+      </div>
+    </sc-if>
+    <sc-if value="{{ phone }}" hint-placeholder-val="{{ false }}"><div style="flex:1;min-width:0;font-size:15px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ crumbLabel }}</div></sc-if>
+    <sc-if value="{{ desktop }}" hint-placeholder-val="{{ true }}">
+      <label style="position:relative;display:block;width:300px;flex:none">
+        <i class="ph ph-magnifying-glass" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--color-neutral-500);font-size:14px"></i>
+        <input class="input" placeholder="Find a product by SKU or name" onKeyDown="{{ onGlobalSearch }}" style="min-height:32px;padding:4px 52px 4px 30px;font-size:13px;background:color-mix(in srgb,var(--color-surface) 70%,transparent)">
+        <span style="position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:10px;color:var(--color-neutral-500);border:1px solid var(--color-neutral-800);border-radius:4px;padding:1px 5px">Enter</span>
+      </label>
+    </sc-if>
+    <button class="btn btn-icon" onClick="{{ toggleNotif }}" aria-label="Notifications" style="white-space:nowrap;flex:none;position:relative;width:34px;height:34px;color:var(--color-neutral-300)"><i class="ph ph-bell" style="font-size:19px"></i><sc-if value="{{ hasUnread }}"><span style="position:absolute;top:3px;right:3px;min-width:15px;height:15px;padding:0 4px;border-radius:8px;background:var(--color-accent);color:var(--color-bg);font-size:10px;font-weight:600;line-height:15px;text-align:center">{{ unread }}</span></sc-if></button>
+    <div style="display:flex;align-items:center;gap:8px">
+      <div style="width:28px;height:28px;border-radius:8px;background:var(--color-accent-800);color:var(--color-accent-100);display:grid;place-items:center;font-size:11px;font-weight:600">NM</div>
+      <sc-if value="{{ desktop }}" hint-placeholder-val="{{ true }}"><div style="line-height:1.2"><div style="font-size:12px;font-weight:500">Nomsa Mahlangu</div><div style="font-size:11px;color:var(--color-neutral-400)">Warehouse Manager</div></div></sc-if>
+    </div>
+    <div style="position:absolute;left:0;right:0;bottom:0;height:1px;background:linear-gradient(to right,transparent,var(--color-divider) 48px,var(--color-divider) calc(100% - 48px),transparent)"></div>
+  </header>
+
+  <div style="flex:1;min-height:0;display:flex">
+    <sc-if value="{{ desktop }}" hint-placeholder-val="{{ true }}">
+      <aside style="flex:none;width:232px;display:flex;flex-direction:column;border-right:1px solid var(--color-neutral-900);background:linear-gradient(180deg,color-mix(in srgb,var(--color-surface) 40%,var(--color-bg)),var(--color-bg) 70%)">
+        <div style="flex:1;overflow:auto;padding:8px">
+          <sc-for list="{{ nav }}" as="g" hint-placeholder-count="6">
+            <sc-if value="{{ g.flat }}">
+              <button onClick="{{ g.first.go }}" style="width:100%;display:flex;align-items:center;gap:9px;padding:7px 10px;border:0;border-radius:6px;cursor:pointer;font:inherit;font-size:13px;text-align:left;background:{{ g.first.bg }};color:{{ g.first.color }};font-weight:{{ g.first.weight }};box-shadow:inset 2px 0 0 {{ g.first.bar }}"><i class="ph-duotone {{ g.first.icon }}" style="font-size:17px;color:{{ g.first.ic }}"></i><span style="flex:1">{{ g.first.label }}</span></button>
+            </sc-if>
+            <sc-if value="{{ g.notFlat }}">
+              <div style="margin-top:8px">
+                <button onClick="{{ g.toggle }}" style="width:100%;display:flex;align-items:center;gap:9px;padding:5px 10px;border:0;background:transparent;cursor:pointer;font:inherit;font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--color-neutral-400);border-radius:6px;box-shadow:inset 2px 0 0 {{ g.cue }}" style-hover="color:var(--color-text);background:color-mix(in srgb,var(--color-text) 4%,transparent)"><i class="ph-duotone {{ g.icon }}" style="font-size:15px;color:{{ g.iconColor }}"></i><span style="flex:1;text-align:left">{{ g.title }}</span><sc-if value="{{ g.hasGroupBadge }}"><span style="min-width:18px;padding:0 5px;height:16px;border-radius:8px;background:color-mix(in oklab,oklch(0.83 0.13 80) 18%,transparent);color:oklch(0.83 0.13 80);font-size:10px;font-weight:600;line-height:16px;text-align:center;letter-spacing:0">{{ g.groupBadge }}</span></sc-if><i class="ph-bold ph-caret-down" style="font-size:10px;transition:transform .16s;transform:{{ g.caret }}"></i></button>
+                <sc-if value="{{ g.open }}">
+                  <div style="display:flex;flex-direction:column;gap:1px;padding:2px 0 2px">
+                    <sc-for list="{{ g.items }}" as="it">
+                      <button onClick="{{ it.go }}" style="width:100%;display:flex;align-items:center;gap:9px;padding:6px 10px 6px 16px;border:0;border-radius:6px;cursor:pointer;font:inherit;font-size:13px;text-align:left;background:{{ it.bg }};color:{{ it.color }};font-weight:{{ it.weight }};box-shadow:inset 2px 0 0 {{ it.bar }}"><i class="ph-duotone {{ it.icon }}" style="font-size:15px;color:{{ it.ic }}"></i><span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ it.label }}</span><sc-if value="{{ it.hasBadge }}"><span style="min-width:18px;padding:0 5px;height:16px;border-radius:8px;background:color-mix(in oklab,oklch(0.83 0.13 80) 18%,transparent);color:oklch(0.83 0.13 80);font-size:10px;font-weight:600;line-height:16px;text-align:center">{{ it.badge }}</span></sc-if></button>
+                    </sc-for>
+                  </div>
+                </sc-if>
+              </div>
+            </sc-if>
+          </sc-for>
+        </div>
+        <div style="padding:10px;border-top:1px solid var(--color-neutral-900);display:flex;align-items:center;gap:8px">
+          <div style="flex:1;min-width:0;line-height:1.3">
+            <div style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--color-neutral-500)">Signed in as</div>
+            <div style="font-size:12px;font-weight:500">Nomsa Mahlangu</div>
+            <div style="font-size:11px;color:var(--color-accent-300)">Warehouse Manager · JHB-01</div>
+          </div>
+          <button class="btn btn-icon btn-secondary" onClick="{{ askSignOut }}" aria-label="Sign out" style="white-space:nowrap;flex:none;width:30px;height:30px;color:var(--color-neutral-400)"><i class="ph ph-sign-out" style="font-size:15px"></i></button>
+        </div>
+      </aside>
+    </sc-if>
+
+    <sc-if value="{{ tablet }}" hint-placeholder-val="{{ false }}">
+      <aside style="flex:none;width:72px;border-right:1px solid var(--color-neutral-900);padding:6px 4px;display:flex;flex-direction:column;gap:4px;overflow:auto">
+        <sc-for list="{{ nav }}" as="g"><button onClick="{{ g.railClick }}" style="position:relative;display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 2px;border:0;border-radius:8px;cursor:pointer;font:inherit;font-size:10px;background:{{ g.railBg }};color:{{ g.railColor }}" style-hover="background:color-mix(in srgb,var(--color-text) 6%,transparent)"><i class="ph-duotone {{ g.icon }}" style="font-size:21px"></i><span>{{ g.short }}</span><sc-if value="{{ g.hasBadgeAny }}"><span style="position:absolute;top:6px;right:14px;width:7px;height:7px;border-radius:50%;background:oklch(0.83 0.13 80)"></span></sc-if></button></sc-for>
+      </aside>
+    </sc-if>
+
+    <main style="flex:1;min-width:0;overflow:auto;padding:{{ pad }}">
+
+      <sc-if value="{{ scr.dashboard }}" hint-placeholder-val="{{ true }}">
+        <div data-screen-label="Dashboard" style="max-width:1400px">
+          <div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+            <div style="flex:1;min-width:200px">
+              <h1 style="font-size:22px;margin:0">Dashboard</h1>
+              <div style="font-size:12px;color:var(--color-neutral-400);margin-top:3px">Main Warehouse (JHB-01) · figures as of 10:42 today</div>
+            </div>
+            <button class="btn btn-secondary" onClick="{{ refresh }}" style="white-space:nowrap;flex:none;font-size:13px;padding:5px 10px"><i class="ph ph-arrows-clockwise"></i>Refresh</button>
+          </div>
+          <div style="display:grid;gap:12px;align-items:start;grid-template-columns:{{ dashCols }};grid-template-areas:{{ dashAreas }}">
+            <section style="grid-area:kpi;display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:0;border-radius:var(--radius-md);overflow:hidden;background:var(--color-surface);box-shadow:var(--shadow-sm)">
+              <sc-for list="{{ kpis }}" as="k" hint-placeholder-count="5">
+                <button onClick="{{ k.go }}" style="text-align:left;border:0;font:inherit;color:inherit;cursor:pointer;padding:12px 14px;background:var(--color-surface);box-shadow:1px 0 0 var(--color-neutral-800),0 1px 0 var(--color-neutral-800);display:flex;flex-direction:column;gap:3px" style-hover="background:color-mix(in srgb,var(--color-surface) 82%,var(--color-accent-800))">
+                  <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--color-neutral-400)"><i class="ph-duotone {{ k.icon }}" style="font-size:14px;color:{{ k.fg }}"></i>{{ k.label }}</div>
+                  <div style="font-size:22px;font-weight:500;letter-spacing:-.01em;font-variant-numeric:tabular-nums;color:{{ k.valColor }}">{{ k.value }}</div>
+                  <div style="font-size:11px;color:var(--color-neutral-500)">{{ k.sub }}</div>
+                </button>
+              </sc-for>
+            </section>
+
+            <section style="grid-area:low;min-width:0;border-radius:var(--radius-md);background:var(--color-surface);box-shadow:var(--shadow-sm)">
+              <div style="display:flex;align-items:center;gap:8px;padding:10px 12px 8px">
+                <h2 style="font-size:14px;margin:0;flex:1;display:flex;align-items:center;gap:8px">Low stock <span style="font-size:11px;padding:1px 7px;border-radius:6px;background:color-mix(in oklab,oklch(0.83 0.13 80) 15%,transparent);color:oklch(0.83 0.13 80)">{{ lowCount }}</span></h2>
+                <button class="btn btn-ghost" onClick="{{ goLow }}" style="white-space:nowrap;flex:none;font-size:12px">View all<i class="ph ph-arrow-right"></i></button>
+              </div>
+              <sc-for list="{{ lowList }}" as="p" hint-placeholder-count="4">
+                <button onClick="{{ p.open }}" style="width:100%;display:grid;grid-template-columns:minmax(0,1fr) 72px 44px;align-items:center;gap:10px;padding:7px 12px;border:0;border-top:1px solid var(--color-neutral-900);background:transparent;font:inherit;color:inherit;text-align:left;cursor:pointer" style-hover="background:color-mix(in srgb,var(--color-text) 4%,transparent)">
+                  <div style="min-width:0"><div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ p.name }}</div><div style="font-size:11px;color:var(--color-neutral-500)">{{ p.sku }} · {{ p.onHand }} of {{ p.minS }} min</div></div>
+                  <div style="height:5px;border-radius:3px;background:var(--color-neutral-900);overflow:hidden"><div style="height:100%;width:{{ p.pct }};background:oklch(0.83 0.13 80);border-radius:3px"></div></div>
+                  <span style="justify-self:end;font-size:12px;font-weight:500;color:oklch(0.74 0.16 25);font-variant-numeric:tabular-nums">−{{ p.short }}</span>
+                </button>
+              </sc-for>
+            </section>
+
+            <section style="grid-area:pend;min-width:0;border-radius:var(--radius-md);background:var(--color-surface);box-shadow:var(--shadow-sm)">
+              <div style="display:flex;align-items:center;gap:8px;padding:10px 12px 8px">
+                <h2 style="font-size:14px;margin:0;flex:1;display:flex;align-items:center;gap:8px">Pending adjustments <span style="font-size:11px;padding:1px 7px;border-radius:6px;background:var(--color-neutral-900);color:var(--color-neutral-300)">{{ pendCount }}</span></h2>
+                <button class="btn btn-ghost" onClick="{{ goAdj }}" style="white-space:nowrap;flex:none;font-size:12px">Review queue<i class="ph ph-arrow-right"></i></button>
+              </div>
+              <sc-if value="{{ pendEmpty }}"><div style="padding:14px 12px;border-top:1px solid var(--color-neutral-900);color:var(--color-neutral-400);font-size:12px">Nothing waiting for review.</div></sc-if>
+              <sc-for list="{{ pendList }}" as="a" hint-placeholder-count="4">
+                <button onClick="{{ goAdj }}" style="width:100%;display:grid;grid-template-columns:44px minmax(0,1fr) auto;gap:10px;align-items:center;padding:7px 12px;border:0;border-top:1px solid var(--color-neutral-900);background:transparent;font:inherit;color:inherit;text-align:left;cursor:pointer" style-hover="background:color-mix(in srgb,var(--color-text) 4%,transparent)">
+                  <span style="font-variant-numeric:tabular-nums;font-weight:500;color:{{ a.dFg }}">{{ a.deltaS }}</span>
+                  <div style="min-width:0"><div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ a.product }}</div><div style="font-size:11px;color:var(--color-neutral-500);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ a.bucketS }} · {{ a.loc }} · {{ a.reason }}</div></div>
+                  <span style="font-size:11px;padding:2px 7px;border-radius:6px;white-space:nowrap;background:{{ a.wBg }};color:{{ a.wFg }}">{{ a.waitS }}</span>
+                </button>
+              </sc-for>
+            </section>
+
+            <section style="grid-area:move;min-width:0;border-radius:var(--radius-md);background:var(--color-surface);box-shadow:var(--shadow-sm)">
+              <div style="display:flex;align-items:baseline;gap:8px;padding:10px 12px 10px">
+                <h2 style="font-size:14px;margin:0;flex:1">Stock movement</h2>
+                <span style="font-size:11px;color:var(--color-neutral-500)">{{ moveTotal }} transactions · 30 days</span>
+              </div>
+              <div style="padding:0 12px 12px;display:flex;flex-direction:column;gap:7px">
+                <sc-for list="{{ moves }}" as="m" hint-placeholder-count="6"><div style="display:grid;grid-template-columns:120px minmax(0,1fr) 30px;gap:8px;align-items:center;font-size:12px"><span style="color:var(--color-neutral-300);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ m.label }}</span><div style="height:7px;border-radius:4px;background:var(--color-neutral-900)"><div style="height:100%;border-radius:4px;width:{{ m.w }};background:{{ m.c }}"></div></div><span style="text-align:right;font-variant-numeric:tabular-nums;color:var(--color-neutral-300)">{{ m.n }}</span></div></sc-for>
+              </div>
+            </section>
+
+            <section style="grid-area:act;min-width:0;border-radius:var(--radius-md);background:var(--color-surface);box-shadow:var(--shadow-sm)">
+              <div style="display:flex;align-items:baseline;gap:8px;padding:10px 12px 8px"><h2 style="font-size:14px;margin:0;flex:1">Recent activity</h2><span style="font-size:11px;color:var(--color-neutral-500)">Latest ledger transactions</span></div>
+              <sc-for list="{{ acts }}" as="x" hint-placeholder-count="5">
+                <button onClick="{{ x.open }}" style="width:100%;display:grid;grid-template-columns:108px minmax(0,1fr) auto;gap:10px;align-items:center;padding:7px 12px;border:0;border-top:1px solid var(--color-neutral-900);background:transparent;font:inherit;color:inherit;text-align:left;cursor:pointer" style-hover="background:color-mix(in srgb,var(--color-text) 4%,transparent)">
+                  <span style="justify-self:start;font-size:10px;letter-spacing:.04em;padding:2px 7px;border-radius:6px;white-space:nowrap;background:{{ x.bg }};color:{{ x.fg }}">{{ x.typeS }}</span>
+                  <div style="min-width:0"><div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ x.product }} <span style="color:var(--color-neutral-500);font-size:11px">{{ x.sku }}</span></div><div style="font-size:11px;color:var(--color-neutral-500);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ x.where }} · by {{ x.by }}</div></div>
+                  <div style="text-align:right"><div style="font-variant-numeric:tabular-nums;font-weight:500">{{ x.qtyS }}</div><div style="font-size:11px;color:var(--color-neutral-500)">{{ x.when }}</div></div>
+                </button>
+              </sc-for>
+            </section>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ scr.products }}">
+        <div data-screen-label="Products" style="max-width:1400px">
+          <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+            <div style="flex:1;min-width:180px"><h1 style="font-size:22px;margin:0">Products</h1></div>
+            <button class="btn btn-secondary" onClick="{{ importProducts }}" style="white-space:nowrap;flex:none;font-size:13px;padding:5px 10px"><i class="ph ph-upload-simple"></i>Import</button>
+            <button class="btn btn-primary" onClick="{{ newProduct }}" style="white-space:nowrap;flex:none;font-size:13px;padding:5px 10px"><i class="ph ph-plus"></i>New product</button>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:4px 16px;margin-bottom:12px;font-size:12px;color:var(--color-neutral-400)">
+            <sc-for list="{{ pStats }}" as="st"><span><span style="font-weight:500;font-variant-numeric:tabular-nums;color:{{ st.c }}">{{ st.v }}</span> {{ st.l }}</span></sc-for>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px">
+            <label style="position:relative;flex:1 1 220px;max-width:340px">
+              <i class="ph ph-magnifying-glass" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--color-neutral-500)"></i>
+              <input class="input" value="{{ q }}" onChange="{{ setQ }}" placeholder="SKU or name" style="min-height:32px;padding:4px 10px 4px 30px;font-size:13px">
+            </label>
+            <div class="seg" style="flex:none;max-width:100%;overflow-x:auto">
+              <sc-for list="{{ pStatusOpts }}" as="o"><button onClick="{{ o.click }}" style="border:0;border-right:1px solid var(--color-divider);white-space:nowrap;padding:6px 10px;font:inherit;font-size:12px;cursor:pointer;background:{{ o.bg }};color:{{ o.color }}">{{ o.label }}</button></sc-for>
+            </div>
+            <div style="flex:1"></div>
+            <sc-if value="{{ notPhone }}">
+              <div class="seg" style="flex:none;max-width:100%;overflow-x:auto">
+                <sc-for list="{{ pViewOpts }}" as="o"><button onClick="{{ o.click }}" aria-label="{{ o.label }}" style="border:0;border-right:1px solid var(--color-divider);white-space:nowrap;padding:6px 9px;font:inherit;cursor:pointer;background:{{ o.bg }};color:{{ o.color }}"><i class="ph {{ o.icon }}" style="font-size:15px"></i></button></sc-for>
+              </div>
+            </sc-if>
+          </div>
+
+          <sc-if value="{{ pEmpty }}">
+            <div style="padding:36px 16px;text-align:left;border-radius:var(--radius-md);background:var(--color-surface);box-shadow:var(--shadow-sm)">
+              <div style="font-size:15px;font-weight:500">No products found</div>
+              <div style="font-size:12px;color:var(--color-neutral-400);margin:4px 0 10px">Try adjusting your search or filters.</div>
+              <button class="btn btn-secondary" onClick="{{ clearFilters }}" style="white-space:nowrap;flex:none;font-size:12px;padding:4px 10px">Clear filters</button>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ pTable }}">
+            <div style="border-radius:var(--radius-md);background:var(--color-surface);box-shadow:var(--shadow-sm);overflow:auto">
+              <table class="table" style="font-size:13px">
+                <thead><tr><th style="width:44px;padding-left:12px"></th><th>SKU</th><th>Name</th><th style="display:{{ colWide }}">Category</th><th style="display:{{ colWide }}">UOM</th><th style="text-align:right">Price</th><th style="width:170px">Stock vs min</th><th>Status</th></tr></thead>
+                <tbody>
+                  <sc-for list="{{ plist }}" as="p" hint-placeholder-count="8">
+                    <tr onClick="{{ p.open }}" style="cursor:pointer">
+                      <td style="padding-left:12px"><div style="width:28px;height:28px;border-radius:6px;background:var(--color-neutral-900);display:grid;place-items:center;color:var(--color-neutral-500)"><i class="ph-duotone ph-package" style="font-size:15px"></i></div></td>
+                      <td style="font-family:ui-monospace,Menlo,monospace;font-size:12px;color:var(--color-neutral-300);white-space:nowrap">{{ p.sku }}</td>
+                      <td style="font-weight:500">{{ p.name }}</td>
+                      <td style="display:{{ colWide }};white-space:nowrap"><span style="color:var(--color-neutral-400)">{{ p.cat }}</span> <i class="ph ph-caret-right" style="font-size:9px;color:var(--color-neutral-600)"></i> {{ p.sub }}</td>
+                      <td style="display:{{ colWide }};color:var(--color-neutral-400)">{{ p.uom }}</td>
+                      <td style="text-align:right;font-variant-numeric:tabular-nums">{{ p.priceS }}</td>
+                      <td>
+                        <div style="display:flex;align-items:center;gap:8px">
+                          <span style="width:36px;text-align:right;font-variant-numeric:tabular-nums;color:{{ p.stockColor }};font-weight:{{ p.stockW }}">{{ p.stockS }}</span>
+                          <div style="flex:1;position:relative;height:4px;border-radius:2px;background:var(--color-neutral-800)"><div style="height:100%;border-radius:2px;width:{{ p.barW }};background:{{ p.barC }}"></div><div title="Minimum" style="position:absolute;left:50%;top:-3px;width:1px;height:10px;background:var(--color-neutral-400)"></div></div>
+                        </div>
+                      </td>
+                      <td><span style="font-size:11px;padding:2px 8px;border-radius:6px;background:{{ p.stBg }};color:{{ p.stFg }}">{{ p.status }}</span></td>
+                    </tr>
+                  </sc-for>
+                </tbody>
+              </table>
+            </div>
+            <div style="font-size:11px;color:var(--color-neutral-500);margin-top:6px;display:flex;align-items:center;gap:6px"><span style="width:1px;height:10px;background:var(--color-neutral-400)"></span>tick marks each product's minimum stock level</div>
+          </sc-if>
+
+          <sc-if value="{{ pList }}">
+            <div style="border-radius:var(--radius-md);background:var(--color-surface);box-shadow:var(--shadow-sm);overflow:hidden">
+              <sc-for list="{{ plist }}" as="p" hint-placeholder-count="8">
+                <button onClick="{{ p.open }}" style="width:100%;display:grid;grid-template-columns:30px minmax(0,1fr) auto;gap:10px;align-items:center;padding:8px 10px;border:0;border-bottom:1px solid var(--color-neutral-900);background:transparent;font:inherit;color:inherit;text-align:left;cursor:pointer" style-hover="background:color-mix(in srgb,var(--color-text) 4%,transparent)">
+                  <div style="width:30px;height:30px;border-radius:6px;background:var(--color-neutral-900);display:grid;place-items:center;color:var(--color-neutral-500)"><i class="ph-duotone ph-package" style="font-size:15px"></i></div>
+                  <div style="min-width:0"><div style="font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ p.name }}</div><div style="font-size:11px;color:var(--color-neutral-500);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ p.sku }} · {{ p.sub }} · {{ p.priceS }}</div></div>
+                  <div style="text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:3px"><div style="font-variant-numeric:tabular-nums;color:{{ p.stockColor }};font-weight:{{ p.stockW }}">{{ p.stockS }} <span style="font-size:11px;color:var(--color-neutral-500);font-weight:400">/ {{ p.minS }} {{ p.uom }}</span></div><span style="font-size:10px;padding:1px 7px;border-radius:6px;background:{{ p.stBg }};color:{{ p.stFg }}">{{ p.status }}</span></div>
+                </button>
+              </sc-for>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ pGrid }}">
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px">
+              <sc-for list="{{ plist }}" as="p" hint-placeholder-count="8">
+                <button onClick="{{ p.open }}" style="display:flex;flex-direction:column;border:0;padding:0;font:inherit;color:inherit;text-align:left;cursor:pointer;border-radius:var(--radius-md);background:var(--color-surface);box-shadow:var(--shadow-sm);overflow:hidden" style-hover="box-shadow:var(--shadow-md)">
+                  <div style="aspect-ratio:4/3;display:grid;place-items:center;background:radial-gradient(circle at 50% 40%,var(--color-neutral-800),var(--color-neutral-900));color:var(--color-neutral-500)"><i class="ph-duotone ph-package" style="font-size:28px"></i></div>
+                  <div style="padding:8px 10px 10px;display:flex;flex-direction:column;gap:2px">
+                    <div style="font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ p.name }}</div>
+                    <div style="font-size:11px;color:var(--color-neutral-500)">{{ p.sku }} · {{ p.sub }}</div>
+                    <div style="display:flex;align-items:center;gap:6px;margin-top:4px"><span style="flex:1;font-variant-numeric:tabular-nums">{{ p.priceS }}</span><span style="font-size:12px;font-variant-numeric:tabular-nums;color:{{ p.stockColor }}">{{ p.stockS }} {{ p.uom }}</span></div>
+                  </div>
+                </button>
+              </sc-for>
+            </div>
+          </sc-if>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ scr.inventory }}">
+        <div data-screen-label="Inventory" style="max-width:1200px">
+          <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+            <h1 style="font-size:22px;margin:0;flex:1;min-width:160px">Inventory</h1>
+            <div class="seg"><sc-for list="{{ invTabs }}" as="o"><button onClick="{{ o.click }}" style="border:0;border-right:1px solid var(--color-divider);white-space:nowrap;padding:6px 11px;font:inherit;font-size:12px;cursor:pointer;background:{{ o.bg }};color:{{ o.color }}">{{ o.label }}</button></sc-for></div>
+          </div>
+          <sc-if value="{{ invByProduct }}">
+            <div class="field" style="max-width:420px;margin-bottom:12px"><label>Product</label><select class="input" onChange="{{ setInvPid }}" style="min-height:34px;font-size:13px"><sc-for list="{{ prodOptsInv }}" as="o"><option value="{{ o.id }}" selected="{{ o.sel }}">{{ o.label }}</option></sc-for></select></div>
+            <section style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:0;border-radius:var(--radius-md);overflow:hidden;background:var(--color-surface);box-shadow:var(--shadow-sm);margin-bottom:14px">
+              <sc-for list="{{ invTotals }}" as="t"><div style="padding:12px 14px;background:var(--color-surface);box-shadow:1px 0 0 var(--color-neutral-800),0 1px 0 var(--color-neutral-800)"><div style="font-size:11px;color:var(--color-neutral-400)">{{ t.l }}</div><div style="font-size:21px;font-weight:500;font-variant-numeric:tabular-nums;color:{{ t.c }}">{{ t.v }}</div><div style="font-size:11px;color:var(--color-neutral-500)">{{ t.sub }}</div></div></sc-for>
+            </section>
+            <h2 style="font-size:14px;margin:0 0 8px">By location</h2>
+            <div style="border-radius:var(--radius-md);background:var(--color-surface);box-shadow:var(--shadow-sm);overflow:auto">
+              <table class="table" style="font-size:13px">
+                <thead><tr><th style="padding-left:12px">Location</th><th style="text-align:right">On hand</th><th style="text-align:right;display:{{ colMd }}">Reserved</th><th style="text-align:right">Available</th><th style="width:120px;display:{{ colMd }}">Reserved share</th></tr></thead>
+                <tbody><sc-for list="{{ invRows }}" as="r"><tr>
+                  <td style="padding-left:12px"><div style="font-weight:500">{{ r.leaf }} <span style="font-family:ui-monospace,Menlo,monospace;font-size:11px;color:var(--color-neutral-500);font-weight:400">{{ r.code }}</span></div><div style="font-size:11px;color:var(--color-neutral-500)">{{ r.lead }}</div></td>
+                  <td style="text-align:right;font-variant-numeric:tabular-nums">{{ r.onHand }}</td>
+                  <td style="text-align:right;font-variant-numeric:tabular-nums;color:oklch(0.83 0.13 80);display:{{ colMd }}">{{ r.reserved }}</td>
+                  <td style="text-align:right;font-variant-numeric:tabular-nums;color:var(--color-accent-300);font-weight:500">{{ r.avail }}</td>
+                  <td style="display:{{ colMd }}"><div style="height:5px;border-radius:3px;background:var(--color-accent-800);overflow:hidden"><div style="height:100%;width:{{ r.resW }};background:oklch(0.83 0.13 80)"></div></div></td>
+                </tr></sc-for></tbody>
+              </table>
+            </div>
+          </sc-if>
+          <sc-if value="{{ invByLoc }}">
+            <div class="field" style="max-width:460px;margin-bottom:12px"><label>Location</label><select class="input" onChange="{{ setInvLoc }}" style="min-height:34px;font-size:13px"><sc-for list="{{ leafOptsInv }}" as="o"><option value="{{ o.id }}" selected="{{ o.sel }}">{{ o.label }}</option></sc-for></select></div>
+            <div style="display:flex;flex-wrap:wrap;gap:4px 16px;margin-bottom:10px;font-size:12px;color:var(--color-neutral-400)"><span>{{ locPath }}</span><span><span style="color:var(--color-text);font-weight:500">{{ locSkus }}</span> products</span><span><span style="color:var(--color-text);font-weight:500">{{ locUnits }}</span> units on hand</span></div>
+            <sc-if value="{{ locEmpty }}"><div style="padding:24px 14px;border-radius:var(--radius-md);background:var(--color-surface);color:var(--color-neutral-400)">This location is empty.</div></sc-if>
+            <sc-if value="{{ locHas }}">
+              <div style="border-radius:var(--radius-md);background:var(--color-surface);box-shadow:var(--shadow-sm);overflow:auto">
+                <table class="table" style="font-size:13px">
+                  <thead><tr><th style="padding-left:12px">Product</th><th style="text-align:right">On hand</th><th style="text-align:right;display:{{ colMd }}">Reserved</th><th style="text-align:right">Available</th></tr></thead>
+                  <tbody><sc-for list="{{ locRows }}" as="r"><tr onClick="{{ r.open }}" style="cursor:pointer"><td style="padding-left:12px"><div style="font-weight:500">{{ r.name }}</div><div style="font-size:11px;color:var(--color-neutral-500)">{{ r.sku }}</div></td><td style="text-align:right;font-variant-numeric:tabular-nums">{{ r.onHand }}</td><td style="text-align:right;font-variant-numeric:tabular-nums;color:oklch(0.83 0.13 80);display:{{ colMd }}">{{ r.reserved }}</td><td style="text-align:right;font-variant-numeric:tabular-nums;color:var(--color-accent-300);font-weight:500">{{ r.avail }}</td></tr></sc-for></tbody>
+                </table>
+              </div>
+            </sc-if>
+          </sc-if>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ scr.rt }}">
+        <div data-screen-label="Receiving / Transfers" style="max-width:1120px">
+          <div style="margin-bottom:12px"><h1 style="font-size:22px;margin:0">{{ rtTitle }}</h1><div style="font-size:12px;color:var(--color-neutral-400);margin-top:3px">{{ rtSub }}</div></div>
+          <div style="display:grid;gap:12px;align-items:start;grid-template-columns:{{ formCols }}">
+            <section style="padding:14px;border-radius:var(--radius-md);background:var(--color-surface);box-shadow:var(--shadow-sm)">
+              <sc-if value="{{ isRcv }}">
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">
+                  <div class="field" style="grid-column:1/-1"><label>Product</label><select class="input" onChange="{{ rcvPid }}" style="font-size:13px"><sc-for list="{{ prodOptsRcv }}" as="o"><option value="{{ o.id }}" selected="{{ o.sel }}">{{ o.label }}</option></sc-for></select></div>
+                  <div class="field"><label>Quantity ({{ rUom }})</label><input class="input" type="number" min="0" value="{{ rcv.qty }}" onChange="{{ rcvQty }}" placeholder="0" style="font-size:13px"></div>
+                  <div class="field"><label>Destination location</label><select class="input" onChange="{{ rcvDest }}" style="font-size:13px"><sc-for list="{{ leafOptsRcv }}" as="o"><option value="{{ o.id }}" selected="{{ o.sel }}">{{ o.label }}</option></sc-for></select></div>
+                  <div class="field"><label>Supplier</label><input class="input" value="{{ rcv.supplier }}" onChange="{{ rcvSup }}" placeholder="Required" style="font-size:13px"></div>
+                  <div class="field"><label>Reference (optional)</label><input class="input" value="{{ rcv.ref }}" onChange="{{ rcvRef }}" placeholder="GRN-2026-00042" style="font-size:13px"></div>
+                  <div class="field" style="grid-column:1/-1"><label>Notes (optional)</label><textarea class="input" style="min-height:64px;font-size:13px"></textarea></div>
+                </div>
+                <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap"><button class="btn btn-primary" onClick="{{ submitRcv }}"><i class="ph ph-box-arrow-down"></i>Receive stock</button><button class="btn btn-ghost" onClick="{{ clearRt }}" style="white-space:nowrap;flex:none;color:var(--color-neutral-400)">Clear</button></div>
+              </sc-if>
+              <sc-if value="{{ isTrf }}">
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">
+                  <div class="field" style="grid-column:1/-1"><label>Product</label><select class="input" onChange="{{ trfPid }}" style="font-size:13px"><sc-for list="{{ prodOptsTrf }}" as="o"><option value="{{ o.id }}" selected="{{ o.sel }}">{{ o.label }}</option></sc-for></select></div>
+                  <div class="field" style="grid-column:1/-1"><label>From — where this product has stock</label>
+                    <div style="display:flex;flex-direction:column;gap:6px">
+                      <sc-for list="{{ trfSources }}" as="o"><button onClick="{{ o.pick }}" style="display:grid;grid-template-columns:14px minmax(0,1fr) auto;gap:9px;align-items:center;padding:7px 10px;border-radius:8px;border:1px solid {{ o.border }};background:{{ o.bg }};font:inherit;font-size:13px;color:inherit;text-align:left;cursor:pointer"><span style="width:14px;height:14px;border-radius:50%;border:1.5px solid {{ o.border }};box-shadow:inset 0 0 0 3px var(--color-surface);background:{{ o.dot }}"></span><span style="min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ o.path }}</span><span style="font-size:12px;color:var(--color-neutral-400);font-variant-numeric:tabular-nums;white-space:nowrap">{{ o.availS }} available</span></button></sc-for>
+                      <sc-if value="{{ trfNoSrc }}"><div style="font-size:12px;color:var(--color-neutral-400)">This product has no stock anywhere.</div></sc-if>
+                    </div>
+                  </div>
+                  <div class="field"><label>Quantity ({{ tUom }})</label><input class="input" type="number" min="0" value="{{ trf.qty }}" onChange="{{ trfQty }}" placeholder="0" style="font-size:13px"></div>
+                  <div class="field"><label>To location</label><select class="input" onChange="{{ trfTo }}" style="font-size:13px"><sc-for list="{{ leafOptsTrf }}" as="o"><option value="{{ o.id }}" selected="{{ o.sel }}">{{ o.label }}</option></sc-for></select></div>
+                </div>
+                <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap"><button class="btn btn-primary" onClick="{{ submitTrf }}"><i class="ph ph-arrows-left-right"></i>Transfer stock</button><button class="btn btn-ghost" onClick="{{ clearRt }}" style="white-space:nowrap;flex:none;color:var(--color-neutral-400)">Clear</button></div>
+              </sc-if>
+            </section>
+            <aside style="display:flex;flex-direction:column;gap:12px">
+              <section style="padding:12px 14px;border-radius:var(--radius-md);background:linear-gradient(160deg,color-mix(in srgb,var(--color-accent-900) 70%,var(--color-surface)),var(--color-surface));box-shadow:var(--shadow-sm)">
+                <div style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--color-accent-300);margin-bottom:8px">Balance preview</div>
+                <sc-if value="{{ isRcv }}">
+                  <div style="font-size:12px;color:var(--color-neutral-400);margin-bottom:6px">{{ rPrev.name }}</div>
+                  <div style="display:flex;align-items:baseline;gap:10px;font-variant-numeric:tabular-nums"><span style="font-size:20px;color:var(--color-neutral-400)">{{ rPrev.before }}</span><i class="ph ph-arrow-right" style="color:var(--color-neutral-500)"></i><span style="font-size:24px;font-weight:500">{{ rPrev.after }}</span><span style="font-size:12px;color:oklch(0.80 0.13 155)">{{ rPrev.delta }}</span></div>
+                  <div style="font-size:11px;color:var(--color-neutral-500);margin-top:2px">on hand at {{ rPrev.code }}</div>
+                </sc-if>
+                <sc-if value="{{ isTrf }}">
+                  <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 12px;align-items:baseline;font-variant-numeric:tabular-nums">
+                    <span style="font-size:11px;color:var(--color-neutral-400)">From {{ tPrev.from }}</span><span style="font-size:15px">{{ tPrev.fromBefore }} <i class="ph ph-arrow-right" style="font-size:11px;color:var(--color-neutral-500)"></i> <span style="font-weight:500">{{ tPrev.fromAfter }}</span></span>
+                    <span style="font-size:11px;color:var(--color-neutral-400)">To {{ tPrev.to }}</span><span style="font-size:15px">{{ tPrev.toBefore }} <i class="ph ph-arrow-right" style="font-size:11px;color:var(--color-neutral-500)"></i> <span style="font-weight:500">{{ tPrev.toAfter }}</span></span>
+                  </div>
+                  <div style="font-size:11px;color:var(--color-neutral-500);margin-top:6px">{{ tPrev.avail }} available to move from the source</div>
+                  <sc-if value="{{ tPrev.over }}"><div style="font-size:12px;color:oklch(0.83 0.13 80);margin-top:6px"><i class="ph ph-warning"></i> Quantity is more than what's available.</div></sc-if>
+                </sc-if>
+              </section>
+              <section style="border-radius:var(--radius-md);background:var(--color-surface);box-shadow:var(--shadow-sm)">
+                <div style="padding:10px 12px 6px;font-size:13px;font-weight:500">Recent</div>
+                <sc-for list="{{ recent }}" as="r"><div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;padding:7px 12px;border-top:1px solid var(--color-neutral-900)"><div style="min-width:0"><div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.name }}</div><div style="font-size:11px;color:var(--color-neutral-500)">{{ r.where }} · {{ r.by }}</div></div><div style="text-align:right"><div style="font-variant-numeric:tabular-nums">{{ r.qty }}</div><div style="font-size:11px;color:var(--color-neutral-500)">{{ r.when }}</div></div></div></sc-for>
+              </section>
+            </aside>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ scr.counts }}">
+        <div data-screen-label="Stock Counts" style="max-width:1200px">
+          <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin-bottom:10px"><h1 style="font-size:22px;margin:0;flex:1;min-width:160px">Stock Counts</h1><button class="btn btn-primary" onClick="{{ startCount }}" style="white-space:nowrap;flex:none;font-size:13px;padding:5px 10px"><i class="ph ph-list-checks"></i>Start count</button></div>
+          <div style="display:flex;flex-wrap:wrap;gap:4px 16px;margin-bottom:12px;font-size:12px;color:var(--color-neutral-400)"><sc-for list="{{ cStats }}" as="st"><span><span style="font-weight:500;color:{{ st.c }}">{{ st.v }}</span> {{ st.l }}</span></sc-for></div>
+          <div style="border-radius:var(--radius-md);background:var(--color-surface);box-shadow:var(--shadow-sm);overflow:auto">
+            <table class="table" style="font-size:13px">
+              <thead><tr><th style="padding-left:12px">Location</th><th style="width:150px">Progress</th><th style="text-align:right">Variance</th><th style="display:{{ colWide }}">Started by</th><th style="display:{{ colMd }}">Started</th><th>Status</th></tr></thead>
+              <tbody><sc-for list="{{ counts }}" as="c"><tr onClick="{{ c.open }}" style="cursor:pointer">
+                <td style="padding-left:12px"><div style="font-weight:500">{{ c.locName }}</div><div style="font-size:11px;color:var(--color-neutral-500);font-family:ui-monospace,Menlo,monospace">{{ c.id }} · {{ c.loc }}</div></td>
+                <td><div style="display:flex;align-items:center;gap:8px"><div style="flex:1;height:5px;border-radius:3px;background:var(--color-neutral-800);overflow:hidden"><div style="height:100%;width:{{ c.progW }};background:var(--color-accent-500)"></div></div><span style="font-size:11px;color:var(--color-neutral-400);font-variant-numeric:tabular-nums;white-space:nowrap">{{ c.prog }}</span></div></td>
+                <td style="text-align:right;font-variant-numeric:tabular-nums;color:{{ c.varC }}">{{ c.varS }}</td>
+                <td style="display:{{ colWide }}">{{ c.by }}</td>
+                <td style="display:{{ colMd }};color:var(--color-neutral-400);white-space:nowrap">{{ c.started }}</td>
+                <td><span style="font-size:11px;padding:2px 8px;border-radius:6px;white-space:nowrap;background:{{ c.stBg }};color:{{ c.stFg }}">{{ c.status }}</span></td>
+              </tr></sc-for></tbody>
+            </table>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ scr.adjustments }}">
+        <div data-screen-label="Stock Adjustments" style="max-width:1100px">
+          <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+            <div style="flex:1;min-width:180px"><h1 style="font-size:22px;margin:0">Stock Adjustments</h1><div style="font-size:12px;color:var(--color-neutral-400);margin-top:3px">A request never moves stock — only an approval does. You can't approve your own requests.</div></div>
+          </div>
+          <div class="seg" style="margin-bottom:12px;max-width:100%;overflow:auto"><sc-for list="{{ adjTabs }}" as="o"><button onClick="{{ o.click }}" style="border:0;border-right:1px solid var(--color-divider);white-space:nowrap;padding:6px 11px;font:inherit;font-size:12px;cursor:pointer;white-space:nowrap;background:{{ o.bg }};color:{{ o.color }}">{{ o.label }}</button></sc-for></div>
+          <sc-if value="{{ adjQueue }}">
+            <sc-if value="{{ pendEmpty }}"><div style="padding:28px 16px;border-radius:var(--radius-md);background:var(--color-surface);box-shadow:var(--shadow-sm)"><div style="font-size:15px;font-weight:500">Queue is clear</div><div style="font-size:12px;color:var(--color-neutral-400);margin-top:4px">No adjustment requests are pending approval.</div></div></sc-if>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <sc-for list="{{ pendList }}" as="a" hint-placeholder-count="4">
+                <div style="display:grid;gap:10px 14px;align-items:center;padding:11px 12px;border-radius:var(--radius-md);background:var(--color-surface);box-shadow:var(--shadow-sm);grid-template-columns:{{ adjCols }}">
+                  <div><div style="font-size:19px;font-weight:500;font-variant-numeric:tabular-nums;color:{{ a.dFg }}">{{ a.deltaS }}</div><div style="font-size:10px;color:var(--color-neutral-500);letter-spacing:.06em;text-transform:uppercase">{{ a.bucketS }}</div></div>
+                  <div style="min-width:0">
+                    <div style="font-weight:500">{{ a.product }} <span style="font-family:ui-monospace,Menlo,monospace;font-size:11px;color:var(--color-neutral-500);font-weight:400">{{ a.sku }}</span></div>
+                    <div style="font-size:12px;color:var(--color-neutral-400)"><i class="ph ph-map-pin" style="font-size:11px"></i> {{ a.locPath }}</div>
+                    <div style="font-size:12px;color:var(--color-neutral-300);margin-top:2px">“{{ a.reason }}”</div>
+                    <div style="font-size:11px;color:var(--color-neutral-500);margin-top:2px">Requested by {{ a.by }} · {{ a.when }} · {{ a.id }}</div>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;grid-column:{{ a.col }};justify-content:{{ adjJustify }}">
+                    <span style="font-size:11px;padding:2px 7px;border-radius:6px;white-space:nowrap;background:{{ a.wBg }};color:{{ a.wFg }}">{{ a.waitS }}</span>
+                    <sc-if value="{{ a.canAct }}"><button class="btn btn-secondary" onClick="{{ a.reject }}" style="white-space:nowrap;flex:none;font-size:13px;padding:5px 10px">Reject</button><button class="btn btn-primary" onClick="{{ a.approve }}" style="white-space:nowrap;flex:none;font-size:13px;padding:5px 10px"><i class="ph ph-check"></i>Approve</button></sc-if>
+                    <sc-if value="{{ a.own }}"><span style="font-size:12px;font-style:italic;color:var(--color-neutral-400)">You requested this — a different reviewer must approve it.</span></sc-if>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+          <sc-if value="{{ adjHistory }}">
+            <div style="border-radius:var(--radius-md);background:var(--color-surface);box-shadow:var(--shadow-sm);overflow:auto">
+              <table class="table" style="font-size:13px">
+                <thead><tr><th style="padding-left:12px">Product</th><th>Change</th><th style="display:{{ colMd }}">Location</th><th>Decision</th><th style="display:{{ colWide }}">Reviewer</th><th style="display:{{ colWide }}">Note</th></tr></thead>
+                <tbody><sc-for list="{{ histList }}" as="h"><tr>
+                  <td style="padding-left:12px"><div style="font-weight:500">{{ h.product }}</div><div style="font-size:11px;color:var(--color-neutral-500)">{{ h.id }} · {{ h.when }}</div></td>
+                  <td style="font-variant-numeric:tabular-nums;color:{{ h.dFg }};white-space:nowrap">{{ h.deltaS }}</td>
+                  <td style="display:{{ colMd }};font-family:ui-monospace,Menlo,monospace;font-size:12px;color:var(--color-neutral-300)">{{ h.loc }}</td>
+                  <td><span style="font-size:11px;padding:2px 8px;border-radius:6px;background:{{ h.stBg }};color:{{ h.stFg }}">{{ h.status }}</span></td>
+                  <td style="display:{{ colWide }}">{{ h.reviewer }}</td>
+                  <td style="display:{{ colWide }};color:var(--color-neutral-400)">{{ h.note }}</td>
+                </tr></sc-for></tbody>
+              </table>
+            </div>
+          </sc-if>
+          <sc-if value="{{ adjRequest }}">
+            <section style="max-width:640px;padding:14px;border-radius:var(--radius-md);background:var(--color-surface);box-shadow:var(--shadow-sm)">
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">
+                <div class="field" style="grid-column:1/-1"><label>Product</label><select class="input" onChange="{{ reqPid }}" style="font-size:13px"><sc-for list="{{ prodOptsReq }}" as="o"><option value="{{ o.id }}" selected="{{ o.sel }}">{{ o.label }}</option></sc-for></select></div>
+                <div class="field" style="grid-column:1/-1"><label>Location</label><select class="input" onChange="{{ reqLoc }}" style="font-size:13px"><sc-for list="{{ leafOptsReq }}" as="o"><option value="{{ o.id }}" selected="{{ o.sel }}">{{ o.label }}</option></sc-for></select></div>
+                <div class="field"><label>Bucket</label><div class="seg"><sc-for list="{{ reqBucket }}" as="o"><button onClick="{{ o.click }}" style="border:0;border-right:1px solid var(--color-divider);white-space:nowrap;padding:6px 9px;font:inherit;font-size:12px;cursor:pointer;background:{{ o.bg }};color:{{ o.color }}">{{ o.label }}</button></sc-for></div></div>
+                <div class="field"><label>Direction</label><div class="seg"><sc-for list="{{ reqDir }}" as="o"><button onClick="{{ o.click }}" style="border:0;border-right:1px solid var(--color-divider);white-space:nowrap;padding:6px 10px;font:inherit;font-size:12px;cursor:pointer;background:{{ o.bg }};color:{{ o.color }}">{{ o.label }}</button></sc-for></div></div>
+                <div class="field"><label>Quantity</label><input class="input" type="number" min="0" value="{{ req.qty }}" onChange="{{ reqQty }}" placeholder="0" style="font-size:13px"></div>
+                <div class="field" style="grid-column:1/-1"><label>Reason</label><textarea class="input" value="{{ req.reason }}" onChange="{{ reqReason }}" placeholder="What happened, and how you know" style="min-height:64px;font-size:13px"></textarea></div>
+              </div>
+              <div style="display:flex;gap:8px;margin-top:14px"><button class="btn btn-primary" onClick="{{ submitReq }}"><i class="ph ph-paper-plane-tilt"></i>Send for approval</button></div>
+            </section>
+          </sc-if>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ scr.locations }}">
+        <div data-screen-label="Warehouse Structure" style="max-width:1300px">
+          <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin-bottom:12px"><h1 style="font-size:22px;margin:0;flex:1;min-width:180px">Warehouse Structure</h1><button class="btn btn-primary" onClick="{{ addLocation }}" style="white-space:nowrap;flex:none;font-size:13px;padding:5px 10px"><i class="ph ph-plus"></i>Add location</button></div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px">
+            <select class="input" style="width:auto;min-width:220px;min-height:32px;font-size:13px"><option>Main Warehouse (JHB-01)</option><option>Cape Town DC (CPT-01)</option></select>
+            <label style="position:relative;flex:1 1 180px;max-width:280px"><i class="ph ph-magnifying-glass" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--color-neutral-500)"></i><input class="input" placeholder="Name or code" style="min-height:32px;padding:4px 10px 4px 30px;font-size:13px"></label>
+            <button onClick="{{ toggleInactive }}" style="white-space:nowrap;flex:none;display:flex;align-items:center;gap:6px;padding:5px 10px;border-radius:8px;font:inherit;font-size:12px;cursor:pointer;background:transparent;border:1px solid {{ inactiveBorder }};color:{{ inactiveColor }}"><i class="ph {{ inactiveIcon }}"></i>Show inactive</button>
+          </div>
+          <div style="display:grid;gap:12px;align-items:start;grid-template-columns:{{ structCols }}">
+            <section style="padding:6px;border-radius:var(--radius-md);background:var(--color-surface);box-shadow:var(--shadow-sm)">
+              <div style="display:flex;padding:4px 8px 6px 34px;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-neutral-500)"><span style="flex:1">Location</span><span>Units</span></div>
+              <sc-for list="{{ tree }}" as="n" hint-placeholder-count="10">
+                <div onClick="{{ n.select }}" style="display:flex;align-items:center;gap:6px;padding:5px 8px 5px {{ n.indent }};cursor:pointer;border-radius:6px;background:{{ n.bg }};box-shadow:inset 2px 0 0 {{ n.bar }};opacity:{{ n.op }}" style-hover="background:color-mix(in srgb,var(--color-text) 5%,transparent)">
+                  <button onClick="{{ n.toggle }}" aria-label="Expand" style="width:16px;height:16px;border:0;background:transparent;padding:0;color:var(--color-neutral-500);cursor:pointer;display:grid;place-items:center;visibility:{{ n.caretVis }}"><i class="ph-bold ph-caret-right" style="font-size:10px;transition:transform .15s;transform:{{ n.caretRot }}"></i></button>
+                  <i class="ph-duotone {{ n.icon }}" style="font-size:15px;color:{{ n.ic }}"></i>
+                  <span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ n.name }} <span style="font-family:ui-monospace,Menlo,monospace;font-size:11px;color:var(--color-neutral-500)">{{ n.code }}</span></span>
+                  <span style="font-size:9px;letter-spacing:.06em;padding:1px 5px;border-radius:4px;background:var(--color-neutral-900);color:var(--color-neutral-400)">{{ n.type }}</span>
+                  <span style="width:44px;text-align:right;font-size:11px;font-variant-numeric:tabular-nums;color:var(--color-neutral-400)">{{ n.unitsS }}</span>
+                </div>
+              </sc-for>
+            </section>
+            <section style="border-radius:var(--radius-md);background:var(--color-surface);box-shadow:var(--shadow-sm)">
+              <div style="padding:12px 14px 10px">
+                <div style="display:flex;align-items:center;gap:8px"><h2 style="font-size:17px;margin:0;flex:1">{{ loc.name }}</h2><span style="font-size:11px;padding:2px 8px;border-radius:6px;background:{{ loc.stBg }};color:{{ loc.stFg }}">{{ loc.statusS }}</span></div>
+                <div style="font-size:12px;color:var(--color-neutral-400);margin-top:2px">{{ loc.crumbs }}</div>
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;background:var(--color-neutral-900);border-top:1px solid var(--color-neutral-900);border-bottom:1px solid var(--color-neutral-900)">
+                <sc-for list="{{ loc.facts }}" as="f"><div style="padding:8px 14px;background:var(--color-surface)"><div style="font-size:11px;color:var(--color-neutral-500)">{{ f.l }}</div><div style="font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ f.v }}</div></div></sc-for>
+              </div>
+              <div style="display:flex;flex-wrap:wrap;gap:6px;padding:10px 14px">
+                <button class="btn btn-secondary" onClick="{{ loc.soon }}" style="white-space:nowrap;flex:none;font-size:12px;padding:4px 9px"><i class="ph ph-plus"></i>Add child</button>
+                <button class="btn btn-secondary" onClick="{{ loc.soon }}" style="white-space:nowrap;flex:none;font-size:12px;padding:4px 9px"><i class="ph ph-stack-plus"></i>Create levels</button>
+                <button class="btn btn-secondary" onClick="{{ loc.soon }}" style="white-space:nowrap;flex:none;font-size:12px;padding:4px 9px"><i class="ph ph-pencil-simple"></i>Edit</button>
+                <button class="btn btn-secondary" onClick="{{ loc.soon }}" style="white-space:nowrap;flex:none;font-size:12px;padding:4px 9px"><i class="ph ph-arrows-out-cardinal"></i>Move</button>
+                <button class="btn btn-secondary" onClick="{{ loc.toggleActive }}" style="white-space:nowrap;flex:none;font-size:12px;padding:4px 9px;color:oklch(0.74 0.16 25)"><i class="ph ph-prohibit"></i>Deactivate</button>
+              </div>
+              <div style="padding:4px 14px 6px;font-size:13px;font-weight:500">Stock in this location</div>
+              <sc-if value="{{ loc.noStock }}"><div style="padding:6px 14px 14px;font-size:12px;color:var(--color-neutral-400)">Stock is held on leaf locations. Select a level or zone to see its products.</div></sc-if>
+              <sc-if value="{{ loc.hasStock }}">
+                <sc-for list="{{ loc.stock }}" as="r"><button onClick="{{ r.open }}" style="width:100%;display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:14px;align-items:center;padding:7px 14px;border:0;border-top:1px solid var(--color-neutral-900);background:transparent;font:inherit;color:inherit;text-align:left;cursor:pointer" style-hover="background:color-mix(in srgb,var(--color-text) 4%,transparent)"><div style="min-width:0"><div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.name }}</div><div style="font-size:11px;color:var(--color-neutral-500)">{{ r.sku }}</div></div><span style="font-variant-numeric:tabular-nums">{{ r.onHand }}</span><span style="font-variant-numeric:tabular-nums;color:var(--color-accent-300);min-width:52px;text-align:right">{{ r.avail }} avail.</span></button></sc-for>
+              </sc-if>
+            </section>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ scr.users }}">
+        <div data-screen-label="Users" style="max-width:1300px">
+          <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin-bottom:10px"><h1 style="font-size:22px;margin:0;flex:1;min-width:160px">Users</h1><button class="btn btn-primary" onClick="{{ newUser }}" style="white-space:nowrap;flex:none;font-size:13px;padding:5px 10px"><i class="ph ph-user-plus"></i>New user</button></div>
+          <div style="display:flex;flex-wrap:wrap;gap:4px 16px;margin-bottom:12px;font-size:12px;color:var(--color-neutral-400)"><sc-for list="{{ uStats }}" as="st"><span><span style="font-weight:500;color:{{ st.c }}">{{ st.v }}</span> {{ st.l }}</span></sc-for></div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px">
+            <label style="position:relative;flex:1 1 220px;max-width:320px"><i class="ph ph-magnifying-glass" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--color-neutral-500)"></i><input class="input" value="{{ uq }}" onChange="{{ setUq }}" placeholder="Name or email" style="min-height:32px;padding:4px 10px 4px 30px;font-size:13px"></label>
+            <div class="seg"><sc-for list="{{ uStatusOpts }}" as="o"><button onClick="{{ o.click }}" style="border:0;border-right:1px solid var(--color-divider);white-space:nowrap;padding:6px 10px;font:inherit;font-size:12px;cursor:pointer;background:{{ o.bg }};color:{{ o.color }}">{{ o.label }}</button></sc-for></div>
+          </div>
+          <sc-if value="{{ uEmpty }}"><div style="padding:24px 14px;border-radius:var(--radius-md);background:var(--color-surface);color:var(--color-neutral-400)">No users match. Try adjusting your search or filters.</div></sc-if>
+          <div style="border-radius:var(--radius-md);background:var(--color-surface);box-shadow:var(--shadow-sm);overflow:auto">
+            <table class="table" style="font-size:13px">
+              <thead><tr><th style="padding-left:12px">User</th><th style="display:{{ colMd }}">Roles</th><th style="display:{{ colWide }}">Warehouses</th><th style="display:{{ colWide }}">Sign-in check</th><th>Status</th><th style="width:40px"></th></tr></thead>
+              <tbody><sc-for list="{{ ulist }}" as="u"><tr>
+                <td style="padding-left:12px"><div style="display:flex;align-items:center;gap:9px"><div style="width:28px;height:28px;flex:none;border-radius:8px;background:var(--color-neutral-800);color:var(--color-neutral-200);display:grid;place-items:center;font-size:11px;font-weight:600">{{ u.initials }}</div><div style="min-width:0"><div style="font-weight:500">{{ u.name }}</div><div style="font-size:11px;color:var(--color-neutral-500);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ u.email }}</div></div></div></td>
+                <td style="display:{{ colMd }}"><div style="display:flex;flex-wrap:wrap;gap:4px"><sc-for list="{{ u.roleTags }}" as="t"><span class="tag tag-accent" style="font-size:10px;padding:1px 7px">{{ t.r }}</span></sc-for></div></td>
+                <td style="display:{{ colWide }};font-family:ui-monospace,Menlo,monospace;font-size:12px;color:var(--color-neutral-300)">{{ u.whsS }}</td>
+                <td style="display:{{ colWide }};color:var(--color-neutral-300)">{{ u.mfa }}</td>
+                <td><span style="font-size:11px;padding:2px 8px;border-radius:6px;background:{{ u.stBg }};color:{{ u.stFg }}">{{ u.status }}</span></td>
+                <td><sc-if value="{{ u.canDeactivate }}"><button class="btn btn-icon" onClick="{{ u.deactivate }}" aria-label="Deactivate" style="white-space:nowrap;flex:none;width:28px;height:28px;color:var(--color-neutral-400)"><i class="ph ph-prohibit" style="font-size:15px"></i></button></sc-if></td>
+              </tr></sc-for></tbody>
+            </table>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ scr.roles }}">
+        <div data-screen-label="Roles" style="max-width:1100px">
+          <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin-bottom:10px"><h1 style="font-size:22px;margin:0;flex:1;min-width:160px">Roles</h1><button class="btn btn-primary" onClick="{{ newRole }}" style="white-space:nowrap;flex:none;font-size:13px;padding:5px 10px"><i class="ph ph-plus"></i>New role</button></div>
+          <div style="display:flex;flex-wrap:wrap;gap:4px 16px;margin-bottom:12px;font-size:12px;color:var(--color-neutral-400)"><sc-for list="{{ rStats }}" as="st"><span><span style="font-weight:500;color:{{ st.c }}">{{ st.v }}</span> {{ st.l }}</span></sc-for></div>
+          <div style="border-radius:var(--radius-md);background:var(--color-surface);box-shadow:var(--shadow-sm);overflow:auto">
+            <table class="table" style="font-size:13px">
+              <thead><tr><th style="padding-left:12px">Role</th><th style="display:{{ colMd }}">Description</th><th style="width:160px">Permissions</th><th style="text-align:right;display:{{ colMd }}">Users</th></tr></thead>
+              <tbody><sc-for list="{{ roles }}" as="r"><tr onClick="{{ r.open }}" style="cursor:pointer">
+                <td style="padding-left:12px"><div style="display:flex;align-items:center;gap:8px"><i class="ph-duotone ph-shield" style="font-size:15px;color:var(--color-accent-400)"></i><span style="font-weight:500">{{ r.name }}</span><sc-if value="{{ r.system }}"><span class="tag tag-neutral" style="font-size:10px;padding:1px 6px">System</span></sc-if></div></td>
+                <td style="display:{{ colMd }};color:var(--color-neutral-400)">{{ r.desc }}</td>
+                <td><div style="display:flex;align-items:center;gap:8px"><div style="flex:1;height:5px;border-radius:3px;background:var(--color-neutral-800);overflow:hidden"><div style="height:100%;width:{{ r.permW }};background:var(--color-accent-500)"></div></div><span style="font-size:11px;color:var(--color-neutral-400);font-variant-numeric:tabular-nums;white-space:nowrap">{{ r.n }} / {{ r.of }}</span></div></td>
+                <td style="text-align:right;display:{{ colMd }};font-variant-numeric:tabular-nums">{{ r.users }}</td>
+              </tr></sc-for></tbody>
+            </table>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ scr.audit }}">
+        <div data-screen-label="Audit Log" style="max-width:1300px">
+          <div style="margin-bottom:10px"><h1 style="font-size:22px;margin:0">Audit Log</h1><div style="font-size:12px;color:var(--color-neutral-400);margin-top:3px">Newest first · <span style="color:var(--color-text);font-weight:500">10</span> shown of <span style="color:var(--color-text);font-weight:500">418</span> matching</div></div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;margin-bottom:10px">
+            <div class="field" style="flex:1 1 150px;max-width:190px"><label>Entity</label><select class="input" style="min-height:32px;font-size:13px"><option>All entities</option><option>products</option><option>stock_adjustments</option><option>inventory_transactions</option><option>stock_counts</option><option>roles</option><option>api_keys</option></select></div>
+            <div class="field" style="flex:1 1 120px;max-width:150px"><label>Action</label><select class="input" style="min-height:32px;font-size:13px"><option>All actions</option><option>CREATE</option><option>UPDATE</option><option>DELETE</option><option>APPROVE</option><option>LOGIN</option></select></div>
+            <div class="field" style="flex:1 1 150px;max-width:200px"><label>Entity ID</label><input class="input" placeholder="e.g. P-1011" style="min-height:32px;font-size:13px"></div>
+            <div class="field" style="flex:1 1 130px;max-width:160px"><label>From</label><input class="input" type="date" style="min-height:32px;font-size:13px"></div>
+            <div class="field" style="flex:1 1 130px;max-width:160px"><label>To</label><input class="input" type="date" style="min-height:32px;font-size:13px"></div>
+            <button class="btn btn-primary" onClick="{{ auditApply }}" style="white-space:nowrap;flex:none;font-size:13px;padding:6px 11px"><i class="ph ph-funnel"></i>Apply</button>
+          </div>
+          <div style="border-radius:var(--radius-md);background:var(--color-surface);box-shadow:var(--shadow-sm);overflow:auto">
+            <table class="table" style="font-size:13px">
+              <thead><tr><th style="padding-left:12px">When</th><th>Who</th><th>Action</th><th style="display:{{ colMd }}">Entity</th><th style="display:{{ colWide }}">Entity ID</th></tr></thead>
+              <tbody><sc-for list="{{ audit }}" as="a"><tr onClick="{{ a.open }}" style="cursor:pointer">
+                <td style="padding-left:12px;white-space:nowrap"><div>{{ a.time }}</div><div style="font-size:11px;color:var(--color-neutral-500)">{{ a.date }}</div></td>
+                <td><div style="display:flex;align-items:center;gap:6px"><sc-if value="{{ a.api }}"><i class="ph ph-key" style="color:var(--color-accent-400)"></i></sc-if><span>{{ a.who }}</span></div></td>
+                <td><span style="font-size:10px;letter-spacing:.05em;padding:2px 7px;border-radius:6px;background:{{ a.bg }};color:{{ a.fg }}">{{ a.action }}</span></td>
+                <td style="display:{{ colMd }};font-family:ui-monospace,Menlo,monospace;font-size:12px;color:var(--color-neutral-300)">{{ a.entity }}</td>
+                <td style="display:{{ colWide }};font-family:ui-monospace,Menlo,monospace;font-size:12px;color:var(--color-neutral-400)">{{ a.idS }}</td>
+              </tr></sc-for></tbody>
+            </table>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:12px;color:var(--color-neutral-400)"><span style="flex:1">Page 1 of 42 · 418 total</span><button class="btn btn-secondary btn-icon" onClick="{{ auditPrev }}" aria-label="Previous page" style="white-space:nowrap;flex:none;width:30px;height:30px" disabled="{{ true }}"><i class="ph ph-caret-left"></i></button><button class="btn btn-secondary btn-icon" onClick="{{ auditNext }}" aria-label="Next page" style="white-space:nowrap;flex:none;width:30px;height:30px"><i class="ph ph-caret-right"></i></button></div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ scr.settings }}">
+        <div data-screen-label="Settings" style="max-width:900px">
+          <h1 style="font-size:22px;margin:0 0 12px">Settings</h1>
+          <div style="display:grid;gap:14px;align-items:start;grid-template-columns:{{ settingsCols }}">
+            <nav style="display:flex;gap:2px;overflow-x:auto;flex-direction:{{ secDir }}">
+              <sc-for list="{{ secs }}" as="o"><button onClick="{{ o.click }}" style="display:flex;align-items:center;gap:8px;padding:7px 10px;border:0;border-radius:6px;font:inherit;font-size:13px;cursor:pointer;text-align:left;white-space:nowrap;background:{{ o.bg }};color:{{ o.color }};box-shadow:inset 2px 0 0 {{ o.bar }}"><i class="ph-duotone {{ o.icon }}" style="font-size:15px"></i>{{ o.label }}</button></sc-for>
+            </nav>
+            <section style="padding:14px 16px;border-radius:var(--radius-md);background:var(--color-surface);box-shadow:var(--shadow-sm)">
+              <sc-if value="{{ sec.profile }}">
+                <h2 style="font-size:16px;margin:0 0 10px">Profile</h2>
+                <div style="display:grid;grid-template-columns:110px minmax(0,1fr);gap:8px 12px;font-size:13px"><span style="color:var(--color-neutral-400)">Name</span><span>Nomsa Mahlangu</span><span style="color:var(--color-neutral-400)">Email</span><span>nomsa.mahlangu@warehouse.example</span><span style="color:var(--color-neutral-400)">Roles</span><span><span class="tag tag-accent" style="font-size:11px;padding:1px 8px">Warehouse Manager</span></span></div>
+              </sc-if>
+              <sc-if value="{{ sec.contact }}">
+                <h2 style="font-size:16px;margin:0 0 4px">Contact &amp; alerts</h2>
+                <div style="font-size:12px;color:var(--color-neutral-400);margin-bottom:12px">Where we send low-stock and approval alerts.</div>
+                <div style="display:grid;gap:12px;max-width:420px">
+                  <div class="field"><label>Mobile number</label><input class="input" value="+27 82 555 0142" style="font-size:13px"></div>
+                  <div class="field"><label>Send alerts by</label><div class="seg"><sc-for list="{{ channels }}" as="o"><button onClick="{{ o.click }}" style="border:0;border-right:1px solid var(--color-divider);white-space:nowrap;padding:6px 12px;font:inherit;font-size:12px;cursor:pointer;background:{{ o.bg }};color:{{ o.color }}">{{ o.label }}</button></sc-for></div></div>
+                  <div><button class="btn btn-primary" onClick="{{ saveContact }}">Save</button></div>
+                </div>
+              </sc-if>
+              <sc-if value="{{ sec.mfa }}">
+                <h2 style="font-size:16px;margin:0 0 4px">Sign-in check</h2>
+                <div style="font-size:12px;color:var(--color-neutral-400);margin-bottom:12px">A second step after your password, required for approvals.</div>
+                <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;border:1px solid var(--color-divider)"><i class="ph-duotone ph-device-mobile" style="font-size:20px;color:var(--color-accent-400)"></i><div style="flex:1"><div style="font-weight:500">Authenticator app</div><div style="font-size:11px;color:var(--color-neutral-500)">Set up 14 Aug 2026</div></div><span style="font-size:11px;padding:2px 8px;border-radius:6px;background:color-mix(in oklab,oklch(0.80 0.13 155) 15%,transparent);color:oklch(0.80 0.13 155)">On</span></div>
+                <div style="margin-top:12px"><button class="btn btn-secondary" onClick="{{ reconfigure }}">Reconfigure</button></div>
+              </sc-if>
+              <sc-if value="{{ sec.warehouses }}">
+                <h2 style="font-size:16px;margin:0 0 10px">My warehouses</h2>
+                <div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--color-neutral-900)"><i class="ph-duotone ph-buildings" style="font-size:18px;color:var(--color-accent-400)"></i><div style="flex:1"><div style="font-weight:500">Main Warehouse</div><div style="font-size:11px;color:var(--color-neutral-500)">JHB-01 · Johannesburg</div></div><span class="tag tag-neutral" style="font-size:10px;padding:1px 7px">Default</span></div>
+              </sc-if>
+              <sc-if value="{{ sec.password }}">
+                <h2 style="font-size:16px;margin:0 0 10px">Password</h2>
+                <div style="display:grid;gap:12px;max-width:380px">
+                  <div class="field"><label>Current password</label><input class="input" type="password" style="font-size:13px"></div>
+                  <div class="field"><label>New password</label><input class="input" type="password" style="font-size:13px"><div style="font-size:11px;color:var(--color-neutral-500);margin-top:4px">At least 8 characters.</div></div>
+                  <div class="field"><label>Confirm new password</label><input class="input" type="password" style="font-size:13px"></div>
+                  <div><button class="btn btn-primary" onClick="{{ changePw }}"><i class="ph ph-lock-simple"></i>Change password</button></div>
+                </div>
+              </sc-if>
+              <sc-if value="{{ sec.keys }}">
+                <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:10px"><div style="flex:1"><h2 style="font-size:16px;margin:0">API keys</h2><div style="font-size:12px;color:var(--color-neutral-400);margin-top:3px">Scoped keys the back-office uses to call this warehouse. The raw key is shown once at creation.</div></div><button class="btn btn-primary" onClick="{{ newKey }}" style="white-space:nowrap;flex:none;font-size:13px;padding:5px 10px"><i class="ph ph-key"></i>New key</button></div>
+                <div style="display:flex;flex-direction:column;gap:8px">
+                  <sc-for list="{{ keyList }}" as="k"><div style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:8px;border:1px solid var(--color-divider)">
+                    <div style="flex:1;min-width:0">
+                      <div style="display:flex;align-items:center;gap:8px"><span style="font-weight:500">{{ k.name }}</span><span style="font-size:11px;padding:1px 7px;border-radius:6px;background:{{ k.stBg }};color:{{ k.stFg }}">{{ k.statusS }}</span></div>
+                      <div style="display:flex;flex-wrap:wrap;gap:4px;margin:6px 0"><sc-for list="{{ k.scopeTags }}" as="t"><span style="font-family:ui-monospace,Menlo,monospace;font-size:11px;padding:1px 6px;border-radius:4px;background:var(--color-neutral-900);color:var(--color-neutral-300)">{{ t.x }}</span></sc-for></div>
+                      <div style="font-size:11px;color:var(--color-neutral-500)">Created {{ k.created }} by {{ k.by }} · last used {{ k.used }}</div>
+                    </div>
+                    <sc-if value="{{ k.active }}"><button class="btn btn-secondary" onClick="{{ k.revoke }}" style="white-space:nowrap;flex:none;font-size:12px;padding:4px 9px;color:oklch(0.74 0.16 25)">Revoke</button></sc-if>
+                  </div></sc-for>
+                </div>
+              </sc-if>
+            </section>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ scr.placeholder }}">
+        <div style="max-width:520px;padding:32px 0">
+          <i class="ph-duotone {{ curIcon }}" style="font-size:28px;color:var(--color-accent-400)"></i>
+          <h1 style="font-size:22px;margin:8px 0 6px">{{ crumbLabel }}</h1>
+          <p style="color:var(--color-neutral-400);font-size:13px">Not part of this redesign pass. When rebuilt it uses the same header, stats line, filter bar and table patterns as Products.</p>
+          <button class="btn btn-secondary" onClick="{{ goDashboard }}">Back to dashboard</button>
+        </div>
+      </sc-if>
+    </main>
+  </div>
+
+  <sc-if value="{{ phone }}" hint-placeholder-val="{{ false }}">
+    <nav style="flex:none;height:58px;display:flex;border-top:1px solid var(--color-neutral-900);background:var(--color-bg)">
+      <sc-for list="{{ bottom }}" as="b"><button onClick="{{ b.go }}" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border:0;background:transparent;font:inherit;font-size:10px;cursor:pointer;color:{{ b.color }};box-shadow:inset 0 2px 0 {{ b.bar }}"><i class="ph-duotone {{ b.icon }}" style="font-size:21px"></i><span>{{ b.label }}</span></button></sc-for>
+    </nav>
+  </sc-if>
+
+  <sc-if value="{{ hasFlyout }}">
+    <div onClick="{{ closeFlyout }}" style="position:fixed;inset:50px 0 0 0;z-index:30"></div>
+    <div style="position:fixed;left:78px;z-index:31;width:230px;padding:6px;border-radius:var(--radius-md);background:var(--color-surface);box-shadow:var(--shadow-md);animation:wPop .14s ease-out;top:{{ fly.top }}">
+      <div style="padding:6px 8px;font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--color-neutral-400)">{{ fly.title }}</div>
+      <sc-for list="{{ fly.items }}" as="it"><button onClick="{{ it.go }}" style="width:100%;display:flex;align-items:center;gap:9px;padding:7px 10px;border:0;border-radius:6px;cursor:pointer;font:inherit;font-size:13px;text-align:left;background:{{ it.bg }};color:{{ it.color }};box-shadow:inset 2px 0 0 {{ it.bar }}"><i class="ph-duotone {{ it.icon }}" style="font-size:15px;color:{{ it.ic }}"></i><span style="flex:1">{{ it.label }}</span><sc-if value="{{ it.hasBadge }}"><span style="min-width:18px;padding:0 5px;height:16px;border-radius:8px;background:color-mix(in oklab,oklch(0.83 0.13 80) 18%,transparent);color:oklch(0.83 0.13 80);font-size:10px;font-weight:600;line-height:16px;text-align:center">{{ it.badge }}</span></sc-if></button></sc-for>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ drawer }}">
+    <div onClick="{{ closeDrawer }}" style="position:fixed;inset:0;z-index:40;background:color-mix(in srgb,var(--color-neutral-900) 65%,transparent);animation:wFade .15s"></div>
+    <aside style="position:fixed;top:0;bottom:0;left:0;z-index:41;width:284px;max-width:86vw;display:flex;flex-direction:column;background:var(--color-bg);box-shadow:var(--shadow-lg);animation:wSlideL .18s ease-out">
+      <div style="padding:14px 14px 12px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--color-neutral-900)">
+        <div style="width:30px;height:30px;border-radius:8px;border:1px solid var(--color-accent);display:grid;place-items:center;color:var(--color-accent)"><i class="ph-bold ph-warehouse" style="font-size:15px"></i></div>
+        <div style="flex:1;min-width:0;line-height:1.3"><div style="font-weight:500">Warehouse System</div><div style="font-size:11px;color:var(--color-neutral-400)">Nomsa Mahlangu · Warehouse Manager</div></div>
+        <button class="btn btn-icon" onClick="{{ closeDrawer }}" aria-label="Close menu" style="white-space:nowrap;flex:none;width:30px;height:30px;color:var(--color-neutral-400)"><i class="ph ph-x"></i></button>
+      </div>
+      <div style="flex:1;overflow:auto;padding:8px">
+        <sc-for list="{{ nav }}" as="g">
+          <sc-if value="{{ g.flat }}"><button onClick="{{ g.first.go }}" style="width:100%;display:flex;align-items:center;gap:10px;padding:10px 10px;border:0;border-radius:6px;cursor:pointer;font:inherit;font-size:14px;text-align:left;background:{{ g.first.bg }};color:{{ g.first.color }};box-shadow:inset 2px 0 0 {{ g.first.bar }}"><i class="ph-duotone {{ g.first.icon }}" style="font-size:18px;color:{{ g.first.ic }}"></i>{{ g.first.label }}</button></sc-if>
+          <sc-if value="{{ g.notFlat }}">
+            <div style="margin-top:6px">
+              <button onClick="{{ g.toggle }}" style="width:100%;display:flex;align-items:center;gap:10px;padding:9px 10px;border:0;background:transparent;cursor:pointer;font:inherit;font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--color-neutral-400);box-shadow:inset 2px 0 0 {{ g.cue }}"><i class="ph-duotone {{ g.icon }}" style="font-size:16px;color:{{ g.iconColor }}"></i><span style="flex:1;text-align:left">{{ g.title }}</span><sc-if value="{{ g.hasGroupBadge }}"><span style="min-width:18px;padding:0 5px;height:16px;border-radius:8px;background:color-mix(in oklab,oklch(0.83 0.13 80) 18%,transparent);color:oklch(0.83 0.13 80);font-size:10px;font-weight:600;line-height:16px;text-align:center">{{ g.groupBadge }}</span></sc-if><i class="ph-bold ph-caret-down" style="font-size:10px;transform:{{ g.caret }}"></i></button>
+              <sc-if value="{{ g.open }}"><sc-for list="{{ g.items }}" as="it"><button onClick="{{ it.go }}" style="width:100%;display:flex;align-items:center;gap:10px;padding:10px 10px 10px 18px;border:0;border-radius:6px;cursor:pointer;font:inherit;font-size:14px;text-align:left;background:{{ it.bg }};color:{{ it.color }};box-shadow:inset 2px 0 0 {{ it.bar }}"><i class="ph-duotone {{ it.icon }}" style="font-size:17px;color:{{ it.ic }}"></i><span style="flex:1">{{ it.label }}</span><sc-if value="{{ it.hasBadge }}"><span style="min-width:18px;padding:0 5px;height:16px;border-radius:8px;background:color-mix(in oklab,oklch(0.83 0.13 80) 18%,transparent);color:oklch(0.83 0.13 80);font-size:10px;font-weight:600;line-height:16px;text-align:center">{{ it.badge }}</span></sc-if></button></sc-for></sc-if>
+            </div>
+          </sc-if>
+        </sc-for>
+      </div>
+      <div style="padding:10px;border-top:1px solid var(--color-neutral-900)"><button class="btn btn-secondary btn-block" onClick="{{ askSignOut }}" style="white-space:nowrap;flex:none;margin:0;color:var(--color-neutral-300)"><i class="ph ph-sign-out"></i>Sign out</button></div>
+    </aside>
+  </sc-if>
+
+  <sc-if value="{{ notif }}">
+    <div onClick="{{ toggleNotif }}" style="position:fixed;inset:0;z-index:50"></div>
+    <div style="position:fixed;top:54px;z-index:51;border-radius:var(--radius-lg);background:var(--color-surface);box-shadow:var(--shadow-lg);animation:wPop .15s ease-out;overflow:hidden;left:{{ notifPos.l }};right:{{ notifPos.r }};width:{{ notifPos.w }}">
+      <div style="display:flex;align-items:center;padding:12px 14px 8px"><div style="flex:1;font-weight:500;font-size:14px">Notifications</div><button class="btn btn-ghost" onClick="{{ markRead }}" style="white-space:nowrap;flex:none;font-size:12px">Mark all read</button></div>
+      <sc-for list="{{ notes }}" as="n"><button onClick="{{ n.click }}" style="width:100%;display:grid;grid-template-columns:30px minmax(0,1fr) auto;gap:10px;align-items:start;padding:10px 14px;border:0;border-top:1px solid var(--color-neutral-800);background:transparent;font:inherit;color:inherit;text-align:left;cursor:pointer" style-hover="background:color-mix(in srgb,var(--color-text) 5%,transparent)"><span style="width:30px;height:30px;border-radius:8px;display:grid;place-items:center;background:{{ n.bg }};color:{{ n.fg }}"><i class="ph-fill {{ n.icon }}" style="font-size:15px"></i></span><span style="min-width:0"><span style="display:block;font-weight:500">{{ n.title }}</span><span style="display:block;font-size:12px;color:var(--color-neutral-400)">{{ n.msg }}</span></span><span style="font-size:11px;color:var(--color-neutral-500);white-space:nowrap">{{ n.time }}</span></button></sc-for>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ hasSheet }}">
+    <div onClick="{{ closeSheet }}" style="position:fixed;inset:0;z-index:60;background:color-mix(in srgb,var(--color-neutral-900) 55%,transparent);animation:wFade .15s"></div>
+    <aside style="position:fixed;top:0;right:0;bottom:0;z-index:61;display:flex;flex-direction:column;background:var(--color-bg);box-shadow:var(--shadow-lg);animation:wSlide .2s ease-out;width:{{ sheetW }}">
+      <div style="display:flex;align-items:center;gap:8px;padding:10px 12px 10px 16px;border-bottom:1px solid var(--color-neutral-900)"><div style="flex:1;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-neutral-400)">{{ sheetKicker }}</div><button class="btn btn-icon" onClick="{{ closeSheet }}" aria-label="Close" style="white-space:nowrap;flex:none;width:30px;height:30px;color:var(--color-neutral-400)"><i class="ph ph-x" style="font-size:16px"></i></button></div>
+      <div style="flex:1;overflow:auto;padding:16px">
+        <sc-if value="{{ sheetProduct }}">
+          <div style="display:flex;gap:12px;align-items:flex-start;margin-bottom:12px">
+            <div style="width:56px;height:56px;flex:none;border-radius:10px;display:grid;place-items:center;background:radial-gradient(circle at 50% 40%,var(--color-neutral-800),var(--color-neutral-900));color:var(--color-neutral-500)"><i class="ph-duotone ph-package" style="font-size:24px"></i></div>
+            <div style="flex:1;min-width:0"><h2 style="font-size:18px;margin:0">{{ sp.name }}</h2><div style="font-size:12px;color:var(--color-neutral-400);margin-top:2px">{{ sp.sku }} · {{ sp.cat }} › {{ sp.sub }} · {{ sp.uom }}</div><span style="display:inline-block;margin-top:6px;font-size:11px;padding:2px 8px;border-radius:6px;background:{{ sp.stBg }};color:{{ sp.stFg }}">{{ sp.status }}</span></div>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px">
+            <button class="btn btn-secondary" onClick="{{ sp.edit }}" style="white-space:nowrap;flex:none;font-size:12px;padding:4px 9px"><i class="ph ph-pencil-simple"></i>Edit</button>
+            <button class="btn btn-secondary" onClick="{{ sp.whereIs }}" style="white-space:nowrap;flex:none;font-size:12px;padding:4px 9px"><i class="ph ph-map-pin"></i>Where is it?</button>
+            <sc-if value="{{ sp.active }}"><button class="btn btn-secondary" onClick="{{ sp.deactivate }}" style="white-space:nowrap;flex:none;font-size:12px;padding:4px 9px;color:oklch(0.74 0.16 25)"><i class="ph ph-prohibit"></i>Deactivate</button></sc-if>
+            <sc-if value="{{ sp.inactive }}"><button class="btn btn-primary" onClick="{{ sp.reactivate }}" style="white-space:nowrap;flex:none;font-size:12px;padding:4px 9px"><i class="ph ph-check-circle"></i>Reactivate</button></sc-if>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1px;border-radius:var(--radius-md);overflow:hidden;background:var(--color-neutral-800);margin-bottom:16px">
+            <sc-for list="{{ sp.facts }}" as="f"><div style="padding:10px 12px;background:var(--color-surface)"><div style="font-size:11px;color:var(--color-neutral-400)">{{ f.l }}</div><div style="font-size:16px;font-weight:500;font-variant-numeric:tabular-nums;color:{{ f.c }}">{{ f.v }}</div></div></sc-for>
+          </div>
+          <h3 style="font-size:13px;margin:0 0 6px">Stock by location</h3>
+          <div style="border-radius:var(--radius-md);background:var(--color-surface);margin-bottom:16px">
+            <sc-for list="{{ sp.rows }}" as="r"><div style="display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:14px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--color-neutral-900)"><div style="min-width:0"><div>{{ r.path }}</div><div style="font-size:11px;color:var(--color-neutral-500);font-family:ui-monospace,Menlo,monospace">{{ r.code }}</div></div><span style="font-variant-numeric:tabular-nums;font-size:12px;color:var(--color-neutral-400)">{{ r.reserved }} res.</span><span style="font-variant-numeric:tabular-nums;font-weight:500">{{ r.onHand }}</span></div></sc-for>
+          </div>
+          <h3 style="font-size:13px;margin:0 0 6px">Recent movements</h3>
+          <sc-if value="{{ sp.noActs }}"><div style="font-size:12px;color:var(--color-neutral-400)">No movements in the recent ledger.</div></sc-if>
+          <sc-for list="{{ sp.acts }}" as="x"><div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--color-neutral-900)"><span style="font-size:10px;padding:2px 7px;border-radius:6px;background:{{ x.bg }};color:{{ x.fg }}">{{ x.type }}</span><span style="flex:1;font-size:12px;color:var(--color-neutral-400)">{{ x.by }} · {{ x.when }}</span><span style="font-variant-numeric:tabular-nums">{{ x.qty }}</span></div></sc-for>
+        </sc-if>
+        <sc-if value="{{ sheetCount }}">
+          <h2 style="font-size:18px;margin:0">{{ sc.locName }}</h2>
+          <div style="font-size:12px;color:var(--color-neutral-400);margin:2px 0 10px">{{ sc.id }} · started {{ sc.started }} by {{ sc.by }}</div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px"><div style="flex:1;height:6px;border-radius:3px;background:var(--color-neutral-800);overflow:hidden"><div style="height:100%;width:{{ sc.progW }};background:var(--color-accent-500)"></div></div><span style="font-size:12px;color:var(--color-neutral-400)">{{ sc.prog }} counted</span></div>
+          <div style="border-radius:var(--radius-md);background:var(--color-surface)">
+            <div style="display:grid;grid-template-columns:minmax(0,1fr) 60px 60px 50px;gap:8px;padding:7px 12px;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-neutral-500);border-bottom:1px solid var(--color-neutral-900)"><span>Product</span><span style="text-align:right">Expected</span><span style="text-align:right">Counted</span><span style="text-align:right">Var.</span></div>
+            <sc-for list="{{ sc.items }}" as="i"><div style="display:grid;grid-template-columns:minmax(0,1fr) 60px 60px 50px;gap:8px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--color-neutral-900);font-variant-numeric:tabular-nums"><div style="min-width:0"><div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ i.name }}</div><div style="font-size:11px;color:var(--color-neutral-500)">{{ i.sku }}</div></div><span style="text-align:right;color:var(--color-neutral-400)">{{ i.exp }}</span><span style="text-align:right">{{ i.cnt }}</span><span style="text-align:right;color:{{ i.vc }}">{{ i.v }}</span></div></sc-for>
+          </div>
+          <sc-if value="{{ sc.inProgress }}"><div style="margin-top:14px"><button class="btn btn-primary" onClick="{{ sc.submit }}"><i class="ph ph-check"></i>Submit count</button></div></sc-if>
+        </sc-if>
+        <sc-if value="{{ sheetRole }}">
+          <div style="display:flex;align-items:center;gap:8px"><h2 style="font-size:18px;margin:0">{{ sr.name }}</h2><sc-if value="{{ sr.system }}"><span class="tag tag-neutral" style="font-size:10px;padding:1px 6px">System</span></sc-if></div>
+          <div style="font-size:12px;color:var(--color-neutral-400);margin:2px 0 14px">{{ sr.desc }} · {{ sr.n }} of {{ sr.of }} permissions · {{ sr.users }} users</div>
+          <sc-for list="{{ sr.groups }}" as="g"><div style="margin-bottom:12px"><div style="font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-neutral-500);margin-bottom:4px">{{ g.g }}</div><sc-for list="{{ g.ks }}" as="k"><div style="display:flex;align-items:center;gap:8px;padding:4px 0"><i class="ph-fill {{ k.icon }}" style="font-size:16px;color:{{ k.c }}"></i><span style="font-family:ui-monospace,Menlo,monospace;font-size:12px;color:{{ k.tc }}">{{ k.k }}</span></div></sc-for></div></sc-for>
+        </sc-if>
+      </div>
+    </aside>
+  </sc-if>
+
+  <sc-if value="{{ hasDialog }}">
+    <div class="dialog-backdrop" onClick="{{ closeDialog }}" style="z-index:70;animation:wFade .15s;backdrop-filter:blur(2px)">
+      <div class="dialog" onClick="{{ stop }}" style="animation:wPop .18s ease-out;max-height:calc(100vh - 32px);overflow:auto;width:{{ dlgW }}">
+        <sc-if value="{{ dlgConfirm }}">
+          <div class="dialog-title">{{ dlg.title }}</div>
+          <div class="dialog-body">{{ dlg.body }}</div>
+          <div class="dialog-actions"><button class="btn btn-secondary" onClick="{{ closeDialog }}">Cancel</button><button class="btn" onClick="{{ dlgOk }}" style="white-space:nowrap;flex:none;border:1px solid {{ dlgOkColor }};color:{{ dlgOkColor }}">{{ dlg.label }}</button></div>
+        </sc-if>
+        <sc-if value="{{ dlgReview }}">
+          <div class="dialog-title">{{ reviewTitle }}</div>
+          <div style="display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;align-items:center;padding:10px 12px;border-radius:8px;background:var(--color-bg)"><span style="font-size:20px;font-weight:500;font-variant-numeric:tabular-nums;color:{{ dAdj.dFg }}">{{ dAdj.deltaS }}</span><div style="min-width:0"><div style="font-weight:500">{{ dAdj.product }}</div><div style="font-size:12px;color:var(--color-neutral-400)">{{ dAdj.bucketS }} · {{ dAdj.loc }} · by {{ dAdj.by }}</div></div></div>
+          <div style="font-size:12px;color:var(--color-neutral-400)">{{ reviewEffect }}</div>
+          <div class="field"><label>{{ reviewNoteLabel }}</label><textarea class="input" value="{{ note }}" onChange="{{ setNote }}" style="min-height:70px;font-size:13px;border-color:{{ noteBorder }}"></textarea><sc-if value="{{ noteErr }}"><div style="font-size:12px;color:oklch(0.74 0.16 25);margin-top:4px">Add a note so the requester knows why.</div></sc-if></div>
+          <div class="dialog-actions"><button class="btn btn-secondary" onClick="{{ closeDialog }}">Cancel</button><button class="btn" onClick="{{ reviewOk }}" style="white-space:nowrap;flex:none;border:1px solid {{ reviewColor }};color:{{ reviewColor }}">{{ reviewLabel }}</button></div>
+        </sc-if>
+        <sc-if value="{{ dlgStart }}">
+          <div class="dialog-title">Start a stock count</div>
+          <div class="dialog-body" style="font-size:13px">Snapshots the current on-hand quantity for every product with a balance at the chosen location. Only a leaf location can be counted.</div>
+          <div class="field"><label>Location</label><select class="input" onChange="{{ setStartLoc }}" style="font-size:13px"><sc-for list="{{ leafOptsStart }}" as="o"><option value="{{ o.id }}" selected="{{ o.sel }}">{{ o.label }}</option></sc-for></select></div>
+          <div class="dialog-actions"><button class="btn btn-secondary" onClick="{{ closeDialog }}">Cancel</button><button class="btn btn-primary" onClick="{{ startOk }}">Start</button></div>
+        </sc-if>
+        <sc-if value="{{ dlgNewUser }}">
+          <div class="dialog-title">New user</div>
+          <div class="field"><label>Full name</label><input class="input" value="{{ nu.name }}" onChange="{{ nuName }}" style="font-size:13px"></div>
+          <div class="field"><label>Email</label><input class="input" type="email" value="{{ nu.email }}" onChange="{{ nuEmail }}" style="font-size:13px"></div>
+          <div class="field"><label>Role</label><select class="input" onChange="{{ nuRole }}" style="font-size:13px"><sc-for list="{{ roleNames }}" as="r"><option value="{{ r.n }}" selected="{{ r.sel }}">{{ r.n }}</option></sc-for></select></div>
+          <div class="dialog-actions"><button class="btn btn-secondary" onClick="{{ closeDialog }}">Cancel</button><button class="btn btn-primary" onClick="{{ nuOk }}">Create user</button></div>
+        </sc-if>
+        <sc-if value="{{ dlgAudit }}">
+          <div class="dialog-title" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-size:11px;letter-spacing:.05em;padding:2px 8px;border-radius:6px;background:{{ dAudit.bg }};color:{{ dAudit.fg }}">{{ dAudit.action }}</span>{{ dAudit.entity }} <span style="font-family:ui-monospace,Menlo,monospace;font-size:14px;color:var(--color-neutral-400)">{{ dAudit.idS }}</span></div>
+          <div style="font-size:12px;color:var(--color-neutral-400)">{{ dAudit.date }} {{ dAudit.time }} · {{ dAudit.who }}</div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px">
+            <div><div style="font-size:11px;color:var(--color-neutral-500);margin-bottom:4px">Old value</div><pre style="margin:0;padding:10px;border-radius:8px;background:var(--color-bg);font-size:12px;color:var(--color-neutral-300);white-space:pre-wrap;min-height:60px">{{ dAudit.oldS }}</pre></div>
+            <div><div style="font-size:11px;color:var(--color-neutral-500);margin-bottom:4px">New value</div><pre style="margin:0;padding:10px;border-radius:8px;background:var(--color-bg);font-size:12px;color:var(--color-accent-200);white-space:pre-wrap;min-height:60px">{{ dAudit.newS }}</pre></div>
+          </div>
+          <div class="dialog-actions"><button class="btn btn-secondary" onClick="{{ closeDialog }}">Close</button></div>
+        </sc-if>
+      </div>
+    </div>
+  </sc-if>
+
+  <div style="position:fixed;z-index:80;display:flex;flex-direction:column;gap:8px;pointer-events:none;top:{{ tPos.t }};bottom:{{ tPos.b }};left:{{ tPos.l }};right:{{ tPos.r }};width:{{ tPos.w }};transform:{{ tPos.x }}">
+    <sc-for list="{{ toasts }}" as="t">
+      <div style="pointer-events:auto;position:relative;overflow:hidden;display:flex;gap:10px;align-items:flex-start;padding:10px 10px 12px 12px;border-radius:var(--radius-md);background:var(--color-surface);box-shadow:var(--shadow-md);animation:wIn .22s ease-out">
+        <div style="width:28px;height:28px;border-radius:8px;flex:none;display:grid;place-items:center;background:{{ t.bg }};color:{{ t.fg }}"><i class="ph-fill {{ t.icon }}" style="font-size:16px"></i></div>
+        <div style="flex:1;min-width:0;padding-top:1px"><div style="font-weight:500;font-size:13px">{{ t.title }}</div><sc-if value="{{ t.hasMsg }}"><div style="font-size:12px;color:var(--color-neutral-400);margin-top:1px">{{ t.msg }}</div></sc-if><sc-if value="{{ t.hasAction }}"><button class="btn btn-ghost" onClick="{{ t.act }}" style="white-space:nowrap;flex:none;font-size:12px;margin:4px 0 0 -3px;padding:2px 4px">{{ t.actionLabel }}<i class="ph ph-arrow-right"></i></button></sc-if></div>
+        <button class="btn btn-icon" onClick="{{ t.close }}" aria-label="Dismiss" style="white-space:nowrap;flex:none;width:24px;height:24px;color:var(--color-neutral-500)"><i class="ph ph-x" style="font-size:13px"></i></button>
+        <div style="position:absolute;left:0;right:0;bottom:0;height:2px;transform-origin:left;animation:wShrink 5s linear forwards;opacity:.7;background:{{ t.fg }}"></div>
+      </div>
+    </sc-for>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;dashboardLayout&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;a&quot;,&quot;b&quot;,&quot;c&quot;],&quot;default&quot;:&quot;a&quot;,&quot;tsType&quot;:&quot;'a'|'b'|'c'&quot;,&quot;section&quot;:&quot;Dashboard&quot;},&quot;toastPosition&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;bottom-right&quot;,&quot;top-center&quot;],&quot;default&quot;:&quot;bottom-right&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Notifications&quot;},&quot;openGroupsByDefault&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Navigation&quot;}}">
+class Component extends DCLogic {
+  state = { ready: !!window.WH, screen: 'dashboard', dash: null, open: { stock: true }, drawer: false, flyout: null, notif: false, unread: 3,
+    toasts: [], dialog: null, sheet: null, note: '', noteErr: false, statusOv: {},
+    q: '', pStatus: 'all', pView: 'table', invView: 'product', invPid: 'P-1002', invLoc: 'A-02-03',
+    rcv: { pid: 'P-1001', qty: '', dest: 'RCV', supplier: '', ref: '' }, trf: { pid: 'P-1002', from: null, to: 'DSP', qty: '' }, recent: [],
+    pending: null, hist: null, adjTab: 'queue', req: { pid: 'P-1004', loc: 'A-02-02', bucket: 'ON_HAND', dir: 'DECREASE', qty: '', reason: '' },
+    collapsed: {}, locSel: 'A-02-03', showInactive: false, uq: '', uStatus: 'all', users: null,
+    sec: 'profile', channel: 'Email', keys: null, startLoc: 'A-02-02', nu: { name: '', email: '', role: 'Warehouse Staff' },
+    w: typeof window !== 'undefined' ? window.innerWidth : 1440 };
+
+  componentDidMount() {
+    const p = new URLSearchParams(location.search);
+    const upd = {};
+    if (p.get('screen')) upd.screen = p.get('screen');
+    if (p.get('dash')) upd.dash = p.get('dash');
+    if (p.get('sheet') === 'product') upd.sheet = { kind: 'product', id: 'P-1002' };
+    if (p.get('dialog') === 'review') upd.dialog = { kind: 'review', mode: 'approve', id: 'ADJ-311' };
+    if (p.get('toast')) setTimeout(() => this.toast('ok', 'Approved — stock moved for Sunflower Oil 2L.', '−6 on hand at A-02-03 · ADJ-311', { label: 'View in inventory', fn: () => this.go('inventory') }, 600000), 300);
+    const g = window.WH && window.WH.GROUPS.find(x => x.items.some(i => i.id === (upd.screen || this.state.screen)));
+    if (g) upd.open = { ...this.state.open, [g.id]: true };
+    if (this.props.openGroupsByDefault) upd.open = { catalogue: true, warehousing: true, stock: true, usermgmt: true, system: true };
+    this.setState(upd);
+    this.onR = () => this.setState({ w: window.innerWidth });
+    window.addEventListener('resize', this.onR);
+    if (!window.WH) this.poll = setInterval(() => { if (window.WH) { clearInterval(this.poll); this.setState({ ready: true }); } }, 50);
+  }
+  componentWillUnmount() { window.removeEventListener('resize', this.onR); clearInterval(this.poll); }
+
+  toast(tone, title, msg, action, ms) {
+    const id = Math.random().toString(36).slice(2);
+    this.setState(s => ({ toasts: [...s.toasts.slice(-2), { id, tone, title, msg, action }] }));
+    setTimeout(() => this.dismiss(id), ms || 5000);
+  }
+  dismiss(id) { this.setState(s => ({ toasts: s.toasts.filter(t => t.id !== id) })); }
+  go(screen) {
+    const g = window.WH.GROUPS.find(x => x.items.some(i => i.id === screen));
+    this.setState(s => ({ screen, drawer: false, flyout: null, sheet: null, notif: false, open: g ? { ...s.open, [g.id]: true } : s.open }));
+    const m = document.querySelector('main'); if (m) m.scrollTop = 0;
+  }
+  confirm(title, body, label, destructive, onOk) { this.setState({ dialog: { kind: 'confirm', title, body, label, destructive, onOk } }); }
+
+  renderVals() {
+    const W = window.WH; if (!W) return { notReady: true };
+    const { TONE, fmt, money, OK, WARN, BAD } = W;
+    const s = this.state, w = s.w;
+    const phone = w < 600, tablet = w >= 600 && w < 1024, desktop = w >= 1024;
+    const dash = s.dash || this.props.dashboardLayout || 'a';
+    const go = id => () => this.go(id);
+    const set = (k, v) => () => this.setState({ [k]: v });
+    const inp = (obj, k) => e => { const v = e.target.value; this.setState(st => ({ [obj]: { ...st[obj], [k]: v } })); };
+    const pending = s.pending || W.PEND, hist = s.hist || W.HIST, users = s.users || W.USERS, keys = s.keys || W.KEYS;
+    const statusOf = p => s.statusOv[p.id] || p.status;
+    const tag = t => TONE[t] || TONE.neutral;
+
+    // nav
+    const activeGroup = W.GROUPS.find(g => g.items.some(i => i.id === s.screen));
+    const nav = W.GROUPS.map((g, gi) => {
+      const holds = g === activeGroup, open = !!s.open[g.id];
+      const badge = g.items.some(i => i.id === 'adjustments') ? pending.length : 0;
+      const items = g.items.map(i => {
+        const a = i.id === s.screen, b = i.id === 'adjustments' ? pending.length : 0;
+        return { ...i, go: go(i.id), bg: a ? 'var(--color-accent-900)' : 'transparent', color: a ? 'var(--color-text)' : 'var(--color-neutral-300)', weight: a ? 500 : 400,
+          bar: a ? 'var(--color-accent)' : 'transparent', ic: a ? 'var(--color-accent-300)' : 'var(--color-neutral-500)', badge: b, hasBadge: b > 0 };
+      });
+      return { ...g, items, first: items[0], notFlat: !g.flat, open, holds, groupBadge: badge, hasGroupBadge: !open && badge > 0, hasBadgeAny: badge > 0,
+        toggle: () => this.setState(st => ({ open: { ...st.open, [g.id]: !st.open[g.id] } })),
+        caret: open ? 'rotate(180deg)' : 'none', iconColor: holds ? 'var(--color-accent)' : 'var(--color-neutral-500)', cue: holds && !open ? 'var(--color-accent)' : 'transparent',
+        railBg: holds ? 'var(--color-accent-900)' : 'transparent', railColor: holds ? 'var(--color-accent-200)' : 'var(--color-neutral-400)',
+        railClick: g.flat ? go(g.items[0].id) : () => this.setState(st => ({ flyout: st.flyout === g.id ? null : g.id })), top: (54 + gi * 56) + 'px' };
+    });
+    const fly = nav.find(g => g.id === s.flyout);
+    const curItem = W.GROUPS.flatMap(g => g.items).find(i => i.id === s.screen) || { label: 'Dashboard', icon: 'ph-gauge' };
+    const BOTTOM = [['dashboard', 'Home', 'ph-gauge'], ['products', 'Products', 'ph-package'], ['inventory', 'Inventory', 'ph-cube'], ['receiving', 'Receive', 'ph-box-arrow-down']];
+    const inBottom = BOTTOM.some(b => b[0] === s.screen);
+    const bottom = [...BOTTOM.map(([id, label, icon]) => ({ label, icon, go: go(id), on: s.screen === id })),
+      { label: 'Menu', icon: 'ph-list', go: set('drawer', true), on: !inBottom }].map(b => ({ ...b, color: b.on ? 'var(--color-accent-300)' : 'var(--color-neutral-400)', bar: b.on ? 'var(--color-accent)' : 'transparent' }));
+    const scr = {}; ['dashboard', 'products', 'inventory', 'receiving', 'transfers', 'counts', 'adjustments', 'locations', 'users', 'roles', 'audit', 'settings'].forEach(k => scr[k] = s.screen === k);
+    scr.rt = scr.receiving || scr.transfers;
+    scr.placeholder = ['workstreams', 'categories', 'attributes', 'warehouses', 'packing'].includes(s.screen);
+
+    // products
+    const prods = W.PRODUCTS.map(p => {
+      const st = statusOf(p), low = p.stock < p.min, t = tag(st === 'Active' ? 'ok' : 'neutral');
+      return { ...p, status: st, low, priceS: money(p.price), stockS: fmt(p.stock), minS: fmt(p.min), stockColor: low ? BAD : 'var(--color-text)', stockW: low ? 500 : 400,
+        barW: Math.min(100, p.stock / (p.min * 2) * 100) + '%', barC: low ? BAD : 'var(--color-accent-500)', stFg: t.fg, stBg: t.bg, open: () => this.setState({ sheet: { kind: 'product', id: p.id } }) };
+    });
+    const ql = s.q.trim().toLowerCase();
+    const plist = prods.filter(p => (!ql || p.sku.toLowerCase().includes(ql) || p.name.toLowerCase().includes(ql)) &&
+      (s.pStatus === 'all' || (s.pStatus === 'active' && p.status === 'Active') || (s.pStatus === 'inactive' && p.status !== 'Active') || (s.pStatus === 'low' && p.low)));
+    const seg = (cur, key, opts) => opts.map(([v, label]) => ({ label, click: set(key, v), color: cur === v ? 'var(--color-accent-200)' : 'var(--color-neutral-400)', bg: cur === v ? 'var(--color-accent-900)' : 'transparent' }));
+    const lowAll = prods.filter(p => p.low && p.status === 'Active');
+    const pStats = [
+      { v: plist.length, l: 'shown', c: 'var(--color-text)' },
+      { v: plist.filter(p => p.status === 'Active').length, l: 'active', c: OK },
+      { v: plist.filter(p => p.status !== 'Active').length, l: 'inactive', c: 'var(--color-neutral-300)' },
+      { v: plist.filter(p => p.low).length, l: 'below minimum', c: WARN },
+      { v: fmt(plist.reduce((a, p) => a + p.stock, 0)), l: 'units on hand', c: 'var(--color-text)' },
+      { v: plist.length ? money(plist.reduce((a, p) => a + p.price, 0) / plist.length) : '—', l: 'avg. price', c: 'var(--color-text)' }];
+    const forceList = phone;
+
+    // product sheet
+    let sp = null;
+    if (s.sheet && s.sheet.kind === 'product') {
+      const p = prods.find(x => x.id === s.sheet.id);
+      const rows = W.BD[p.id].map(r => ({ path: W.path(r.loc.id).slice(-2).join(' › '), code: r.loc.code, onHand: fmt(r.onHand), reserved: fmt(r.reserved), avail: fmt(r.onHand - r.reserved) }));
+      const margin = p.cost ? Math.round((p.price - p.cost) / p.price * 100) + '%' : '—';
+      sp = { ...p, rows, costS: p.cost ? money(p.cost) : '—', margin, active: p.status === 'Active', inactive: p.status !== 'Active',
+        facts: [{ l: 'On hand', v: fmt(p.stock) + ' ' + p.uom, c: p.low ? BAD : 'var(--color-text)' }, { l: 'Minimum', v: fmt(p.min), c: 'var(--color-text)' }, { l: 'Selling price', v: money(p.price), c: 'var(--color-text)' }, { l: 'Cost / margin', v: (p.cost ? money(p.cost) : '—') + ' · ' + margin, c: 'var(--color-text)' }],
+        acts: W.ACTS.filter(a => a.pid === p.id).map(a => ({ type: a.type.replace(/_/g, ' '), fg: tag(W.TYPE_TONE[a.type]).fg, bg: tag(W.TYPE_TONE[a.type]).bg, qty: fmt(a.qty), when: a.when, by: a.by })),
+        deactivate: () => this.confirm('Deactivate product?', `This marks "${p.name}" inactive. It stays visible in historical inventory records — it is not deleted.`, 'Deactivate', true, () => { this.setState(st => ({ statusOv: { ...st.statusOv, [p.id]: 'Inactive' } })); this.toast('ok', 'Product deactivated', p.name + ' is now inactive.', { label: 'Undo', fn: () => this.setState(st => ({ statusOv: { ...st.statusOv, [p.id]: 'Active' } })) }); }),
+        reactivate: () => { this.setState(st => ({ statusOv: { ...st.statusOv, [p.id]: 'Active' } })); this.toast('ok', 'Product reactivated', p.name); },
+        edit: () => this.toast('info', 'Edit opens the product form', 'The form screen is not part of this pass.'),
+        whereIs: () => { this.setState({ invPid: p.id, invView: 'product' }); this.go('inventory'); } };
+      sp.noActs = sp.acts.length === 0;
+    }
+
+    // dashboard
+    const pendList = pending.map(a => {
+      const p = W.PBY[a.pid], inc = a.dir === 'INCREASE', wt = a.days >= 3 ? tag('bad') : a.days >= 1 ? tag('warn') : tag('neutral'), own = a.by === 'Nomsa Mahlangu';
+      return { ...a, product: p.name, sku: p.sku, deltaS: (inc ? '+' : '−') + fmt(a.delta), dFg: inc ? OK : BAD, bucketS: a.bucket.toLowerCase().replace('_', ' '),
+        locPath: W.path(a.loc).join(' › '), waitS: a.days === 0 ? 'today' : a.days + 'd waiting', wFg: wt.fg, wBg: wt.bg, own, canAct: !own,
+        approve: () => this.setState({ dialog: { kind: 'review', mode: 'approve', id: a.id }, note: '', noteErr: false }),
+        reject: () => this.setState({ dialog: { kind: 'review', mode: 'reject', id: a.id }, note: '', noteErr: false }) };
+    });
+    const valued = W.PRODUCTS.filter(p => p.cost && statusOf(p) === 'Active');
+    const openCounts = W.COUNTS.filter(c => c.status !== 'Submitted').length;
+    const kpis = [
+      { icon: 'ph-package', label: 'Active products', value: prods.filter(p => p.status === 'Active').length, sub: '8 categories · 3 workstreams', fg: 'var(--color-accent-400)', valColor: 'var(--color-text)', go: go('products') },
+      { icon: 'ph-warning', label: 'Low stock', value: lowAll.length, sub: 'below minimum level', fg: WARN, valColor: lowAll.length ? WARN : 'var(--color-text)', go: () => { this.setState({ pStatus: 'low' }); this.go('products'); } },
+      { icon: 'ph-hourglass-medium', label: 'Pending adjustments', value: pending.length, sub: pending.length ? 'oldest ' + Math.max(...pending.map(a => a.days)) + 'd waiting' : 'nothing to review', fg: WARN, valColor: pending.length ? WARN : 'var(--color-text)', go: go('adjustments') },
+      { icon: 'ph-coins', label: 'Inventory valuation', value: money(valued.reduce((a, p) => a + p.stock * p.cost, 0)), sub: '1 product without cost excluded', fg: 'var(--color-accent-400)', valColor: 'var(--color-text)', go: go('inventory') },
+      { icon: 'ph-list-checks', label: 'Open stock counts', value: openCounts, sub: 'in progress', fg: 'var(--color-accent-400)', valColor: 'var(--color-text)', go: go('counts') }];
+    const lowList = lowAll.map(p => ({ ...p, short: fmt(p.min - p.stock), pct: Math.round(p.stock / p.min * 100) + '%', onHand: fmt(p.stock) }));
+    const maxM = Math.max(...W.MOVES.map(m => m[1]));
+    const moves = W.MOVES.map(([t, n, tn]) => ({ label: t.replace(/_/g, ' ').toLowerCase(), n, w: (n / maxM * 100) + '%', c: tn === 'info' ? 'var(--color-accent-500)' : tag(tn).fg }));
+    const acts = W.ACTS.slice(0, 6).map(a => { const p = W.PBY[a.pid], t = tag(W.TYPE_TONE[a.type]); return { typeS: a.type.replace(/_/g, ' '), fg: t.fg, bg: t.bg, product: p.name, sku: p.sku, qtyS: fmt(a.qty), when: a.when, by: a.by, where: [a.from && 'from ' + a.from, a.to && 'to ' + a.to].filter(Boolean).join(' '), open: () => this.setState({ sheet: { kind: 'product', id: p.id } }) }; });
+    const AREAS = { a: ['"kpi kpi kpi" "low pend move" "act act act"', '"kpi kpi" "low pend" "move act"', '"kpi" "low" "pend" "move" "act"'],
+      b: ['"pend pend kpi" "low low move" "act act move"', '"pend pend" "kpi kpi" "low move" "act act"', '"pend" "low" "kpi" "move" "act"'],
+      c: ['"kpi kpi kpi" "act act pend" "act act low" "move move move"', '"kpi kpi" "act act" "pend low" "move move"', '"kpi" "act" "pend" "low" "move"'] }[dash] || [];
+    const dashAreas = desktop ? AREAS[0] : tablet ? AREAS[1] : AREAS[2];
+    const dashCols = desktop ? 'repeat(3, minmax(0, 1fr))' : tablet ? 'repeat(2, minmax(0, 1fr))' : 'minmax(0, 1fr)';
+
+    // inventory
+    const invP = prods.find(p => p.id === s.invPid);
+    const invRows = W.BD[invP.id].map(r => { const pth = W.path(r.loc.id); return { lead: pth.slice(0, -1).join(' › '), leaf: pth[pth.length - 1], code: r.loc.code, onHand: fmt(r.onHand), reserved: fmt(r.reserved), avail: fmt(r.onHand - r.reserved), resW: (r.reserved / Math.max(1, r.onHand) * 100) + '%' }; });
+    const tot = W.BD[invP.id].reduce((a, r) => ({ on: a.on + r.onHand, res: a.res + r.reserved }), { on: 0, res: 0 });
+    const invTotals = [{ l: 'Total on hand', v: fmt(tot.on) + ' ' + invP.uom, sub: 'across ' + invRows.length + ' locations', c: 'var(--color-text)' },
+      { l: 'Reserved', v: fmt(tot.res), sub: 'held for orders', c: WARN }, { l: 'Available', v: fmt(tot.on - tot.res), sub: 'can be picked', c: 'var(--color-accent-300)' },
+      { l: 'Minimum level', v: fmt(invP.min), sub: invP.low ? 'below minimum' : 'above minimum', c: invP.low ? BAD : 'var(--color-text)' }];
+    const locRows = W.locStock(s.invLoc).map(r => ({ name: r.p.name, sku: r.p.sku, onHand: fmt(r.onHand), reserved: fmt(r.reserved), avail: fmt(r.onHand - r.reserved), open: () => this.setState({ sheet: { kind: 'product', id: r.p.id } }) }));
+    const leafOpts = W.LEAVES.map(l => ({ id: l.id, label: l.code + ' — ' + W.path(l.id).join(' › ') }));
+    const selO = (list, cur) => list.map(o => ({ ...o, sel: o.id === cur }));
+    const prodOpts = W.PRODUCTS.map(p => ({ id: p.id, label: p.sku + ' — ' + p.name }));
+
+    // receiving & transfers
+    const rp = W.PBY[s.rcv.pid], rq = parseFloat(s.rcv.qty) || 0, rBefore = W.locQty(rp.id, s.rcv.dest);
+    const tp = W.PBY[s.trf.pid], srcs = W.BD[tp.id], tFrom = s.trf.from && srcs.find(r => r.loc.id === s.trf.from) ? s.trf.from : (srcs[0] && srcs[0].loc.id);
+    const tq = parseFloat(s.trf.qty) || 0, fromRow = srcs.find(r => r.loc.id === tFrom), fromAvail = fromRow ? fromRow.onHand - fromRow.reserved : 0, toBefore = W.locQty(tp.id, s.trf.to);
+    const trfSources = srcs.map(r => { const on = r.loc.id === tFrom; return { path: W.path(r.loc.id).join(' › '), code: r.loc.code, availS: fmt(r.onHand - r.reserved), border: on ? 'var(--color-accent)' : 'var(--color-divider)', bg: on ? 'color-mix(in srgb, var(--color-accent) 8%, transparent)' : 'transparent', dot: on ? 'var(--color-accent)' : 'transparent', pick: () => this.setState(st => ({ trf: { ...st.trf, from: r.loc.id } })) }; });
+    const recentBase = W.ACTS.filter(a => a.type === (scr.transfers ? 'TRANSFER' : 'RECEIVE')).map(a => ({ name: W.PBY[a.pid].name, qty: fmt(a.qty) + ' ' + W.PBY[a.pid].uom, where: scr.transfers ? a.from + ' → ' + a.to : 'to ' + a.to, when: a.when, by: a.by }));
+    const recent = [...s.recent.filter(r => r.kind === (scr.transfers ? 't' : 'r')), ...recentBase].slice(0, 4);
+    const submitRcv = () => {
+      if (!(rq > 0)) return this.toast('bad', 'Enter a quantity greater than 0', 'Nothing was received.');
+      if (!s.rcv.supplier.trim()) return this.toast('bad', 'Supplier is required', 'Add the supplier before receiving.');
+      this.setState(st => ({ rcv: { ...st.rcv, qty: '', ref: '' }, recent: [{ kind: 'r', name: rp.name, qty: fmt(rq) + ' ' + rp.uom, where: 'to ' + st.rcv.dest, when: 'Just now', by: 'Nomsa Mahlangu' }, ...st.recent] }));
+      this.toast('ok', `Received ${fmt(rq)} ${rp.uom} of ${rp.name}`, `${s.rcv.dest} on hand is now ${fmt(rBefore + rq)}.`, { label: 'View stock', fn: () => { this.setState({ invPid: rp.id, invView: 'product' }); this.go('inventory'); } });
+    };
+    const submitTrf = () => {
+      if (!(tq > 0)) return this.toast('bad', 'Enter a quantity greater than 0', 'Nothing was moved.');
+      if (tq > fromAvail) return this.toast('warn', 'Not enough available stock', `Only ${fmt(fromAvail)} ${tp.uom} available at ${tFrom}.`);
+      if (s.trf.to === tFrom) return this.toast('warn', 'Choose a different destination', 'Source and destination are the same location.');
+      this.setState(st => ({ trf: { ...st.trf, qty: '' }, recent: [{ kind: 't', name: tp.name, qty: fmt(tq) + ' ' + tp.uom, where: tFrom + ' → ' + st.trf.to, when: 'Just now', by: 'Nomsa Mahlangu' }, ...st.recent] }));
+      this.toast('ok', `Moved ${fmt(tq)} ${tp.uom} of ${tp.name}`, `${tFrom} → ${s.trf.to}`, { label: 'View stock', fn: () => { this.setState({ invPid: tp.id, invView: 'product' }); this.go('inventory'); } });
+    };
+
+    // counts
+    const counts = W.COUNTS.map(c => { const done = c.status === 'Submitted', t = tag(done ? 'ok' : 'info'); return { ...c, locName: W.path(c.loc).slice(-2).join(' › '), prog: c.counted + ' / ' + c.items, progW: (c.counted / c.items * 100) + '%', varS: c.variance === 0 ? '0' : (c.variance > 0 ? '+' : '−') + Math.abs(c.variance), varC: c.variance === 0 ? 'var(--color-neutral-400)' : c.variance > 0 ? OK : BAD, stFg: t.fg, stBg: t.bg, open: () => this.setState({ sheet: { kind: 'count', id: c.id } }) }; });
+    let sc = null;
+    if (s.sheet && s.sheet.kind === 'count') {
+      const c = counts.find(x => x.id === s.sheet.id);
+      const items = W.locStock(c.loc).map((r, i) => { const counted = i < 2 || c.status === 'Submitted' ? r.onHand + (i === 0 ? c.variance : 0) : null; const v = counted == null ? null : counted - r.onHand; return { name: r.p.name, sku: r.p.sku, exp: fmt(r.onHand), cnt: counted == null ? '—' : fmt(counted), v: v == null ? '' : v === 0 ? '0' : (v > 0 ? '+' : '−') + Math.abs(v), vc: !v ? 'var(--color-neutral-400)' : v > 0 ? OK : BAD }; });
+      sc = { ...c, items, inProgress: c.status !== 'Submitted', submit: () => { this.setState({ sheet: null }); this.toast('ok', 'Stock count submitted', `${c.id} at ${c.loc} — variances sent for adjustment review.`); } };
+    }
+
+    // adjustments
+    const histList = hist.map(h => { const p = W.PBY[h.pid], inc = h.dir === 'INCREASE', t = tag(h.status === 'Approved' ? 'ok' : 'bad'); return { ...h, product: p.name, sku: p.sku, deltaS: (inc ? '+' : '−') + fmt(h.delta) + ' ' + h.bucket.toLowerCase().replace('_', ' '), dFg: inc ? OK : BAD, stFg: t.fg, stBg: t.bg }; });
+    const adjTabs = seg(s.adjTab, 'adjTab', [['queue', 'Queue · ' + pending.length], ['history', 'History · ' + hist.length], ['request', 'Request adjustment']]);
+    const submitReq = () => {
+      const q = parseFloat(s.req.qty);
+      if (!(q > 0) || !s.req.reason.trim()) return this.toast('bad', 'Quantity and reason are required', 'The request was not sent.');
+      const p = W.PBY[s.req.pid];
+      this.setState(st => ({ pending: [...(st.pending || W.PEND), { id: 'ADJ-3' + (20 + (st.pending || W.PEND).length), pid: p.id, delta: q, dir: st.req.dir, bucket: st.req.bucket, loc: st.req.loc, reason: st.req.reason, by: 'Nomsa Mahlangu', when: 'Just now', days: 0 }], req: { ...st.req, qty: '', reason: '' }, adjTab: 'queue' }));
+      this.toast('info', 'Request sent for approval', `${p.name} · a different reviewer must approve it.`);
+    };
+
+    // structure
+    const hidden = id => { let c = W.LBY[id].parent; while (c) { if (s.collapsed[c]) return true; c = W.LBY[c].parent; } return false; };
+    const tree = W.LOCS.filter(l => (s.showInactive || !l.inactive) && !hidden(l.id)).map(l => {
+      const sel = l.id === s.locSel;
+      return { ...l, indent: (8 + l.depth * 18) + 'px', bg: sel ? 'var(--color-accent-900)' : 'transparent', bar: sel ? 'var(--color-accent)' : 'transparent', op: l.inactive ? 0.5 : 1,
+        caretVis: l.leaf ? 'hidden' : 'visible', caretRot: s.collapsed[l.id] ? 'none' : 'rotate(90deg)', icon: l.leaf ? 'ph-cube' : 'ph-folder-simple', ic: sel ? 'var(--color-accent-300)' : 'var(--color-neutral-500)',
+        unitsS: fmt(W.units(l.id)), select: set('locSel', l.id), toggle: e => { e.stopPropagation(); this.setState(st => ({ collapsed: { ...st.collapsed, [l.id]: !st.collapsed[l.id] } })); } };
+    });
+    const L = W.LBY[s.locSel], lt = tag(L.inactive ? 'neutral' : 'ok');
+    const loc = { ...L, crumbs: W.path(L.id).join(' › '), statusS: L.inactive ? 'Inactive' : 'Active', stFg: lt.fg, stBg: lt.bg,
+      facts: [{ l: 'Code', v: L.code }, { l: 'Type', v: L.type }, { l: 'Parent', v: L.parent ? W.LBY[L.parent].name + ' (' + L.parent + ')' : '— (top level)' }, { l: 'Children', v: L.children.length }, { l: 'Units on hand', v: fmt(W.units(L.id)) }, { l: 'SKUs', v: L.leaf ? W.locStock(L.id).length : '—' }],
+      stock: L.leaf ? W.locStock(L.id).map(r => ({ name: r.p.name, sku: r.p.sku, onHand: fmt(r.onHand), avail: fmt(r.onHand - r.reserved), open: () => this.setState({ sheet: { kind: 'product', id: r.p.id } }) })) : [],
+      toggleActive: () => this.confirm('Deactivate location?', `This marks "${L.name}" inactive. It is NOT deleted, and its child locations are NOT automatically deactivated.`, 'Deactivate', true, () => this.toast('ok', 'Location deactivated', L.name + ' (' + L.code + ')')),
+      soon: () => this.toast('info', 'Opens the location dialog', 'Location dialogs keep their current fields.') };
+    loc.hasStock = loc.stock.length > 0; loc.noStock = !loc.hasStock;
+
+    // users & roles
+    const uql = s.uq.trim().toLowerCase();
+    const ulist = users.filter(u => (s.uStatus === 'all' || u.status.toLowerCase() === s.uStatus) && (!uql || u.name.toLowerCase().includes(uql) || u.email.toLowerCase().includes(uql))).map(u => {
+      const t = tag(u.status === 'Active' ? 'ok' : u.status === 'Suspended' ? 'bad' : 'neutral');
+      return { ...u, rolesS: u.roles.join(', '), roleTags: u.roles.map(r => ({ r })), whsS: u.whs.length ? u.whs.join(', ') : '—', stFg: t.fg, stBg: t.bg, canDeactivate: u.status === 'Active' && u.name !== 'Nomsa Mahlangu',
+        deactivate: () => this.confirm(`Deactivate ${u.name}?`, 'They will no longer be able to sign in. This does not delete their history.', 'Deactivate', true, () => { this.setState(st => ({ users: (st.users || W.USERS).map(x => x.email === u.email ? { ...x, status: 'Inactive' } : x) })); this.toast('ok', u.name + ' deactivated', 'They have been signed out everywhere.'); }) };
+    });
+    const uStats = [{ v: users.length, l: 'users', c: 'var(--color-text)' }, { v: users.filter(u => u.status === 'Active').length, l: 'active', c: OK }, { v: users.filter(u => u.status === 'Suspended').length, l: 'suspended', c: BAD }, { v: users.filter(u => u.status === 'Inactive').length, l: 'inactive', c: 'var(--color-neutral-300)' }];
+    const roles = W.ROLES.map(r => ({ ...r, n: r.perms.length, of: W.ALLP.length, permW: (r.perms.length / W.ALLP.length * 100) + '%', users: W.USERS.filter(u => u.roles.includes(r.name)).length, open: () => this.setState({ sheet: { kind: 'role', id: r.id } }) }));
+    let sr = null;
+    if (s.sheet && s.sheet.kind === 'role') {
+      const r = roles.find(x => x.id === s.sheet.id);
+      sr = { ...r, groups: W.PERMS.map(([g, ks]) => ({ g, ks: ks.map(k => { const on = r.perms.includes(k); return { k, icon: on ? 'ph-check-square' : 'ph-square', c: on ? 'var(--color-accent-300)' : 'var(--color-neutral-600)', tc: on ? 'var(--color-text)' : 'var(--color-neutral-500)' }; }) })) };
+    }
+
+    // audit
+    const audit = W.AUDIT.map(a => { const t = tag(W.ACTION_TONE[a.action]); return { ...a, idS: a.entityId || '—', fg: t.fg, bg: t.bg, notApi: !a.api, open: () => this.setState({ dialog: { kind: 'audit', i: a.i } }) }; });
+
+    // settings
+    const SECS = [['profile', 'Profile', 'ph-user'], ['contact', 'Contact & alerts', 'ph-bell-simple'], ['mfa', 'Sign-in check', 'ph-shield-check'], ['warehouses', 'My warehouses', 'ph-buildings'], ['password', 'Password', 'ph-password'], ['keys', 'API keys', 'ph-key']];
+    const secs = SECS.map(([id, label, icon]) => ({ label, icon, click: set('sec', id), bg: s.sec === id ? 'var(--color-accent-900)' : 'transparent', color: s.sec === id ? 'var(--color-text)' : 'var(--color-neutral-400)', bar: s.sec === id ? 'var(--color-accent)' : 'transparent' }));
+    const sec = {}; SECS.forEach(([id]) => sec[id] = s.sec === id);
+    const keyList = keys.map(k => { const t = tag(k.active ? 'ok' : 'neutral'); return { ...k, statusS: k.active ? 'Active' : 'Revoked', stFg: t.fg, stBg: t.bg, scopeTags: k.scopes.map(x => ({ x })),
+      revoke: () => this.confirm(`Revoke "${k.name}"?`, 'Any caller still using this key will be rejected immediately.', 'Revoke', true, () => { this.setState(st => ({ keys: (st.keys || W.KEYS).map(x => x.id === k.id ? { ...x, active: false } : x) })); this.toast('ok', 'API key revoked', k.name); }) }; });
+    const channels = seg(s.channel, 'channel', [['Email', 'Email'], ['SMS', 'SMS']]);
+
+    // notifications
+    const notes = [
+      { icon: 'ph-hourglass-medium', fg: WARN, bg: tag('warn').bg, title: pending.length + ' adjustments waiting for review', msg: 'Oldest: Sunflower Oil 2L, 4 days', time: '10:40', click: go('adjustments') },
+      { icon: 'ph-warning', fg: WARN, bg: tag('warn').bg, title: 'Laundry Powder 2kg below minimum', msg: '12 on hand · minimum 25', time: '09:15', click: () => this.setState({ sheet: { kind: 'product', id: 'P-1006' }, notif: false }) },
+      { icon: 'ph-check-circle', fg: OK, bg: tag('ok').bg, title: 'Stock count submitted', msg: 'SC-0141 at B-01-01 by Thandi Nkosi', time: 'Yesterday', click: go('counts') }];
+
+    // dialog
+    const d = s.dialog || {};
+    let dAdj = null;
+    if (d.kind === 'review') { const a = pendList.find(x => x.id === d.id); dAdj = a || null; }
+    const dAudit = d.kind === 'audit' ? (() => { const a = audit.find(x => x.i === d.i); return { ...a, oldS: a.oldV ? JSON.stringify(a.oldV, null, 2) : '(none)', newS: a.newV ? JSON.stringify(a.newV, null, 2) : '(none)' }; })() : null;
+    const reviewOk = () => {
+      if (!dAdj) return this.setState({ dialog: null });
+      const approve = d.mode === 'approve';
+      if (!approve && !s.note.trim()) return this.setState({ noteErr: true });
+      this.setState(st => ({ dialog: null, pending: (st.pending || W.PEND).filter(x => x.id !== dAdj.id), hist: [{ ...dAdj, status: approve ? 'Approved' : 'Rejected', reviewer: 'Nomsa Mahlangu', note: st.note.trim() || '—', when: 'Today' }, ...(st.hist || W.HIST)] }));
+      if (approve) this.toast('ok', `Approved — stock moved for ${dAdj.product}.`, `${dAdj.deltaS} ${dAdj.bucketS} at ${dAdj.loc}`, { label: 'View in inventory', fn: () => { this.setState({ invPid: dAdj.pid, invView: 'product' }); this.go('inventory'); } });
+      else this.toast('warn', 'Adjustment rejected — no stock moved.', dAdj.product + ' · requester has been notified.');
+    };
+    const toastTop = (this.props.toastPosition || 'bottom-right') === 'top-center' || phone;
+    const tIcon = { ok: 'ph-check-circle', warn: 'ph-warning', bad: 'ph-x-circle', info: 'ph-info' };
+
+    return {
+      phone, tablet, desktop, notPhone: !phone, notDesktop: !desktop, pad: phone ? '12px 12px 20px' : '16px 20px 28px', brandW: desktop ? '212px' : 'auto',
+      colWide: desktop ? 'table-cell' : 'none', colMd: phone ? 'none' : 'table-cell',
+      nav, hasFlyout: tablet && !!fly, fly: fly || { items: [] }, closeFlyout: set('flyout', null), bottom,
+      crumbGroup: activeGroup && !activeGroup.flat ? activeGroup.title : '', hasCrumbGroup: !!(activeGroup && !activeGroup.flat), crumbLabel: curItem.label, curIcon: curItem.icon,
+      openDrawer: set('drawer', true), closeDrawer: set('drawer', false), drawer: s.drawer && !desktop,
+      notif: s.notif, toggleNotif: () => this.setState(st => ({ notif: !st.notif, unread: 0 })), unread: s.unread, hasUnread: s.unread > 0, notes,
+      markRead: () => { this.setState({ notif: false }); this.toast('info', 'All caught up', 'Notifications marked as read.'); },
+      notifPos: phone ? { l: '8px', r: '8px', w: 'auto' } : { l: 'auto', r: '12px', w: '360px' },
+      onGlobalSearch: e => { if (e.key === 'Enter') { this.setState({ q: e.target.value, pStatus: 'all' }); this.go('products'); } },
+      askSignOut: () => this.confirm('Sign out?', 'You will need to sign in again, including your sign-in check.', 'Sign out', false, () => this.toast('info', 'Signed out', 'Demo only — you are still here.')),
+      scr, goDashboard: go('dashboard'),
+      // dashboard
+      kpis, lowList, lowCount: lowList.length, pendList, pendCount: pendList.length, pendEmpty: pendList.length === 0, hasPend: pendList.length > 0, moves, moveTotal: fmt(W.MOVES.reduce((a, m) => a + m[1], 0)), acts, dashAreas, dashCols,
+      goLow: () => { this.setState({ pStatus: 'low' }); this.go('products'); }, goAdj: go('adjustments'),
+      refresh: () => this.toast('info', 'Dashboard refreshed', 'Figures as of ' + new Date().toTimeString().slice(0, 5) + '.'),
+      // products
+      plist, pEmpty: plist.length === 0, pStats, q: s.q, setQ: e => this.setState({ q: e.target.value }),
+      pStatusOpts: seg(s.pStatus, 'pStatus', [['all', 'All'], ['active', 'Active'], ['inactive', 'Inactive'], ['low', 'Low stock']]),
+      pViewOpts: seg(s.pView, 'pView', [['table', 'Table'], ['list', 'List'], ['grid', 'Grid']]).map((o, i) => ({ ...o, icon: ['ph-table', 'ph-rows', 'ph-squares-four'][i] })),
+      pTable: !forceList && s.pView === 'table' && plist.length > 0, pList: (forceList || s.pView === 'list') && plist.length > 0, pGrid: !forceList && s.pView === 'grid' && plist.length > 0,
+      newProduct: () => this.toast('info', 'New product opens the product form', 'The form screen is not part of this pass.'),
+      importProducts: () => this.toast('info', 'Import opens the CSV import flow', 'Not part of this pass.'),
+      clearFilters: () => this.setState({ q: '', pStatus: 'all' }),
+      // sheet
+      hasSheet: !!s.sheet, closeSheet: set('sheet', null), sheetW: phone ? '100%' : '460px', sheetKicker: s.sheet ? { product: 'Product', count: 'Stock count', role: 'Role' }[s.sheet.kind] : '',
+      sheetProduct: !!sp, sp: sp || { facts: [], rows: [], acts: [] }, sheetCount: !!sc, sc: sc || { items: [] }, sheetRole: !!sr, sr: sr || { groups: [] },
+      // inventory
+      invTabs: seg(s.invView, 'invView', [['product', 'Where is this product?'], ['location', "What's in this location?"]]), invByProduct: s.invView === 'product', invByLoc: s.invView === 'location',
+      invP, invRows, invTotals, prodOpts, leafOpts,
+      prodOptsInv: selO(prodOpts, s.invPid), prodOptsRcv: selO(prodOpts, s.rcv.pid), prodOptsTrf: selO(prodOpts, s.trf.pid), prodOptsReq: selO(prodOpts, s.req.pid),
+      leafOptsInv: selO(leafOpts, s.invLoc), leafOptsRcv: selO(leafOpts, s.rcv.dest), leafOptsTrf: selO(leafOpts, s.trf.to), leafOptsReq: selO(leafOpts, s.req.loc), leafOptsStart: selO(leafOpts, s.startLoc),
+      invPid: s.invPid, setInvPid: e => this.setState({ invPid: e.target.value }), invLoc: s.invLoc, setInvLoc: e => this.setState({ invLoc: e.target.value }),
+      locRows, locPath: W.path(s.invLoc).join(' › '), locUnits: fmt(W.locStock(s.invLoc).reduce((a, r) => a + r.onHand, 0)), locSkus: W.locStock(s.invLoc).length, locEmpty: locRows.length === 0, locHas: locRows.length > 0,
+      // receiving / transfers
+      isRcv: scr.receiving, isTrf: scr.transfers, rtTitle: scr.transfers ? 'Stock Transfers' : 'Stock Receiving',
+      rtSub: scr.transfers ? 'Moves available stock between two locations as one TRANSFER transaction.' : 'Records a RECEIVE transaction and increases on-hand at the destination.',
+      formCols: desktop ? 'minmax(0, 1.5fr) minmax(280px, 1fr)' : 'minmax(0, 1fr)',
+      rcv: s.rcv, rcvPid: inp('rcv', 'pid'), rcvQty: inp('rcv', 'qty'), rcvDest: inp('rcv', 'dest'), rcvSup: inp('rcv', 'supplier'), rcvRef: inp('rcv', 'ref'), rUom: rp.uom,
+      rPrev: { name: W.path(s.rcv.dest).join(' › '), code: s.rcv.dest, before: fmt(rBefore), after: fmt(rBefore + rq), delta: rq ? '+' + fmt(rq) : '—' }, submitRcv,
+      trf: { ...s.trf, from: tFrom }, trfPid: e => { const v = e.target.value; this.setState(st => ({ trf: { ...st.trf, pid: v, from: null } })); }, trfQty: inp('trf', 'qty'), trfTo: inp('trf', 'to'), tUom: tp.uom, trfSources, trfNoSrc: trfSources.length === 0,
+      tPrev: { from: tFrom || '—', fromBefore: fmt(fromRow ? fromRow.onHand : 0), fromAfter: fmt((fromRow ? fromRow.onHand : 0) - tq), to: s.trf.to, toBefore: fmt(toBefore), toAfter: fmt(toBefore + tq), avail: fmt(fromAvail), over: tq > fromAvail }, submitTrf,
+      recent, clearRt: () => this.setState({ rcv: { pid: 'P-1001', qty: '', dest: 'RCV', supplier: '', ref: '' }, trf: { pid: 'P-1002', from: null, to: 'DSP', qty: '' } }),
+      // counts
+      counts, cStats: [{ v: counts.length, l: 'counts', c: 'var(--color-text)' }, { v: counts.filter(c => c.status === 'Submitted').length, l: 'submitted', c: OK }, { v: openCounts, l: 'in progress', c: 'var(--color-accent-300)' }],
+      startCount: () => this.setState({ dialog: { kind: 'start' } }),
+      // adjustments
+      adjTabs, adjQueue: s.adjTab === 'queue', adjHistory: s.adjTab === 'history', adjRequest: s.adjTab === 'request', histList,
+      adjCols: phone ? '58px minmax(0, 1fr)' : '76px minmax(0, 1fr) auto', adjActCol: phone ? '1 / -1' : 'auto', adjJustify: phone ? 'flex-start' : 'flex-end',
+      req: s.req, reqPid: inp('req', 'pid'), reqLoc: inp('req', 'loc'), reqQty: inp('req', 'qty'), reqReason: inp('req', 'reason'),
+      reqBucket: seg(s.req.bucket, null, [['ON_HAND', 'On hand'], ['DAMAGED', 'Damaged'], ['LOST', 'Lost'], ['EXPIRED', 'Expired']]).map((o, i) => ({ ...o, click: () => this.setState(st => ({ req: { ...st.req, bucket: ['ON_HAND', 'DAMAGED', 'LOST', 'EXPIRED'][i] } })) })),
+      reqDir: seg(s.req.dir, null, [['INCREASE', 'Increase'], ['DECREASE', 'Decrease']]).map((o, i) => ({ ...o, click: () => this.setState(st => ({ req: { ...st.req, dir: ['INCREASE', 'DECREASE'][i] } })) })), submitReq,
+      // structure
+      tree, loc, structCols: phone ? 'minmax(0, 1fr)' : 'minmax(0, 1.15fr) minmax(0, 1fr)', showInactive: s.showInactive,
+      inactiveBorder: s.showInactive ? 'var(--color-accent)' : 'var(--color-divider)', inactiveColor: s.showInactive ? 'var(--color-accent-200)' : 'var(--color-neutral-400)', inactiveIcon: s.showInactive ? 'ph-check-square' : 'ph-square',
+      toggleInactive: () => this.setState(st => ({ showInactive: !st.showInactive })), addLocation: () => this.toast('info', 'Opens the location dialog', 'Location dialogs keep their current fields.'),
+      // users & roles
+      ulist, uEmpty: ulist.length === 0, uStats, uq: s.uq, setUq: e => this.setState({ uq: e.target.value }),
+      uStatusOpts: seg(s.uStatus, 'uStatus', [['all', 'All'], ['active', 'Active'], ['suspended', 'Suspended'], ['inactive', 'Inactive']]),
+      newUser: () => this.setState({ dialog: { kind: 'newUser' }, nu: { name: '', email: '', role: 'Warehouse Staff' } }), nu: s.nu, nuName: inp('nu', 'name'), nuEmail: inp('nu', 'email'), nuRole: inp('nu', 'role'), roleNames: W.ROLES.map(r => ({ n: r.name, sel: r.name === s.nu.role })),
+      roles, rStats: [{ v: roles.length, l: 'roles', c: 'var(--color-text)' }, { v: roles.filter(r => r.system).length, l: 'system', c: 'var(--color-accent-300)' }, { v: roles.filter(r => !r.system).length, l: 'custom', c: 'var(--color-text)' }, { v: W.ALLP.length, l: 'permission keys', c: 'var(--color-text)' }],
+      newRole: () => this.toast('info', 'Opens the role dialog', 'Name and description, then permissions on the role page.'),
+      // audit
+      audit, auditApply: () => this.toast('info', 'Filters applied', '10 of 418 entries shown.'), auditPrev: () => this.toast('info', 'Already on the first page', ''), auditNext: () => this.toast('info', 'Page 2 of 42', 'Pagination is illustrative in this prototype.'),
+      // settings
+      secs, sec, settingsCols: desktop ? '196px minmax(0, 660px)' : 'minmax(0, 1fr)', secDir: desktop ? 'column' : 'row', keyList, channels,
+      saveContact: () => this.toast('ok', 'Contact details saved', 'Alerts will go to ' + s.channel + '.'), changePw: () => this.toast('ok', 'Password changed.', 'Other sessions stay signed in.'),
+      newKey: () => this.toast('info', 'New key dialog', 'The raw key is shown once at creation and never again.'), reconfigure: () => this.toast('info', 'Re-scan the QR code in your authenticator app', ''),
+      // dialog
+      hasDialog: !!s.dialog, closeDialog: set('dialog', null), stop: e => e.stopPropagation(), dlgW: d.kind === 'audit' ? 'min(720px, 100%)' : 'min(460px, 100%)',
+      dlgConfirm: d.kind === 'confirm', dlgReview: d.kind === 'review' && !!dAdj, dlgStart: d.kind === 'start', dlgAudit: d.kind === 'audit', dlgNewUser: d.kind === 'newUser', dlg: d,
+      dlgOkColor: d.destructive ? BAD : 'var(--color-accent)', dlgOk: () => { const f = d.onOk; this.setState({ dialog: null, sheet: s.sheet && s.sheet.kind === 'product' ? s.sheet : null }); f && f(); },
+      dAdj: dAdj || {}, reviewTitle: d.mode === 'reject' ? 'Reject adjustment' : 'Approve adjustment', reviewLabel: d.mode === 'reject' ? 'Reject' : 'Approve',
+      reviewNoteLabel: d.mode === 'reject' ? 'Review note (required)' : 'Review note (optional)', reviewColor: d.mode === 'reject' ? BAD : 'var(--color-accent)',
+      reviewEffect: d.mode === 'reject' ? 'No stock moves. The requester sees your note.' : 'Stock moves immediately when you approve.',
+      note: s.note, setNote: e => this.setState({ note: e.target.value, noteErr: false }), noteErr: s.noteErr, noteBorder: s.noteErr ? BAD : 'var(--color-divider)', reviewOk,
+      startLoc: s.startLoc, setStartLoc: e => this.setState({ startLoc: e.target.value }),
+      startOk: () => { this.setState({ dialog: null }); this.toast('ok', 'Stock count started', `${W.locStock(s.startLoc).length} products snapshotted at ${s.startLoc}.`); },
+      dAudit: dAudit || {},
+      nuOk: () => { if (!s.nu.name.trim() || !s.nu.email.includes('@')) return this.toast('bad', 'Name and a valid email are required', ''); this.setState(st => ({ dialog: null, users: [...(st.users || W.USERS), { name: st.nu.name, email: st.nu.email, roles: [st.nu.role], whs: ['JHB-01'], mfa: 'Email code', status: 'Active', initials: st.nu.name.split(' ').map(x => x[0]).slice(0, 2).join('') }] })); this.toast('ok', 'User created', 'Sign-in instructions sent to ' + s.nu.email + '.'); },
+      // toasts
+      toasts: s.toasts.map(t => ({ ...t, fg: tag(t.tone).fg, bg: tag(t.tone).bg, icon: tIcon[t.tone], hasAction: !!t.action, actionLabel: t.action ? t.action.label : '', act: () => { t.action && t.action.fn(); this.dismiss(t.id); }, close: () => this.dismiss(t.id), hasMsg: !!t.msg })),
+      tPos: toastTop ? { t: phone ? '56px' : '60px', b: 'auto', l: phone ? '8px' : '50%', r: phone ? '8px' : 'auto', w: phone ? 'auto' : '380px', x: phone ? 'none' : 'translateX(-50%)' } : { t: 'auto', b: '16px', l: 'auto', r: '16px', w: '370px', x: 'none' },
+    };
+  }
+}
+</script>
+</body>
+</html>

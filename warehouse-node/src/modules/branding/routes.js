@@ -6,15 +6,16 @@ const { saveImageUpload, sendImageFile } = require('../../core/uploads');
 const { BRANDING_UPLOAD_SUBDIR } = require('./service');
 
 /**
- * Report branding (Settings → Report branding). Reading it is open to every signed-in user —
- * anyone who can export a report prints the logo — while changing it needs `settings.manage`.
+ * Company branding (Settings → Branding): the name and logo on report exports, the browser tab
+ * (favicon + title), the top bar and the sign-in page. Reading it is PUBLIC — the sign-in page
+ * shows it before anyone is signed in, and a company's name and logo are not secret — while
+ * changing it needs `settings.manage` (the system administrator).
  */
 function brandingRoutes(app) {
   const { branding } = app.services;
-  const read = [app.authenticate];
   const manage = [app.authenticate, app.requirePermissions('settings.manage')];
 
-  app.get('/', { onRequest: read }, async () => branding.view());
+  app.get('/', async () => branding.view());
 
   app.put(
     '/',
@@ -45,7 +46,7 @@ function brandingRoutes(app) {
     return branding.clearLogo(request.user.id);
   });
 
-  app.get('/logo', { onRequest: read }, async (request, res) => {
+  app.get('/logo', async (request, res) => {
     const filename = await branding.logoFilename();
     if (!filename) throw notFound('No logo has been uploaded');
     return sendImageFile(request, res, BRANDING_UPLOAD_SUBDIR, filename);

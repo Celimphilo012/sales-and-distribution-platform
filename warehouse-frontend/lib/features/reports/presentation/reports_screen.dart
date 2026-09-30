@@ -267,7 +267,7 @@ class _Row {
 
 /// Reports (prototype `reports`) — seven reports over live data; each
 /// previews in a sheet and exports to PDF and Excel with the company logo
-/// and name (Settings → Report branding) in the header.
+/// and name (Settings → Branding) in the header.
 class ReportsScreen extends ConsumerWidget {
   const ReportsScreen({super.key});
 
@@ -476,7 +476,7 @@ void _showReportSheet(BuildContext context, WidgetRef ref, String id, ReportData
           ),
           const SizedBox(height: 10),
           Text(
-            '${fmtNum(rep.rows.length)} rows. Change the logo and company name in Settings › Report branding.',
+            '${fmtNum(rep.rows.length)} rows. Change the logo and company name in Settings › Branding.',
             style: TextStyle(fontSize: 11, color: n.n500),
           ),
         ],

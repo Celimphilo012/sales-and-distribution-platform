@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'app_shell/branding.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/theme_mode_provider.dart';
 import 'routing/app_router.dart';
@@ -15,14 +16,15 @@ class App extends ConsumerWidget {
     final themeMode = ref.watch(themeModeProvider);
 
     return MaterialApp.router(
-      title: 'Warehouse System',
+      // The tab title follows the company name (Settings → Branding).
+      title: ref.watch(brandTitleProvider),
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),
       themeMode: themeMode,
       routerConfig: router,
-      // Toasts float above every route, sheet and dialog.
-      builder: (context, child) => NxToastHost(child: child ?? const SizedBox.shrink()),
+      // Toasts float above every route, sheet and dialog; the favicon follows the company logo.
+      builder: (context, child) => NxToastHost(child: BrandingEffects(child: child ?? const SizedBox.shrink())),
     );
   }
 }

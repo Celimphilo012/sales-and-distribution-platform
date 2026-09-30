@@ -17,6 +17,7 @@ import '../shared/nx/nx_form.dart';
 import '../shared/nx/nx_list_page.dart';
 import '../shared/nx/nx_overlays.dart';
 import '../shared/nx/nx_primitives.dart';
+import 'branding.dart';
 import 'console_notifications.dart';
 import 'nav_expansion_provider.dart';
 
@@ -283,32 +284,24 @@ class _TopBar extends ConsumerWidget {
   }
 }
 
-class _Brand extends StatelessWidget {
+class _Brand extends ConsumerWidget {
   const _Brand();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final n = context.nx;
+    final name = ref.watch(brandNameProvider);
+    // Default product name keeps its two-tone look; a company name shows as-is.
+    final span = name == kDefaultBrandName
+        ? TextSpan(text: 'Warehouse ', children: [TextSpan(text: 'System', style: TextStyle(color: n.n500, fontWeight: FontWeight.w400))])
+        : TextSpan(text: name);
     return Row(
       children: [
-        Container(
-          width: 26,
-          height: 26,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(7),
-            border: Border.all(color: n.accent),
-            boxShadow: [BoxShadow(color: n.accent.withValues(alpha: 0.35), blurRadius: 14)],
-          ),
-          alignment: Alignment.center,
-          child: Icon(PhosphorIconsBold.warehouse, size: 14, color: n.accent),
-        ),
+        const BrandMark(glow: true),
         const SizedBox(width: 9),
         Flexible(
           child: Text.rich(
-            TextSpan(
-              text: 'Warehouse ',
-              children: [TextSpan(text: 'System', style: TextStyle(color: n.n500, fontWeight: FontWeight.w400))],
-            ),
+            span,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: n.text),
@@ -953,19 +946,18 @@ class _ConsoleDrawer extends ConsumerWidget {
               decoration: BoxDecoration(border: Border(bottom: BorderSide(color: n.n900))),
               child: Row(
                 children: [
-                  Container(
-                    width: 30,
-                    height: 30,
-                    decoration: BoxDecoration(borderRadius: BorderRadius.circular(8), border: Border.all(color: n.accent)),
-                    alignment: Alignment.center,
-                    child: Icon(PhosphorIconsBold.warehouse, size: 15, color: n.accent),
-                  ),
+                  const BrandMark(size: 30),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Warehouse System', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: n.text)),
+                        Text(
+                          ref.watch(brandNameProvider),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: n.text),
+                        ),
                         Text(
                           [user?.name ?? '', role].where((s) => s.isNotEmpty).join(' · '),
                           maxLines: 1,

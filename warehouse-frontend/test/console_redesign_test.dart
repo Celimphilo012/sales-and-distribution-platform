@@ -1,11 +1,14 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:excel/excel.dart' as xl;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:warehouse_frontend/app_shell/branding.dart';
 import 'package:warehouse_frontend/core/auth/app_user.dart';
 import 'package:warehouse_frontend/core/auth/auth_provider.dart';
 import 'package:warehouse_frontend/core/auth/auth_state.dart';
@@ -20,6 +23,7 @@ import 'package:warehouse_frontend/features/products/domain/product.dart';
 import 'package:warehouse_frontend/features/products/domain/product_status.dart';
 import 'package:warehouse_frontend/features/products/presentation/products_list_providers.dart';
 import 'package:warehouse_frontend/features/receiving/presentation/receiving_screen.dart';
+import 'package:warehouse_frontend/features/settings/data/branding_api.dart';
 import 'package:warehouse_frontend/features/stock_adjustments/presentation/adjustment_form_dialog.dart';
 import 'package:warehouse_frontend/features/stock_counts/presentation/count_sheet.dart';
 import 'package:warehouse_frontend/features/warehouses/domain/warehouse.dart';
@@ -94,6 +98,47 @@ Future<void> _pumpApp(WidgetTester tester, Widget home, {List overrides = const 
 }
 
 void main() {
+  group('company branding', () {
+    // 1x1 transparent PNG.
+    final png = Uint8List.fromList(base64Decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='));
+
+    test('the tab title and brand name follow the company name', () {
+      final c = ProviderContainer(overrides: [
+        brandingProvider.overrideWith((ref) async => const Branding(companyName: 'Acme Distribution', hasLogo: false)),
+      ]);
+      addTearDown(c.dispose);
+      c.listen(brandTitleProvider, (_, _) {});
+      return c.read(brandingProvider.future).then((_) {
+        expect(c.read(brandNameProvider), 'Acme Distribution');
+        expect(c.read(brandTitleProvider), 'Acme Distribution · Warehouse');
+      });
+    });
+
+    test('with nothing set it falls back to the product name', () {
+      final c = ProviderContainer(overrides: [brandingProvider.overrideWith((ref) async => throw Exception('offline'))]);
+      addTearDown(c.dispose);
+      expect(c.read(brandTitleProvider), kDefaultBrandName);
+    });
+
+    testWidgets('the brand mark shows the uploaded logo, else the built-in mark', (tester) async {
+      Future<void> pumpMark(Uint8List? logo) async {
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [brandLogoProvider.overrideWithValue(logo)],
+            child: MaterialApp(theme: AppTheme.dark(), home: const Scaffold(body: Center(child: BrandMark(size: 40)))),
+          ),
+        );
+        await tester.pump();
+      }
+
+      await pumpMark(png);
+      expect(find.byType(Image), findsOneWidget);
+      await pumpMark(null);
+      expect(find.byType(Image), findsNothing);
+      expect(find.byIcon(PhosphorIconsBold.warehouse), findsOneWidget);
+    });
+  });
+
   group('searchable pickers', () {
     testWidgets('typing in a searchable select narrows the options', (tester) async {
       String? picked;

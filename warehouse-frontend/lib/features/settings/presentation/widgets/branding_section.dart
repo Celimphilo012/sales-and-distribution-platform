@@ -11,7 +11,7 @@ import '../../../../shared/nx/nx_primitives.dart';
 import '../../data/branding_api.dart';
 import 'settings_head.dart';
 
-/// Report branding (`settings.manage` to change): the logo and company name
+/// Company branding (`settings.manage` to change): the logo and company name
 /// printed at the top of every PDF / Excel export and pick list.
 class BrandingSection extends ConsumerStatefulWidget {
   const BrandingSection({super.key, required this.canManage});
@@ -62,7 +62,7 @@ class _BrandingSectionState extends ConsumerState<BrandingSection> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const SettingsHead('Report branding', sub: 'Printed at the top of every PDF and Excel export, and on pick lists.'),
+        const SettingsHead('Branding', sub: 'Your company name and logo — on the browser tab, the top bar, the sign-in page, and every PDF / Excel export and pick list.'),
         Wrap(
           spacing: 14,
           runSpacing: 10,
@@ -94,7 +94,7 @@ class _BrandingSectionState extends ConsumerState<BrandingSection> {
           ],
         ),
         const SizedBox(height: 6),
-        Text('PNG or JPEG, square works best.', style: TextStyle(fontSize: 11, color: n.n500)),
+        Text('PNG or JPEG, square, at least 128 × 128 px — it also becomes the browser tab icon.', style: TextStyle(fontSize: 11, color: n.n500)),
         const SizedBox(height: 14),
         SettingsNarrow(
           width: 380,

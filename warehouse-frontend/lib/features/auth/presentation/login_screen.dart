@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../../../app_shell/branding.dart';
 import '../../../core/auth/auth_provider.dart';
 import '../../../core/auth/auth_state.dart';
 import '../../../core/error/app_error.dart';
@@ -67,7 +68,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         children: [
                           const _BrandMark(),
                           const SizedBox(height: AppSpacing.lg),
-                          Text('Warehouse System', style: Theme.of(context).textTheme.headlineSmall),
+                          _BrandName(style: Theme.of(context).textTheme.headlineSmall),
                           const SizedBox(height: AppSpacing.xl),
                           _body(context),
                         ],
@@ -330,21 +331,22 @@ class _MfaStepState extends ConsumerState<_MfaStep> {
   }
 }
 
-/// A square primary tile with the warehouse glyph — the app's logo mark.
+/// The company logo (Settings → Branding), or the built-in warehouse mark.
 class _BrandMark extends StatelessWidget {
   const _BrandMark();
 
   @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Container(
-      width: 56,
-      height: 56,
-      alignment: Alignment.center,
-      color: scheme.primary,
-      child: PhosphorIcon(PhosphorIconsBold.warehouse, size: 30, color: scheme.onPrimary),
-    );
-  }
+  Widget build(BuildContext context) => const BrandMark(size: 56);
+}
+
+/// The company name, or the product name while none is set.
+class _BrandName extends ConsumerWidget {
+  const _BrandName({this.style});
+
+  final TextStyle? style;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) => Text(ref.watch(brandNameProvider), style: style);
 }
 
 /// The left-hand masthead on wide screens.
@@ -375,10 +377,7 @@ class _Masthead extends StatelessWidget {
           const SizedBox(height: AppSpacing.sm),
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 460),
-            child: Text(
-              'Warehouse System',
-              style: theme.textTheme.displaySmall?.copyWith(fontWeight: FontWeight.w700, height: 1.1),
-            ),
+            child: _BrandName(style: theme.textTheme.displaySmall?.copyWith(fontWeight: FontWeight.w700, height: 1.1)),
           ),
           const SizedBox(height: AppSpacing.md),
           ConstrainedBox(

@@ -6,7 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/providers.dart';
 
-/// Report branding — the company name and logo printed at the top of every
+/// Company branding — the company name and logo on the browser tab, the top bar,
+/// the sign-in page, and printed at the top of every
 /// PDF / Excel export and pick list (`/settings/branding`).
 class Branding {
   const Branding({required this.companyName, required this.hasLogo, this.logoVersion});

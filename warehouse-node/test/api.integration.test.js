@@ -867,9 +867,12 @@ describe('warehouse API (Express port)', () => {
   });
 
   describe('report branding', () => {
-    it('anyone signed in reads it; only settings.manage changes the name and logo', async () => {
+    it('anyone reads it, even signed out (sign-in page, favicon); only settings.manage changes it', async () => {
       const initial = (await api.get('/settings/branding')).json;
       assert.equal(typeof initial.companyName, 'string');
+      const anonymous = client(app);
+      assert.equal((await anonymous.get('/settings/branding')).status, 200);
+      assert.equal((await anonymous.put('/settings/branding', { companyName: 'Hijack' })).status, 401);
 
       const renamed = await api.put('/settings/branding', { companyName: `  Acme Wholesale ${run}  ` });
       assert.equal(renamed.status, 200, renamed.body);
@@ -879,7 +882,7 @@ describe('warehouse API (Express port)', () => {
       const uploaded = await api.request('POST', '/settings/branding/logo', { raw: logo });
       assert.equal(uploaded.status, 200, uploaded.body);
       assert.equal(uploaded.json.hasLogo, true);
-      const file = await api.get('/settings/branding/logo');
+      const file = await client(app).get('/settings/branding/logo'); // no sign-in needed
       assert.equal(file.status, 200);
       assert.equal(file.headers['content-type'], 'image/png');
 

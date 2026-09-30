@@ -49,7 +49,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final secs = <_Sec>[
       ('profile', 'Profile', PhosphorIconsDuotone.user),
       ('appearance', 'Appearance', PhosphorIconsDuotone.palette),
-      ('branding', 'Report branding', PhosphorIconsDuotone.image),
+      ('branding', 'Branding', PhosphorIconsDuotone.image),
       ('contact', 'Contact & alerts', PhosphorIconsDuotone.bellSimple),
       ('mfa', 'Sign-in check', PhosphorIconsDuotone.shieldCheck),
       ('password', 'Password', PhosphorIconsDuotone.password),

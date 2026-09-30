@@ -284,10 +284,22 @@ class _NxToastHostState extends State<NxToastHost> {
   final List<_ToastData> _toasts = [];
   int _next = 0;
 
+  // The host sits ABOVE the app's Navigator (MaterialApp.builder), where
+  // there is no Overlay — but toast buttons carry tooltips, which need one.
+  // So the host provides its own Overlay, with one entry holding the app and
+  // the toasts; the entry is rebuilt whenever either changes.
+  late final OverlayEntry _entry = OverlayEntry(builder: _buildLayer);
+
   @override
   void initState() {
     super.initState();
     NxToast._host = this;
+  }
+
+  @override
+  void didUpdateWidget(covariant NxToastHost oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _entry.markNeedsBuild();
   }
 
   @override
@@ -298,20 +310,22 @@ class _NxToastHostState extends State<NxToastHost> {
 
   void _add(Tone tone, String title, String? message, NxToastAction? action, Duration duration) {
     final t = _ToastData(_next++, tone, title, message, action, duration);
-    setState(() {
-      _toasts.add(t);
-      if (_toasts.length > 4) _toasts.removeAt(0);
-    });
+    _toasts.add(t);
+    if (_toasts.length > 4) _toasts.removeAt(0);
+    _entry.markNeedsBuild();
     Timer(duration, () => _remove(t.id));
   }
 
   void _remove(int id) {
     if (!mounted) return;
-    setState(() => _toasts.removeWhere((t) => t.id == id));
+    _toasts.removeWhere((t) => t.id == id);
+    _entry.markNeedsBuild();
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => Overlay(initialEntries: [_entry]);
+
+  Widget _buildLayer(BuildContext context) {
     final phone = MediaQuery.of(context).size.width < 600;
     return Stack(
       children: [

@@ -13,6 +13,8 @@ import '../../../shared/nx/nx_format.dart';
 import '../../../shared/nx/nx_list_page.dart';
 import '../../../shared/nx/nx_overlays.dart';
 import '../../../shared/nx/nx_primitives.dart';
+import '../../../shared/scan/scan_code.dart';
+import '../../../shared/scan/scan_dialog.dart';
 import '../../catalogue/data/catalogue_providers.dart';
 import '../../catalogue/domain/warehouse_product.dart';
 import '../../customers/data/customers_providers.dart';
@@ -126,6 +128,26 @@ class _FormState extends ConsumerState<_Form> {
     _error = null;
   });
 
+  /// Scan products into the order: each scan of a product's QR label (or
+  /// its SKU barcode) adds one unit — scanning again adds another.
+  Future<void> _scanLines(List<WarehouseProduct> products) => showScanDialog(
+    context,
+    title: 'Scan products',
+    sub: 'Each scan adds one to the order. Change quantities on the lines afterwards.',
+    onScan: (code) {
+      final p = code.match(ScanKind.product, products, id: (x) => x.id, code: (x) => x.sku);
+      if (p == null) {
+        return ScanFeedback(
+          code.kind == ScanKind.location ? 'That is a warehouse location label, not a product.' : 'No active catalogue product has the code “${code.value}”.',
+          ok: false,
+        );
+      }
+      _add(p);
+      final qty = _lines.firstWhere((l) => l.productId == p.id).quantity;
+      return ScanFeedback('${p.sku} · ${p.name} — ${fmtPlain(qty)} on the order');
+    },
+  );
+
   void _remove(_DraftLine l) => setState(() {
     _lines.remove(l);
     _qty.remove(l.productId)?.dispose();
@@ -234,25 +256,29 @@ class _FormState extends ConsumerState<_Form> {
             children: [
               Text('Lines', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: n.text)),
               const SizedBox(height: 8),
-              NxSelect<String>(
-                searchable: true,
-                searchPlaceholder: 'Search the catalogue by SKU or name',
-                placeholder: catalogue.isLoading ? 'Loading the catalogue…' : (catalogue.hasError ? 'The catalogue is unavailable right now' : 'Add a product…'),
-                enabled: products.isNotEmpty,
-                options: [
-                  for (final p in products)
-                    NxOption(
-                      p.id,
-                      '${p.sku} — ${p.name}',
-                      sub: [p.category?.name, p.category?.workstream?.name].whereType<String>().join(' · '),
-                      trailing: '${fmtMoney(p.sellingPrice)} / ${p.uom}',
-                    ),
-                ],
-                value: null,
-                onChanged: (id) {
-                  final p = products.where((x) => x.id == id).firstOrNull;
-                  if (p != null) _add(p);
-                },
+              ScanPicker(
+                tooltip: 'Scan products into the order',
+                onScan: products.isEmpty ? null : () => _scanLines(products),
+                child: NxSelect<String>(
+                  searchable: true,
+                  searchPlaceholder: 'Search the catalogue by SKU or name',
+                  placeholder: catalogue.isLoading ? 'Loading the catalogue…' : (catalogue.hasError ? 'The catalogue is unavailable right now' : 'Add a product…'),
+                  enabled: products.isNotEmpty,
+                  options: [
+                    for (final p in products)
+                      NxOption(
+                        p.id,
+                        '${p.sku} — ${p.name}',
+                        sub: [p.category?.name, p.category?.workstream?.name].whereType<String>().join(' · '),
+                        trailing: '${fmtMoney(p.sellingPrice)} / ${p.uom}',
+                      ),
+                  ],
+                  value: null,
+                  onChanged: (id) {
+                    final p = products.where((x) => x.id == id).firstOrNull;
+                    if (p != null) _add(p);
+                  },
+                ),
               ),
               const SizedBox(height: 10),
               if (_lines.isEmpty)

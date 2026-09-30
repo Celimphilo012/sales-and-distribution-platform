@@ -15,6 +15,7 @@ class PackingLine {
   const PackingLine({
     required this.id,
     required this.quantity,
+    this.productId = '',
     required this.sku,
     required this.productName,
     required this.uom,
@@ -25,6 +26,7 @@ class PackingLine {
 
   final String id;
   final double quantity;
+  final String productId;
   final String sku;
   final String productName;
   final String uom;
@@ -37,6 +39,7 @@ class PackingLine {
     return PackingLine(
       id: json['id'] as String,
       quantity: (json['quantity'] as num).toDouble(),
+      productId: product['id'] as String? ?? '',
       sku: product['sku'] as String,
       productName: product['name'] as String,
       uom: product['uom'] as String,

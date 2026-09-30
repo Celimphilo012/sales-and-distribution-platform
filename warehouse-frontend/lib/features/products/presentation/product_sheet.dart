@@ -14,6 +14,7 @@ import '../../../shared/nx/nx_primitives.dart';
 import '../../dashboard/presentation/dashboard_screen.dart' show txTone;
 import '../../inventory/data/inventory_providers.dart';
 import '../../receiving/presentation/receive_sheet.dart';
+import '../../scan/qr_label_dialog.dart';
 import '../data/products_providers.dart';
 import '../domain/product.dart';
 import '../domain/product_status.dart';
@@ -150,6 +151,7 @@ class _Body extends ConsumerWidget {
                   router.go(RoutePaths.inventory);
                 },
               ),
+            NxButton(label: 'QR label', small: true, icon: PhosphorIconsRegular.qrCode, onPressed: () => showQrLabelDialog(context, productLabel(p))),
             if (canManage && active)
               NxButton(label: 'Deactivate', small: true, icon: PhosphorIconsRegular.prohibit, color: n.bad, onPressed: () => setStatus(false)),
             if (canManage && !active)

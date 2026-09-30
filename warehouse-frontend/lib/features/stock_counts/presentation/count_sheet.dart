@@ -12,8 +12,11 @@ import '../../../shared/nx/nx_form.dart';
 import '../../../shared/nx/nx_format.dart';
 import '../../../shared/nx/nx_overlays.dart';
 import '../../../shared/nx/nx_primitives.dart';
+import '../../../shared/scan/scan_code.dart';
+import '../../../shared/scan/scan_dialog.dart';
 import '../../inventory/data/inventory_providers.dart';
 import '../../locations/data/leaf_locations_provider.dart';
+import '../../scan/scan_lookup.dart';
 import '../../stock_adjustments/data/stock_adjustments_providers.dart';
 import '../data/stock_counts_api.dart';
 import '../data/stock_counts_providers.dart';
@@ -101,6 +104,29 @@ class _CountSheetState extends ConsumerState<_CountSheet> {
         return TextEditingController(text: text);
       });
 
+  /// Scan-to-count: every scan of a product label in this count adds 1 to
+  /// its counted quantity (kept as a draft like typed entries).
+  Future<void> _scanToCount(StockCount c) => showScanDialog(
+    context,
+    title: 'Scan to count',
+    sub: 'Each scan of a product label adds 1 to its count. Type a figure in the sheet for bulk quantities.',
+    onScan: (code) {
+      final item = code.match(ScanKind.product, c.items, id: (i) => i.productId, code: (i) => i.product.sku);
+      if (item == null) {
+        return ScanFeedback(
+          code.kind == ScanKind.location ? 'That is a location label — scan the products.' : 'Not part of this count (nothing of it was here when the count started).',
+          ok: false,
+        );
+      }
+      final ctl = _input(item, false, ref.read(countDraftsProvider)[c.id] ?? const {});
+      final next = (double.tryParse(ctl.text.trim()) ?? 0) + 1;
+      ctl.text = fmtPlain(next);
+      ref.read(countDraftsProvider.notifier).set(c.id, item.productId, ctl.text);
+      if (mounted) setState(() {});
+      return ScanFeedback('${item.product.sku} · ${item.product.name} — counted ${fmtPlain(next)}');
+    },
+  );
+
   Future<void> _submit(StockCount c) async {
     final items = <SubmitCountItem>[];
     for (final i in c.items) {
@@ -170,6 +196,13 @@ class _CountSheetState extends ConsumerState<_CountSheet> {
                 Text('$counted / $total counted', style: TextStyle(fontSize: 12, color: n.n400)),
               ],
             ),
+            if (!done && canCount && c.items.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: NxButton(label: 'Scan to count', small: true, icon: PhosphorIconsRegular.qrCode, onPressed: () => _scanToCount(c)),
+              ),
+            ],
             const SizedBox(height: 14),
             if (c.items.isEmpty)
               Text('This location held no stock when the count started.', style: TextStyle(fontSize: 12, color: n.n400))
@@ -349,14 +382,21 @@ class _StartCountState extends ConsumerState<_StartCount> {
           NxField(
             label: 'Location',
             error: _error,
-            child: NxSelect<String>(
-              options: [for (final l in leaves.value ?? const <LeafLocation>[]) l.option()],
-              value: _loc,
-              searchable: true,
-              searchPlaceholder: 'Search slots by code or name',
-              placeholder: leaves.isLoading ? 'Loading locations…' : 'Choose a slot',
-              error: _error != null,
-              onChanged: (v) => setState(() => _loc = v),
+            child: ScanPicker(
+              tooltip: 'Scan the location',
+              onScan: () async {
+                final id = await scanLeafId(context, leaves.value ?? const <LeafLocation>[]);
+                if (id != null && mounted) setState(() => _loc = id);
+              },
+              child: NxSelect<String>(
+                options: [for (final l in leaves.value ?? const <LeafLocation>[]) l.option()],
+                value: _loc,
+                searchable: true,
+                searchPlaceholder: 'Search slots by code or name',
+                placeholder: leaves.isLoading ? 'Loading locations…' : 'Choose a slot',
+                error: _error != null,
+                onChanged: (v) => setState(() => _loc = v),
+              ),
             ),
           ),
         ],

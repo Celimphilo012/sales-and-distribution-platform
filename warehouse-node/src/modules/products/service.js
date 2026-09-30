@@ -304,6 +304,12 @@ function createProductsService({
       await workstreamManagers.assertScopedAccess(actingUserId, newCategory.workstreamId);
     }
 
+    const sku = dto.sku?.trim();
+    if (sku && sku !== existing.sku) {
+      const clash = await db.one('SELECT id FROM products WHERE sku = ? AND id <> ?', [sku, id]);
+      if (clash) throw conflict('A product with this SKU already exists');
+    }
+
     const attributes = await resolveAttributes(dto.attributes);
 
     await db.transaction(async (tx) => {
@@ -311,6 +317,7 @@ function createProductsService({
         'product',
         id,
         {
+          sku: sku || undefined,
           name: dto.name ?? undefined,
           description: dto.description,
           categoryId: dto.categoryId ?? undefined,

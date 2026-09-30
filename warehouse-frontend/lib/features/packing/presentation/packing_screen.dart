@@ -10,6 +10,8 @@ import '../../../shared/nx/nx_format.dart';
 import '../../../shared/nx/nx_list_page.dart';
 import '../../../shared/nx/nx_overlays.dart';
 import '../../../shared/nx/nx_primitives.dart';
+import '../../../shared/scan/scan_code.dart';
+import '../../../shared/scan/scan_dialog.dart';
 import '../../reports/data/export_branding.dart';
 import '../data/packing_api.dart';
 import '../domain/packing_order.dart';
@@ -164,18 +166,77 @@ class PackingScreen extends ConsumerWidget {
   }
 }
 
-void _showPackingSheet(BuildContext context, WidgetRef ref, PackingOrder o) => showNxSheet<void>(
-  context,
-  kicker: 'Packing',
-  builder: (ctx) {
-    final n = ctx.nx;
+void _showPackingSheet(BuildContext context, WidgetRef ref, PackingOrder o) =>
+    showNxSheet<void>(context, kicker: 'Packing', builder: (_) => _PackingSheet(order: o, onPrint: () => _printPickList(ref, [o])));
+
+/// One order's lines to pick. "Scan to check" verifies what goes in the box:
+/// each product scan ticks one unit off its line (a location scan lists what
+/// to take from there). The ticks live only in this sheet.
+class _PackingSheet extends StatefulWidget {
+  const _PackingSheet({required this.order, required this.onPrint});
+
+  final PackingOrder order;
+  final VoidCallback onPrint;
+
+  @override
+  State<_PackingSheet> createState() => _PackingSheetState();
+}
+
+class _PackingSheetState extends State<_PackingSheet> {
+  /// line id → units scanned.
+  final Map<String, double> _scanned = {};
+
+  bool _complete(PackingLine l) => (_scanned[l.id] ?? 0) >= l.quantity;
+
+  ScanFeedback _onScan(ScanCode code) {
+    final lines = widget.order.lines;
+    if (code.kind == ScanKind.location) {
+      final here = lines.where((l) => l.location.id == code.value && !_complete(l)).toList();
+      return here.isEmpty
+          ? const ScanFeedback('Nothing left to pick from this location.', ok: false)
+          : ScanFeedback('Pick here: ${here.map((l) => '${fmtNum(l.quantity - (_scanned[l.id] ?? 0))} × ${l.sku}').join(', ')}');
+    }
+    final v = code.value.toLowerCase();
+    final ofProduct = lines.where((l) => l.productId == code.value || (code.kind == ScanKind.unknown && l.sku.toLowerCase() == v)).toList();
+    if (ofProduct.isEmpty) return const ScanFeedback('Not in this order — leave it out.', ok: false);
+    final line = ofProduct.where((l) => !_complete(l)).firstOrNull;
+    if (line == null) return ScanFeedback('Already have all of ${ofProduct.first.sku} — this one is extra.', ok: false);
+    setState(() => _scanned[line.id] = (_scanned[line.id] ?? 0) + 1);
+    final left = lines.where((l) => !_complete(l)).length;
+    final progress = '${line.sku} · ${fmtNum(_scanned[line.id]!)} of ${fmtNum(line.quantity)}';
+    return ScanFeedback(left == 0 ? '$progress — every line checked' : '$progress · $left line(s) to go');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final n = context.nx;
+    final o = widget.order;
     final others = o.totalLineCount - o.lines.length;
+    final checked = o.lines.where(_complete).length;
     return NxSheetBody(
       children: [
         Text(o.title, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500, color: n.text)),
         const SizedBox(height: 2),
         Text('Reserved ${fmtDateTime(o.reservedAt.toLocal())} · ${o.reference}', style: TextStyle(fontSize: 12, color: n.n400)),
-        const SizedBox(height: 14),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(child: NxBar(fraction: o.lines.isEmpty ? 0 : checked / o.lines.length, height: 6)),
+            const SizedBox(width: 8),
+            Text('$checked / ${o.lines.length} checked', style: TextStyle(fontSize: 12, color: n.n400)),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: NxButton(
+            label: 'Scan to check',
+            small: true,
+            icon: PhosphorIconsRegular.qrCode,
+            onPressed: () => showScanDialog(context, title: 'Scan to check', sub: 'Scan each item as it goes in the box.', onScan: _onScan),
+          ),
+        ),
+        const SizedBox(height: 12),
         NxSection(
           child: Column(
             children: [
@@ -203,7 +264,20 @@ void _showPackingSheet(BuildContext context, WidgetRef ref, PackingOrder o) => s
                         ),
                       ),
                       const SizedBox(width: 8),
-                      NxTag(l.workstream.name, small: true),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          NxTag(l.workstream.name, small: true),
+                          if (_scanned[l.id] != null) ...[
+                            const SizedBox(height: 4),
+                            NxTag(
+                              _complete(l) ? 'Checked' : '${fmtNum(_scanned[l.id]!)} of ${fmtNum(l.quantity)}',
+                              small: true,
+                              tone: _complete(l) ? Tone.ok : Tone.warn,
+                            ),
+                          ],
+                        ],
+                      ),
                     ],
                   ),
                 ),
@@ -218,13 +292,13 @@ void _showPackingSheet(BuildContext context, WidgetRef ref, PackingOrder o) => s
           ),
         ],
         const SizedBox(height: 10),
-        Text('Read-only. Dispatch still happens in the ordering system.', style: TextStyle(fontSize: 11, color: n.n500)),
+        Text('Checking here does not move stock. Dispatch still happens in the ordering system.', style: TextStyle(fontSize: 11, color: n.n500)),
         const SizedBox(height: 14),
         Align(
           alignment: Alignment.centerLeft,
-          child: NxButton.primary(label: 'Print pick list (PDF)', icon: PhosphorIconsRegular.printer, onPressed: () => _printPickList(ref, [o])),
+          child: NxButton.primary(label: 'Print pick list (PDF)', icon: PhosphorIconsRegular.printer, onPressed: widget.onPrint),
         ),
       ],
     );
-  },
-);
+  }
+}

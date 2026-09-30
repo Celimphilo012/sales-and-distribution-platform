@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../../../shared/scan/scan_dialog.dart';
+import '../../scan/scan_lookup.dart';
 import '../../../core/error/app_error.dart';
 import '../../../core/theme/nocturne.dart';
 import '../../../shared/nx/nx_form.dart';
@@ -160,14 +162,21 @@ class _AdjustmentFormState extends ConsumerState<_AdjustmentForm> {
               label: 'Product',
               required: true,
               error: _errors['product'],
-              child: NxSelect<String>(
-                options: productOptions(products, keepId: _productId),
-                value: _productId,
-                searchable: true,
-                searchPlaceholder: 'Search by SKU or name',
-                placeholder: 'Choose a product',
-                error: _errors['product'] != null,
-                onChanged: (v) => setState(() => _productId = v),
+              child: ScanPicker(
+                tooltip: 'Scan the product',
+                onScan: () async {
+                  final id = await scanProductId(context, products);
+                  if (id != null && mounted) setState(() => _productId = id);
+                },
+                child: NxSelect<String>(
+                  options: productOptions(products, keepId: _productId),
+                  value: _productId,
+                  searchable: true,
+                  searchPlaceholder: 'Search by SKU or name',
+                  placeholder: 'Choose a product',
+                  error: _errors['product'] != null,
+                  onChanged: (v) => setState(() => _productId = v),
+                ),
               ),
             ),
           ),
@@ -177,14 +186,21 @@ class _AdjustmentFormState extends ConsumerState<_AdjustmentForm> {
               required: true,
               error: _errors['loc'],
               hint: _productId != null && held.isNotEmpty ? 'Slots holding this product are listed first' : null,
-              child: NxSelect<String>(
-                options: locOptions,
-                value: _locationId,
-                searchable: true,
-                searchPlaceholder: 'Search slots by code or name',
-                placeholder: 'Choose a slot',
-                error: _errors['loc'] != null,
-                onChanged: (v) => setState(() => _locationId = v),
+              child: ScanPicker(
+                tooltip: 'Scan the location',
+                onScan: () async {
+                  final id = await scanLeafId(context, leaves);
+                  if (id != null && mounted) setState(() => _locationId = id);
+                },
+                child: NxSelect<String>(
+                  options: locOptions,
+                  value: _locationId,
+                  searchable: true,
+                  searchPlaceholder: 'Search slots by code or name',
+                  placeholder: 'Choose a slot',
+                  error: _errors['loc'] != null,
+                  onChanged: (v) => setState(() => _locationId = v),
+                ),
               ),
             ),
           ),

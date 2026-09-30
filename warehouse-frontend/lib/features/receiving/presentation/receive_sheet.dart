@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../../../shared/scan/scan_dialog.dart';
+import '../../scan/scan_lookup.dart';
 import '../../../core/error/app_error.dart';
 import '../../../core/theme/nocturne.dart';
 import '../../../routing/route_paths.dart';
@@ -152,14 +154,21 @@ class _ReceiveFormState extends ConsumerState<ReceiveForm> {
             label: 'Product',
             required: true,
             error: _errors['product'],
-            child: NxSelect<String>(
-              options: productOptions(products, keepId: _productId),
-              value: _productId,
-              searchable: true,
-              searchPlaceholder: 'Search by SKU or name',
-              placeholder: 'Choose a product',
-              error: _errors['product'] != null,
-              onChanged: (v) => setState(() => _productId = v),
+            child: ScanPicker(
+              tooltip: 'Scan the product',
+              onScan: () async {
+                final id = await scanProductId(context, products);
+                if (id != null && mounted) setState(() => _productId = id);
+              },
+              child: NxSelect<String>(
+                options: productOptions(products, keepId: _productId),
+                value: _productId,
+                searchable: true,
+                searchPlaceholder: 'Search by SKU or name',
+                placeholder: 'Choose a product',
+                error: _errors['product'] != null,
+                onChanged: (v) => setState(() => _productId = v),
+              ),
             ),
           ),
         ),
@@ -179,14 +188,21 @@ class _ReceiveFormState extends ConsumerState<ReceiveForm> {
           label: widget.page ? 'Destination location' : 'Destination',
           required: true,
           error: _errors['dest'],
-          child: NxSelect<String>(
-            options: [for (final l in leaves.value ?? const <LeafLocation>[]) l.option()],
-            value: _locationId,
-            searchable: true,
-            searchPlaceholder: 'Search slots by code or name',
-            placeholder: leaves.isLoading ? 'Loading locations…' : 'Choose a slot',
-            error: _errors['dest'] != null,
-            onChanged: (v) => setState(() => _locationId = v),
+          child: ScanPicker(
+            tooltip: 'Scan the location',
+            onScan: () async {
+              final id = await scanLeafId(context, leaves.value ?? const <LeafLocation>[]);
+              if (id != null && mounted) setState(() => _locationId = id);
+            },
+            child: NxSelect<String>(
+              options: [for (final l in leaves.value ?? const <LeafLocation>[]) l.option()],
+              value: _locationId,
+              searchable: true,
+              searchPlaceholder: 'Search slots by code or name',
+              placeholder: leaves.isLoading ? 'Loading locations…' : 'Choose a slot',
+              error: _errors['dest'] != null,
+              onChanged: (v) => setState(() => _locationId = v),
+            ),
           ),
         ),
         NxField(

@@ -88,6 +88,16 @@ notifications from the viewer's orders. Every dialog goes through the restyled `
 Kit fixes carried to both apps: icon row-action buttons are exactly 28px and action columns are sized for
 them (52 / 76 / 106). Verified: ordering-backend 40 tests, ordering-frontend 72 tests + analyze clean.
 
+**QR LABELS + SCANNING (2026-09-30)** — every product and location has a scannable QR label that encodes
+its PERMANENT id (`WH:P:<id>` / `WH:L:<id>`, `shared/scan/scan_code.dart`), never the SKU, so labels
+survive a SKU rename — and the SKU is now editable (`PATCH /products/:id` `sku`, 409 on a clash). Scanning
+(`showScanDialog`: camera via `mobile_scanner`, or a handheld USB/Bluetooth scanner / typed code + Enter;
+a code that is not our label is matched as a SKU / location code): warehouse top-bar scan (product →
+sheet, location → Inventory "what's here"), scan buttons on the receive / transfer / adjustment / count
+pickers, "Scan to count" (+1 per scan), packing "Scan to check" (ticks lines, in-sheet only); labels print
+as A4 3×8 sticker PDFs (product sheet, Products "QR labels", location detail, "Print slot labels"). The
+ordering order form scans products into the order (scan module COPIED, not shared).
+
 **Ordering port DONE (2026-09-28):** `/ordering-backend` — 33/33 read endpoints + error shapes
 byte-identical to `/backend` on real data (parity script, removed with `/backend`); 14 integration tests (full lifecycle
 against an in-process fake warehouse); `/ordering-frontend` repointed to 3300 (analyze clean, 51

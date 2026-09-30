@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../../../shared/scan/scan_dialog.dart';
+import '../../scan/scan_lookup.dart';
 import '../../../core/error/app_error.dart';
 import '../../../core/theme/nocturne.dart';
 import '../../../routing/route_paths.dart';
@@ -147,17 +149,29 @@ class _TransferFormState extends ConsumerState<TransferForm> {
                 label: 'Product',
                 required: true,
                 error: _errors['product'],
-                child: NxSelect<String>(
-                  options: productOptions(products, keepId: _productId),
-                  value: _productId,
-                  searchable: true,
-                  searchPlaceholder: 'Search by SKU or name',
-                  placeholder: 'Choose a product',
-                  error: _errors['product'] != null,
-                  onChanged: (v) => setState(() {
-                    _productId = v;
-                    _from = null;
-                  }),
+                child: ScanPicker(
+                  tooltip: 'Scan the product',
+                  onScan: () async {
+                    final id = await scanProductId(context, products);
+                    if (id != null && mounted) {
+                      setState(() {
+                        _productId = id;
+                        _from = null;
+                      });
+                    }
+                  },
+                  child: NxSelect<String>(
+                    options: productOptions(products, keepId: _productId),
+                    value: _productId,
+                    searchable: true,
+                    searchPlaceholder: 'Search by SKU or name',
+                    placeholder: 'Choose a product',
+                    error: _errors['product'] != null,
+                    onChanged: (v) => setState(() {
+                      _productId = v;
+                      _from = null;
+                    }),
+                  ),
                 ),
               ),
             ),
@@ -183,6 +197,19 @@ class _TransferFormState extends ConsumerState<TransferForm> {
                                 onTap: () => setState(() => _from = b.locationId),
                               ),
                             ),
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: NxButton.ghost(
+                              label: 'Scan the source slot',
+                              icon: PhosphorIconsRegular.qrCode,
+                              small: true,
+                              onPressed: () async {
+                                final held = sources.map((b) => leaves[b.locationId]).whereType<LeafLocation>();
+                                final id = await scanLeafId(context, held);
+                                if (id != null && mounted) setState(() => _from = id);
+                              },
+                            ),
+                          ),
                         ],
                       ),
               ),
@@ -203,14 +230,21 @@ class _TransferFormState extends ConsumerState<TransferForm> {
               label: 'To location',
               required: true,
               error: _errors['to'],
-              child: NxSelect<String>(
-                options: [for (final l in leavesList.where((l) => l.id != _from)) l.option()],
-                value: _to,
-                searchable: true,
-                searchPlaceholder: 'Search slots by code or name',
-                placeholder: 'Choose a slot',
-                error: _errors['to'] != null,
-                onChanged: (v) => setState(() => _to = v),
+              child: ScanPicker(
+                tooltip: 'Scan the destination',
+                onScan: () async {
+                  final id = await scanLeafId(context, leavesList.where((l) => l.id != _from));
+                  if (id != null && mounted) setState(() => _to = id);
+                },
+                child: NxSelect<String>(
+                  options: [for (final l in leavesList.where((l) => l.id != _from)) l.option()],
+                  value: _to,
+                  searchable: true,
+                  searchPlaceholder: 'Search slots by code or name',
+                  placeholder: 'Choose a slot',
+                  error: _errors['to'] != null,
+                  onChanged: (v) => setState(() => _to = v),
+                ),
               ),
             ),
             NxField(label: 'Reference (optional)', child: NxInput(controller: _reference, placeholder: 'TRF-…')),

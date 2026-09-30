@@ -77,7 +77,7 @@ class _ProductFormState extends ConsumerState<_ProductForm> {
     final price = double.tryParse(_price.text.trim());
     final cost = _cost.text.trim().isEmpty ? null : double.tryParse(_cost.text.trim());
     final min = double.tryParse(_min.text.trim());
-    if (!_editing && _sku.text.trim().isEmpty) errors['sku'] = 'Required';
+    if (_sku.text.trim().isEmpty) errors['sku'] = 'Required';
     if (_name.text.trim().isEmpty) errors['name'] = 'Required';
     if (_categoryId == null) errors['category'] = 'Choose a category';
     if (price == null || price <= 0) errors['price'] = 'Must be greater than 0';
@@ -113,6 +113,7 @@ class _ProductFormState extends ConsumerState<_ProductForm> {
       if (_editing) {
         await api.update(
           widget.product!.id,
+          sku: _sku.text.trim() == widget.product!.sku ? null : _sku.text.trim(),
           name: _name.text.trim(),
           description: desc.isEmpty ? null : desc,
           categoryId: _categoryId!,
@@ -193,7 +194,8 @@ class _ProductFormState extends ConsumerState<_ProductForm> {
                 label: 'SKU',
                 required: true,
                 error: _errors['sku'],
-                child: NxInput(controller: _sku, placeholder: 'P-1013', enabled: !_editing, error: _errors['sku'] != null),
+                hint: _editing ? 'Printed QR labels keep working — they use the product’s permanent code' : null,
+                child: NxInput(controller: _sku, placeholder: 'P-1013', error: _errors['sku'] != null),
               ),
               NxField(
                 label: 'Name',

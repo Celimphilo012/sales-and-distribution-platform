@@ -39,6 +39,8 @@ const createBody = obj(
 );
 
 const updateBody = obj({
+  // Editable: labels and scanners use the product's permanent id (WH:P:<id>), never the SKU.
+  sku: opt(nonEmpty()),
   name: opt(nonEmpty()),
   description: opt(str()),
   categoryId: opt(uuid),

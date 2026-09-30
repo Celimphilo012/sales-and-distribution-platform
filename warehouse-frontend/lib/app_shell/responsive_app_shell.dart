@@ -7,6 +7,7 @@ import '../core/auth/app_user.dart';
 import '../core/auth/auth_provider.dart';
 import '../core/theme/nocturne.dart';
 import '../core/theme/theme_mode_provider.dart';
+import '../features/scan/scan_lookup.dart';
 import '../features/settings/data/account_api.dart';
 import '../features/stock_adjustments/data/stock_adjustments_providers.dart';
 import '../features/stock_adjustments/domain/stock_adjustment.dart';
@@ -222,6 +223,15 @@ class _TopBar extends ConsumerWidget {
               if (mode == _Mode.desktop && (user?.can('catalogue.view') ?? false)) ...[
                 const SizedBox(width: 300, child: _GlobalSearch()),
                 const SizedBox(width: 10),
+              ],
+              if (user?.can('catalogue.view') ?? false) ...[
+                NxIconButton(
+                  icon: PhosphorIconsRegular.qrCode,
+                  tooltip: 'Scan a product or location label',
+                  iconSize: 19,
+                  onPressed: () => scanAndOpen(context, ref),
+                ),
+                const SizedBox(width: 4),
               ],
               NxIconButton(
                 icon: dark ? PhosphorIconsRegular.sun : PhosphorIconsRegular.moon,

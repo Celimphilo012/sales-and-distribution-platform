@@ -69,6 +69,7 @@ class ProductsApi {
   /// has no `sku` field, it's immutable after creation.
   Future<Product> update(
     String id, {
+    String? sku,
     required String name,
     String? description,
     required String categoryId,
@@ -82,6 +83,7 @@ class ProductsApi {
       (dio) => dio.patch<Map<String, dynamic>>(
         '/products/$id',
         data: {
+          'sku': ?sku,
           'name': name,
           'description': description,
           'categoryId': categoryId,

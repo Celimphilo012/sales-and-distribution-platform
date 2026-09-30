@@ -17,6 +17,8 @@ import '../../inventory/data/inventory_providers.dart';
 import '../../inventory/domain/inventory_balance.dart';
 import '../../products/presentation/product_sheet.dart';
 import '../../receiving/presentation/receive_sheet.dart';
+import '../../../shared/export/label_export.dart';
+import '../../scan/qr_label_dialog.dart';
 import '../../stock_counts/presentation/count_sheet.dart';
 import '../../warehouses/data/warehouses_providers.dart';
 import '../../warehouses/domain/warehouse.dart';
@@ -222,6 +224,11 @@ class _WarehouseStructureScreenState extends ConsumerState<WarehouseStructureScr
           sub: '${wh.name} (${wh.code}) · any depth; types are free labels',
           views: const [NxView.map, NxView.tree, NxView.table, NxView.list, NxView.grid],
           actions: [
+            NxButton(
+              label: 'Print slot labels',
+              icon: PhosphorIconsRegular.qrCode,
+              onPressed: () => printQrLabels(ref, _slotLabels(idx, idx.byId.keys, wh.name), name: '${wh.code} slot labels'),
+            ),
             if (canManage)
               NxButton.primary(label: 'Add location', icon: PhosphorIconsRegular.plus, onPressed: () => showLocationForm(context, warehouseId: wh.id, all: all)),
           ],
@@ -319,6 +326,7 @@ class _WarehouseStructureScreenState extends ConsumerState<WarehouseStructureScr
                     idx: idx,
                     all: all,
                     warehouseId: wh.id,
+                    warehouseName: wh.name,
                     balances: balances.where((b) => b.locationId == sel.id).toList(),
                     onChanged: () => _refresh(wh.id),
                   );
@@ -778,13 +786,36 @@ class _StructureTree extends StatelessWidget {
 
 // ─── Detail ─────────────────────────────────────────────────────────────────
 
+/// [id] and everything below it.
+Iterable<String> _descendants(_Index idx, String id) sync* {
+  yield id;
+  for (final k in idx.byId[id]?.kids ?? const <String>[]) {
+    yield* _descendants(idx, k);
+  }
+}
+
+/// Labels for the active storage slots among [ids], in code order.
+List<QrLabel> _slotLabels(_Index idx, Iterable<String> ids, String warehouse) {
+  final slots = [for (final id in ids) ?idx.byId[id]].where((r) => r.leaf && !r.inactive).toList()..sort((a, b) => a.l.code.compareTo(b.l.code));
+  return [for (final r in slots) locationLabel(r.l, path: r.path.join(' › '), warehouse: warehouse)];
+}
+
 class _Detail extends ConsumerWidget {
-  const _Detail({required this.loc, required this.idx, required this.all, required this.warehouseId, required this.balances, required this.onChanged});
+  const _Detail({
+    required this.loc,
+    required this.idx,
+    required this.all,
+    required this.warehouseId,
+    required this.warehouseName,
+    required this.balances,
+    required this.onChanged,
+  });
 
   final _Loc loc;
   final _Index idx;
   final List<Location> all;
   final String warehouseId;
+  final String warehouseName;
   final List<InventoryBalance> balances;
   final VoidCallback onChanged;
 
@@ -835,6 +866,19 @@ class _Detail extends ConsumerWidget {
         NxButton(label: 'Edit', icon: PhosphorIconsRegular.pencilSimple, small: true, onPressed: () => showLocationForm(context, warehouseId: warehouseId, location: l, all: all)),
         NxButton(label: 'Move', icon: PhosphorIconsRegular.arrowsOutCardinal, small: true, onPressed: () => showMoveLocation(context, location: l, all: all)),
       ],
+      NxButton(
+        label: 'QR label',
+        icon: PhosphorIconsRegular.qrCode,
+        small: true,
+        onPressed: () => showQrLabelDialog(context, locationLabel(l, path: loc.path.join(' › '), warehouse: warehouseName)),
+      ),
+      if (!loc.leaf)
+        NxButton(
+          label: 'Slot labels',
+          icon: PhosphorIconsRegular.printer,
+          small: true,
+          onPressed: () => printQrLabels(ref, _slotLabels(idx, _descendants(idx, l.id), warehouseName), name: '${l.code} slot labels'),
+        ),
       if (loc.leaf && l.isActive && canReceive)
         NxButton(label: 'Receive here', icon: PhosphorIconsRegular.boxArrowDown, small: true, onPressed: () => showReceiveSheet(context, locationId: l.id)),
       if (loc.leaf && l.isActive && canCount)

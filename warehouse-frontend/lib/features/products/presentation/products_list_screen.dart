@@ -19,6 +19,7 @@ import '../../workstreams/domain/workstream.dart';
 import '../data/products_providers.dart';
 import '../domain/product.dart';
 import '../domain/product_status.dart';
+import '../../scan/qr_label_dialog.dart';
 import 'product_form_dialog.dart';
 import 'product_sheet.dart';
 import 'products_list_providers.dart';
@@ -155,6 +156,11 @@ class _ProductsListScreenState extends ConsumerState<ProductsListScreen> {
             title: 'Products',
             sub: 'Catalogue items across every workstream',
             actions: [
+              NxButton(
+                label: 'QR labels',
+                icon: PhosphorIconsRegular.qrCode,
+                onPressed: () => printQrLabels(ref, [for (final r in rows) if (r.active) productLabel(r.p)], name: 'product labels'),
+              ),
               if (canManage)
                 NxButton(label: 'Import', icon: PhosphorIconsRegular.uploadSimple, onPressed: () => context.go(RoutePaths.productImport)),
               if (canManage)

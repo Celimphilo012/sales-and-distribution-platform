@@ -214,6 +214,18 @@ describe('warehouse API (Express port)', () => {
       fx.product.name = `Renamed ${run}`;
     });
 
+    it('the SKU can be edited, but never to one another product already uses', async () => {
+      const other = (
+        await api.post('/products', { sku: `SKU-B-${run}`, name: 'Other', categoryId: fx.category.id, sellingPrice: 5, costPrice: 2, uom: 'EACH' })
+      ).json;
+      const renamed = await api.patch(`/products/${other.id}`, { sku: `  SKU-B2-${run} ` });
+      assert.equal(renamed.status, 200, renamed.body);
+      assert.equal(renamed.json.sku, `SKU-B2-${run}`);
+      assert.equal(renamed.json.id, other.id, 'same product — its id (what labels encode) never changes');
+      assert.equal((await api.patch(`/products/${other.id}`, { sku: fx.product.sku })).status, 409);
+      assert.equal((await api.patch(`/products/${other.id}`, { sku: `SKU-B2-${run}` })).status, 200, 'keeping its own SKU is fine');
+    });
+
     it('soft-deleting hides a product from the default list but keeps the row', async () => {
       const p = (await api.post('/products', { sku: `DEL-${uid()}`, name: 'Bye', categoryId: fx.category.id, uom: 'EACH', sellingPrice: 3 })).json;
       await api.get('/products'); // prime

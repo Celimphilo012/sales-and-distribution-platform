@@ -322,8 +322,18 @@ class NxListPage<T> extends ConsumerStatefulWidget {
   ConsumerState<NxListPage<T>> createState() => _NxListPageState<T>();
 }
 
+/// Rows shown per page in the table / list / grid views. Drawing only one
+/// page keeps long lists fast; search, filters, sort and the stats strip
+/// still work over every row.
+const kNxPageSize = 20;
+
 class _NxListPageState<T> extends ConsumerState<NxListPage<T>> {
   late final TextEditingController _search;
+
+  /// Current page (0-based). Back to the first page whenever the search,
+  /// filters, sort or view change.
+  int _page = 0;
+  NxListState? _pagedFor;
 
   @override
   void initState() {
@@ -429,6 +439,15 @@ class _NxListPageState<T> extends ConsumerState<NxListPage<T>> {
     final activeFilters = widget.filters.where((f) => !_isEmptyValue(st.filters[f.key])).toList();
     final stats = widget.stats(rows);
 
+    // Page.
+    if (!identical(_pagedFor, st)) {
+      _pagedFor = st;
+      _page = 0;
+    }
+    final pages = (rows.length / kNxPageSize).ceil();
+    final page = _page.clamp(0, pages == 0 ? 0 : pages - 1);
+    final pageRows = rows.length <= kNxPageSize ? rows : rows.sublist(page * kNxPageSize, ((page + 1) * kNxPageSize).clamp(0, rows.length));
+
     bool shown(NxHide h) => switch (h) {
       NxHide.none => true,
       NxHide.md => !phone,
@@ -491,7 +510,7 @@ class _NxListPageState<T> extends ConsumerState<NxListPage<T>> {
               switch (view) {
                 NxView.table => NxTable<T>(
                   columns: columns,
-                  rows: rows,
+                  rows: pageRows,
                   sortKey: sortKey,
                   sortDir: sortDir,
                   onSort: (key) => _set(
@@ -499,15 +518,24 @@ class _NxListPageState<T> extends ConsumerState<NxListPage<T>> {
                   ),
                   onOpen: widget.onOpen,
                 ),
-                NxView.list => NxListRows<T>(rows: rows, spec: widget.listRow, onOpen: widget.onOpen),
-                NxView.grid || NxView.map || NxView.tree => NxCardGrid<T>(rows: rows, spec: widget.card, onOpen: widget.onOpen),
+                NxView.list => NxListRows<T>(rows: pageRows, spec: widget.listRow, onOpen: widget.onOpen),
+                NxView.grid || NxView.map || NxView.tree => NxCardGrid<T>(rows: pageRows, spec: widget.card, onOpen: widget.onOpen),
               },
               const SizedBox(height: 8),
               Wrap(
                 spacing: 12,
+                runSpacing: 8,
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  Text(countText, style: TextStyle(fontSize: 11, color: n.n500)),
-                  if (widget.footNote != null) Text('· ${widget.footNote}', style: TextStyle(fontSize: 11, color: n.n500)),
+                  Wrap(
+                    spacing: 12,
+                    children: [
+                      Text(countText, style: TextStyle(fontSize: 11, color: n.n500)),
+                      if (widget.footNote != null) Text('· ${widget.footNote}', style: TextStyle(fontSize: 11, color: n.n500)),
+                    ],
+                  ),
+                  if (pages > 1) NxPager(page: page, pages: pages, total: rows.length, onPage: (p) => setState(() => _page = p)),
                 ],
               ),
             ],
@@ -674,6 +702,64 @@ class _NxListPageState<T> extends ConsumerState<NxListPage<T>> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// "21–40 of 134   ‹ 1 2 [3] … 7 ›" — the page switcher under a list.
+class NxPager extends StatelessWidget {
+  const NxPager({super.key, required this.page, required this.pages, required this.total, required this.onPage, this.pageSize = kNxPageSize});
+
+  final int page;
+  final int pages;
+  final int total;
+  final int pageSize;
+  final ValueChanged<int> onPage;
+
+  @override
+  Widget build(BuildContext context) {
+    final n = context.nx;
+    final from = page * pageSize + 1;
+    final to = ((page + 1) * pageSize).clamp(0, total);
+    // First, last, and the pages around the current one.
+    final shown = <int>{0, pages - 1, for (var i = page - 1; i <= page + 1; i++) if (i >= 0 && i < pages) i}.toList()..sort();
+    Widget num(int p) {
+      final on = p == page;
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 1),
+        child: Material(
+          color: on ? n.accent.withValues(alpha: 0.16) : Colors.transparent,
+          borderRadius: BorderRadius.circular(6),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(6),
+            onTap: on ? null : () => onPage(p),
+            child: Container(
+              constraints: const BoxConstraints(minWidth: 28),
+              height: 28,
+              alignment: Alignment.center,
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              child: Text(
+                '${p + 1}',
+                style: TextStyle(fontSize: 12, fontWeight: on ? FontWeight.w600 : FontWeight.w400, color: on ? n.a300 : n.n300, fontFeatures: tabular),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text('${_fmt(from)}–${_fmt(to)} of ${_fmt(total)}', style: TextStyle(fontSize: 11, color: n.n500)),
+        const SizedBox(width: 8),
+        NxIconButton(icon: PhosphorIconsRegular.caretLeft, tooltip: 'Previous page', size: 28, iconSize: 14, onPressed: page > 0 ? () => onPage(page - 1) : null),
+        for (var i = 0; i < shown.length; i++) ...[
+          if (i > 0 && shown[i] - shown[i - 1] > 1) Text('…', style: TextStyle(fontSize: 12, color: n.n500)),
+          num(shown[i]),
+        ],
+        NxIconButton(icon: PhosphorIconsRegular.caretRight, tooltip: 'Next page', size: 28, iconSize: 14, onPressed: page < pages - 1 ? () => onPage(page + 1) : null),
+      ],
     );
   }
 }

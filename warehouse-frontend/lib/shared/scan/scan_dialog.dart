@@ -82,14 +82,22 @@ class _ScanDialogState extends State<_ScanDialog> {
     setState(() => _cameraOn = false);
   }
 
+  /// A camera frame saw [raw]. The camera reports a code several times a
+  /// second while it stays in view, so the same code only counts again once
+  /// it has been out of view for a moment — holding a label up never adds
+  /// more than one. (A handheld scanner or typed code always counts.)
+  void _fromCamera(String raw) {
+    final text = raw.trim();
+    final now = DateTime.now();
+    final repeat = text == _lastRaw && now.difference(_lastAt) < const Duration(milliseconds: 1200);
+    _lastRaw = text;
+    _lastAt = now;
+    if (!repeat) _handle(text);
+  }
+
   void _handle(String raw) {
     final text = raw.trim();
     if (text.isEmpty) return;
-    // The camera reports the same code many times a second.
-    final now = DateTime.now();
-    if (text == _lastRaw && now.difference(_lastAt) < const Duration(seconds: 2)) return;
-    _lastRaw = text;
-    _lastAt = now;
     final code = ScanCode.parse(text);
     if (widget.onScan == null) {
       Navigator.of(context).pop(code);
@@ -121,7 +129,7 @@ class _ScanDialogState extends State<_ScanDialog> {
                       controller: _camera,
                       onDetect: (capture) {
                         final raw = capture.barcodes.map((b) => b.rawValue).whereType<String>().firstOrNull;
-                        if (raw != null) _handle(raw);
+                        if (raw != null) _fromCamera(raw);
                       },
                       errorBuilder: (context, error) => ColoredBox(
                         color: n.n900,

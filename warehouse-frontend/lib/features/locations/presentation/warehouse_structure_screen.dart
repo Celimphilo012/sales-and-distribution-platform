@@ -17,6 +17,7 @@ import '../../inventory/data/inventory_providers.dart';
 import '../../inventory/domain/inventory_balance.dart';
 import '../../products/presentation/product_sheet.dart';
 import '../../receiving/presentation/receive_sheet.dart';
+import '../../receiving/presentation/scan_receive_sheet.dart';
 import '../../../shared/export/label_export.dart';
 import '../../scan/qr_label_dialog.dart';
 import '../../stock_counts/presentation/count_sheet.dart';
@@ -881,6 +882,8 @@ class _Detail extends ConsumerWidget {
         ),
       if (loc.leaf && l.isActive && canReceive)
         NxButton(label: 'Receive here', icon: PhosphorIconsRegular.boxArrowDown, small: true, onPressed: () => showReceiveSheet(context, locationId: l.id)),
+      if (loc.leaf && l.isActive && canReceive)
+        NxButton(label: 'Scan to receive', icon: PhosphorIconsRegular.qrCode, small: true, onPressed: () => showScanReceiveSheet(context, locationId: l.id)),
       if (loc.leaf && l.isActive && canCount)
         NxButton(label: 'Count', icon: PhosphorIconsRegular.listChecks, small: true, onPressed: () => showStartCountDialog(context, locationId: l.id)),
       if (canManage)

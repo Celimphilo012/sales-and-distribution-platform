@@ -8,10 +8,12 @@ import '../../../core/error/app_error.dart';
 import '../../../core/theme/nocturne.dart';
 import '../../../shared/nx/nx_format.dart';
 import '../../../shared/nx/nx_list_page.dart';
+import '../../../shared/nx/nx_primitives.dart';
 import '../../inventory/data/inventory_providers.dart';
 import '../../inventory/domain/ledger_entry.dart';
 import '../../products/presentation/product_sheet.dart';
 import 'receive_sheet.dart';
+import 'scan_receive_sheet.dart';
 
 /// Stock Receiving — the prototype's receiving page: the receive form with a
 /// live balance preview and the most recent receipts beside it, then the
@@ -108,9 +110,17 @@ class ReceivingScreen extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const NxPageHeader(
+                  NxPageHeader(
                     title: 'Stock Receiving',
                     sub: 'Records a RECEIVE transaction and increases on-hand at the destination.',
+                    actions: [
+                      if (canReceive)
+                        NxButton.primary(
+                          label: 'Scan to receive',
+                          icon: PhosphorIconsRegular.qrCode,
+                          onPressed: () => showScanReceiveSheet(context),
+                        ),
+                    ],
                   ),
                   const SizedBox(height: 12),
                   if (canReceive) ...[const ReceiveForm(page: true), const SizedBox(height: 22)],

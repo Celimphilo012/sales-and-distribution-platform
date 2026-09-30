@@ -59,11 +59,13 @@ const TRANSACTION_SELECT = `
   SELECT ${cols('inventoryTransaction', 't')},
          ${cols('product', 'p', ['id', 'sku', 'name'], 'product.')},
          ${cols('location', 'fl', ['id', 'name', 'code'], 'fromLocation.')},
-         ${cols('location', 'tl', ['id', 'name', 'code'], 'toLocation.')}
+         ${cols('location', 'tl', ['id', 'name', 'code'], 'toLocation.')},
+         ${cols('user', 'u', ['id', 'fullName'], 'performedByUser.')}
     FROM inventory_transactions t
     JOIN products p ON p.id = t.product_id
     LEFT JOIN locations fl ON fl.id = t.from_location_id
-    LEFT JOIN locations tl ON tl.id = t.to_location_id`;
+    LEFT JOIN locations tl ON tl.id = t.to_location_id
+    LEFT JOIN users u ON u.id = t.performed_by`;
 
 /**
  * Report scoping. `warehouseIds` is the viewer's warehouse scope (modules/access): null = every
@@ -236,7 +238,8 @@ class InventoryService {
     if (query.locationId) where.raw('(t.from_location_id = ? OR t.to_location_id = ?)', query.locationId, query.locationId);
     if (query.from) where.raw('t.created_at >= ?', new Date(query.from));
     if (query.to) where.raw('t.created_at <= ?', new Date(query.to));
-    const rows = await this.db.query(`${TRANSACTION_SELECT} ${where.sql} ORDER BY t.created_at DESC`, where.params);
+    const limit = query.limit ? ` LIMIT ${Number(query.limit)}` : '';
+    const rows = await this.db.query(`${TRANSACTION_SELECT} ${where.sql} ORDER BY t.created_at DESC${limit}`, where.params);
     return rows.map(nest);
   }
 

@@ -1,16 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../../../app_shell/responsive_app_shell.dart';
 import '../../../core/auth/auth_provider.dart';
 import '../../../core/error/app_error.dart';
-import '../../../core/theme/app_spacing.dart';
-import '../../../routing/route_paths.dart';
-import '../../../shared/widgets/app_card.dart';
-import '../../../shared/widgets/app_dialog.dart';
-import '../../../shared/widgets/empty_loading_error_states.dart';
-import '../../../shared/widgets/stat_tile.dart';
-import '../../../shared/widgets/status_badge.dart';
+import '../../../core/theme/nocturne.dart';
+import '../../../shared/nx/nx_actions.dart';
+import '../../../shared/nx/nx_format.dart';
+import '../../../shared/nx/nx_list_page.dart';
+import '../../../shared/nx/nx_primitives.dart';
+import '../../products/domain/product.dart';
+import '../../products/presentation/products_list_providers.dart';
 import '../../workstreams/data/workstreams_providers.dart';
 import '../../workstreams/domain/workstream.dart';
 import '../data/categories_providers.dart';
@@ -18,290 +19,180 @@ import '../domain/category.dart';
 import '../domain/category_tree.dart';
 import 'category_form_dialog.dart';
 
-/// Category tree, nested under workstreams: Workstream -> Category ->
-/// sub-category (the workstream layer is a catalogue-organization concept —
-/// see CLAUDE.md — every category belongs to exactly one workstream). Each
-/// workstream renders as its own section with its own tree, reusing 6b's
-/// client-side tree-building (`buildCategoryTreeForWorkstream`) since
-/// `GET /categories` is still a flat list.
-///
-/// Deliberately NOT a list/table/grid switcher like Products/Workstreams —
-/// this data is hierarchical (parent/sub-category), and flattening it into
-/// a table or grid would lose the nesting that's the whole point of a
-/// category browser. Still adopts the pattern's other two pieces: a stats
-/// strip and compact spacing.
-class CategoriesScreen extends ConsumerStatefulWidget {
+class _Row {
+  _Row(this.c, {required this.depth, required this.parentName, required this.wsName, required this.nSubs, required this.nProds});
+
+  final Category c;
+  final int depth;
+  final String parentName;
+  final String wsName;
+  final int nSubs;
+  final int nProds;
+
+  bool get top => depth == 0;
+}
+
+/// Categories (prototype `categories`) — category and sub-category, shown in
+/// tree order; a sub-category inherits its parent's workstream.
+class CategoriesScreen extends ConsumerWidget {
   const CategoriesScreen({super.key});
 
   @override
-  ConsumerState<CategoriesScreen> createState() => _CategoriesScreenState();
-}
-
-class _CategoriesScreenState extends ConsumerState<CategoriesScreen> {
-  bool _includeInactive = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+  Widget build(BuildContext context, WidgetRef ref) {
+    final n = context.nx;
     final canManage = ref.watch(authProvider.select((s) => s.value?.user?.can('products.manage') ?? false));
-    final workstreamsAsync = ref.watch(workstreamsProvider(_includeInactive));
-    final categoriesAsync = ref.watch(categoriesProvider(_includeInactive));
+    final async = ref.watch(categoriesProvider(true));
+    final workstreams = ref.watch(workstreamsProvider(true)).value ?? const <Workstream>[];
+    final products = ref.watch(productsListProvider).value ?? const <Product>[];
 
-    return Padding(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Categories', style: theme.textTheme.headlineSmall),
-          const SizedBox(height: AppSpacing.sm),
-          categoriesAsync.maybeWhen(
-            data: (categories) => _CategoriesStats(categories: categories, workstreamCount: workstreamsAsync.value?.length),
-            orElse: () => const SizedBox.shrink(),
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          FilterChip(
-            label: const Text('Show inactive'),
-            selected: _includeInactive,
-            onSelected: (value) => setState(() => _includeInactive = value),
-          ),
-          const SizedBox(height: AppSpacing.md),
-          Expanded(
-            child: workstreamsAsync.when(
-              loading: () => const LoadingStateView(message: 'Loading workstreams…'),
-              error: (error, stackTrace) => ErrorStateView(
-                message: error is AppError ? error.message : 'Could not load workstreams.',
-                onRetry: () => invalidateWorkstreams(ref),
+    return NxPageScroll(
+      onRefresh: () async => invalidateCategories(ref),
+      child: async.when(
+        loading: () => const NxLoading(message: 'Loading categories…'),
+        error: (e, _) => NxError(
+          message: e is AppError ? e.message : 'Could not load categories.',
+          onRetry: () => invalidateCategories(ref),
+        ),
+        data: (all) {
+          final byId = {for (final c in all) c.id: c};
+          final wsById = {for (final w in workstreams) w.id: w};
+          final direct = <String, int>{};
+          for (final p in products) {
+            direct[p.categoryId] = (direct[p.categoryId] ?? 0) + 1;
+          }
+          int prodsUnder(CategoryNode node) => (direct[node.category.id] ?? 0) + node.children.fold<int>(0, (s, k) => s + prodsUnder(k));
+          final rows = [
+            for (final node in flattenCategoryTree(buildCategoryTree(all)))
+              _Row(
+                node.category,
+                depth: node.depth,
+                parentName: byId[node.category.parentId]?.name ?? '',
+                wsName: node.category.workstream?.name ?? wsById[node.category.workstreamId]?.name ?? '—',
+                nSubs: node.children.length,
+                nProds: prodsUnder(node),
               ),
-              data: (workstreams) {
-                if (workstreams.isEmpty) {
-                  return EmptyStateView(
-                    title: 'No workstreams yet',
-                    message: canManage
-                        ? 'Create a workstream first — every category needs one.'
-                        : 'Ask an administrator to create a workstream first.',
-                    icon: Icons.workspaces_outlined,
-                    action: canManage
-                        ? FilledButton.icon(
-                            onPressed: () => context.go(RoutePaths.workstreams),
-                            icon: const Icon(Icons.workspaces_outlined),
-                            label: const Text('Go to Workstreams'),
-                          )
-                        : null,
-                  );
-                }
-                return categoriesAsync.when(
-                  loading: () => const LoadingStateView(message: 'Loading categories…'),
-                  error: (error, stackTrace) => ErrorStateView(
-                    message: error is AppError ? error.message : 'Could not load categories.',
-                    onRetry: () => invalidateCategories(ref),
-                  ),
-                  data: (categories) => ListView(
-                    children: [
-                      for (final workstream in workstreams)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: AppSpacing.lg),
-                          child: _WorkstreamSection(
-                            workstream: workstream,
-                            tree: buildCategoryTreeForWorkstream(categories, workstream.id),
-                            canManage: canManage,
-                          ),
-                        ),
-                    ],
-                  ),
-                );
-              },
+          ];
+          Iterable<_Row> leafRows(List<_Row> rs) => rs.where((r) => r.nSubs == 0 && !r.top);
+
+          NxTag status(_Row r) => NxTag(r.c.isActive ? 'Active' : 'Inactive', tone: r.c.isActive ? Tone.ok : Tone.neutral);
+          void toggle(_Row r) => nxToggleActive(
+            context,
+            name: r.c.name,
+            active: r.c.isActive,
+            deactivate: () => ref.read(categoriesApiProvider).deactivate(r.c.id),
+            reactivate: () async => ref.read(categoriesApiProvider).update(r.c.id, isActive: true),
+            refresh: () => invalidateCategories(ref),
+          );
+          IconData icon(_Row r) => r.top ? PhosphorIconsDuotone.folderSimple : PhosphorIconsDuotone.tagSimple;
+
+          return NxListPage<_Row>(
+            stateKey: 'categories',
+            title: 'Categories',
+            sub: 'Category and sub-category. A sub-category inherits its parent’s workstream.',
+            actions: [
+              if (canManage)
+                NxButton.primary(label: 'New category', icon: PhosphorIconsRegular.plus, onPressed: () => showCategoryFormDialog(context)),
+            ],
+            rows: rows,
+            search: (r) => '${r.c.name} ${r.parentName}',
+            searchPlaceholder: 'Category name',
+            stats: (rs) {
+              final empty = leafRows(rs).where((r) => r.nProds == 0).length;
+              return [
+                NxStat('Categories', fmtNum(rs.length), sub: '${rs.where((r) => r.c.isActive).length} active'),
+                NxStat('Top level', fmtNum(rs.where((r) => r.top).length)),
+                NxStat('Sub-categories', fmtNum(rs.where((r) => !r.top).length)),
+                NxStat('Products placed', fmtNum(rs.where((r) => r.top).fold<int>(0, (s, r) => s + r.nProds))),
+                NxStat('Empty', fmtNum(empty), sub: 'sub-categories with no products', color: empty > 0 ? n.warn : null),
+              ];
+            },
+            quick: NxQuick(
+              get: (r) => r.top ? 'top' : 'sub',
+              options: const [('', 'All'), ('top', 'Top level'), ('sub', 'Sub-categories')],
             ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _WorkstreamSection extends StatelessWidget {
-  const _WorkstreamSection({required this.workstream, required this.tree, required this.canManage});
-
-  final Workstream workstream;
-  final List<CategoryNode> tree;
-  final bool canManage;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final flat = flattenCategoryTree(tree);
-
-    return AppCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.workspaces_outlined, color: theme.colorScheme.primary),
-              const SizedBox(width: AppSpacing.sm),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(workstream.name, style: theme.textTheme.titleMedium),
-                    Text(
-                      workstream.code,
-                      style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                    ),
-                  ],
+            filters: [
+              NxSelectFilter('ws', 'Workstream', options: [for (final w in workstreams) (w.id, w.name)], get: (r) => r.c.workstreamId),
+              NxSelectFilter(
+                'parent',
+                'Parent',
+                searchable: true,
+                options: [for (final c in all.where((c) => all.any((k) => k.parentId == c.id))) (c.id, c.name)],
+                get: (r) => r.c.parentId,
+              ),
+              NxSelectFilter('st', 'Status', options: const [('yes', 'Active'), ('no', 'Inactive')], get: (r) => r.c.isActive ? 'yes' : 'no'),
+              NxRangeFilter('prods', 'Products', get: (r) => r.nProds),
+            ],
+            columns: [
+              NxColumn(
+                key: 'name',
+                label: 'Category',
+                cell: (r) => Padding(
+                  padding: EdgeInsets.only(left: r.depth > 1 ? (r.depth - 1) * 14.0 : 0),
+                  child: NxCellText(
+                    '${r.top ? '' : '↳ '}${r.c.name}',
+                    weight: r.top ? FontWeight.w500 : FontWeight.w400,
+                    sub: r.top ? '${r.nSubs} sub-categories' : 'in ${r.parentName}',
+                  ),
                 ),
               ),
-              if (!workstream.isActive) ...[
-                const StatusBadge(label: 'Inactive', tone: StatusTone.neutral),
-                const SizedBox(width: AppSpacing.sm),
-              ],
+              NxColumn(key: 'ws', label: 'Workstream', hide: NxHide.md, sort: (r) => r.wsName, cell: (r) => NxCellText(r.wsName, color: n.n300)),
+              NxColumn(
+                key: 'level',
+                label: 'Level',
+                hide: NxHide.wide,
+                cell: (r) => Align(
+                  alignment: Alignment.centerLeft,
+                  child: NxTag(r.top ? 'Category' : 'Sub-category', tone: r.top ? Tone.info : Tone.neutral),
+                ),
+              ),
+              NxColumn(key: 'prods', label: 'Products', align: TextAlign.right, sort: (r) => r.nProds, cell: (r) => NxCellText(fmtNum(r.nProds), align: TextAlign.right)),
+              NxColumn(key: 'status', label: 'Status', cell: (r) => Align(alignment: Alignment.centerLeft, child: status(r))),
               if (canManage)
-                TextButton.icon(
-                  onPressed: () => showCategoryFormDialog(context, workstreamId: workstream.id),
-                  icon: const Icon(Icons.add),
-                  label: const Text('Add category'),
+                NxColumn(
+                  key: 'act',
+                  label: '',
+                  width: 104,
+                  cell: (r) => NxRowActions([
+                    if (r.c.isActive)
+                      NxRowAction(
+                        icon: PhosphorIconsRegular.plus,
+                        label: 'Add sub-category',
+                        onPressed: () => showCategoryFormDialog(context, parentId: r.c.id, workstreamId: r.c.workstreamId),
+                      ),
+                    NxRowAction(icon: PhosphorIconsRegular.pencilSimple, label: 'Edit', onPressed: () => showCategoryFormDialog(context, category: r.c)),
+                    NxRowAction(
+                      icon: r.c.isActive ? PhosphorIconsRegular.prohibit : PhosphorIconsRegular.arrowCounterClockwise,
+                      label: r.c.isActive ? 'Deactivate' : 'Reactivate',
+                      danger: r.c.isActive,
+                      onPressed: () => toggle(r),
+                    ),
+                  ]),
                 ),
             ],
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          if (flat.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
-              child: Text(
-                'No categories in this workstream yet.',
-                style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-              ),
-            )
-          else
-            for (final node in flat) _CategoryTile(node: node, workstream: workstream, canManage: canManage),
-        ],
+            listRow: (r) => NxListRowSpec(
+              icon: icon(r),
+              iconColor: r.top ? n.a400 : n.n500,
+              title: r.top ? r.c.name : '${r.parentName} › ${r.c.name}',
+              sub: r.wsName,
+              right: '${r.nProds} products',
+              tag: status(r),
+            ),
+            card: (r) => NxCardSpec(
+              icon: icon(r),
+              title: r.c.name,
+              sub: '${r.top ? '' : 'in ${r.parentName} · '}${r.wsName}',
+              metrics: [
+                ('Products', fmtNum(r.nProds), null),
+                (r.top ? 'Sub-categories' : 'Level', r.top ? fmtNum(r.nSubs) : 'Sub', null),
+              ],
+              tag: status(r),
+            ),
+            onOpen: canManage ? (r) => showCategoryFormDialog(context, category: r.c) : null,
+            emptyTitle: 'No categories',
+            emptyMessage: 'Adjust filters or add a category.',
+          );
+        },
       ),
-    );
-  }
-}
-
-class _CategoryTile extends ConsumerWidget {
-  const _CategoryTile({required this.node, required this.workstream, required this.canManage});
-
-  final CategoryNode node;
-  final Workstream workstream;
-  final bool canManage;
-
-  Future<void> _deactivate(BuildContext context, WidgetRef ref) async {
-    final category = node.category;
-    final confirmed = await ConfirmDialog.show(
-      context,
-      title: 'Deactivate category?',
-      message:
-          'Products stay linked to "${category.name}" historically; it will no longer be '
-          'selectable for new products.',
-      confirmLabel: 'Deactivate',
-      isDestructive: true,
-    );
-    if (!confirmed) return;
-    try {
-      await ref.read(categoriesApiProvider).deactivate(category.id);
-      invalidateCategories(ref);
-    } on AppError catch (e) {
-      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
-    }
-  }
-
-  Future<void> _reactivate(BuildContext context, WidgetRef ref) async {
-    try {
-      await ref.read(categoriesApiProvider).update(node.category.id, isActive: true);
-      invalidateCategories(ref);
-    } on AppError catch (e) {
-      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
-    }
-  }
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
-    final category = node.category;
-
-    return Padding(
-      padding: EdgeInsets.only(left: AppSpacing.lg * (node.depth + 1), right: AppSpacing.sm, top: 4, bottom: 4),
-      child: Row(
-        children: [
-          Icon(
-            node.children.isEmpty ? Icons.label_outline : Icons.folder_outlined,
-            size: 18,
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-          const SizedBox(width: AppSpacing.sm),
-          Expanded(
-            child: Text(
-              category.name,
-              style: category.isActive
-                  ? theme.textTheme.bodyMedium
-                  : theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-            ),
-          ),
-          if (!category.isActive) ...[
-            const StatusBadge(label: 'Inactive', tone: StatusTone.neutral),
-            const SizedBox(width: AppSpacing.sm),
-          ],
-          if (canManage) ...[
-            IconButton(
-              iconSize: 18,
-              tooltip: 'Add subcategory',
-              icon: const Icon(Icons.add),
-              onPressed: () => showCategoryFormDialog(
-                context,
-                parentId: category.id,
-                workstreamId: workstream.id,
-              ),
-            ),
-            IconButton(
-              iconSize: 18,
-              tooltip: 'Edit',
-              icon: const Icon(Icons.edit_outlined),
-              onPressed: () => showCategoryFormDialog(context, category: category),
-            ),
-            if (category.isActive)
-              IconButton(
-                iconSize: 18,
-                tooltip: 'Deactivate',
-                icon: const Icon(Icons.block),
-                onPressed: () => _deactivate(context, ref),
-              )
-            else
-              IconButton(
-                iconSize: 18,
-                tooltip: 'Reactivate',
-                icon: const Icon(Icons.check_circle_outline),
-                onPressed: () => _reactivate(context, ref),
-              ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _CategoriesStats extends StatelessWidget {
-  const _CategoriesStats({required this.categories, required this.workstreamCount});
-
-  final List<Category> categories;
-  final int? workstreamCount;
-
-  @override
-  Widget build(BuildContext context) {
-    final active = categories.where((c) => c.isActive).length;
-    final inactive = categories.length - active;
-
-    return Wrap(
-      spacing: AppSpacing.sm,
-      runSpacing: AppSpacing.xs,
-      children: [
-        StatTile(label: 'categories', value: '${categories.length}', icon: Icons.category_outlined),
-        StatTile(label: 'active', value: '$active', tone: StatusTone.success, icon: Icons.check_circle_outline),
-        if (inactive > 0)
-          StatTile(label: 'inactive', value: '$inactive', tone: StatusTone.neutral, icon: Icons.block_outlined),
-        if (workstreamCount != null)
-          StatTile(label: 'workstreams', value: '$workstreamCount', icon: Icons.workspaces_outlined),
-      ],
     );
   }
 }

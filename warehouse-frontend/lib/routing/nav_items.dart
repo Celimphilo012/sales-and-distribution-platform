@@ -195,6 +195,12 @@ const List<NavGroup> kNavGroups = [
     icon: PhosphorIconsDuotone.gearSix,
     items: [
       NavItem(
+        label: 'Reports',
+        path: RoutePaths.reports,
+        icon: PhosphorIconsDuotone.chartBar,
+        requiredPermissions: ['reports.view'],
+      ),
+      NavItem(
         label: 'Audit Log',
         path: RoutePaths.audit,
         icon: PhosphorIconsDuotone.listMagnifyingGlass,

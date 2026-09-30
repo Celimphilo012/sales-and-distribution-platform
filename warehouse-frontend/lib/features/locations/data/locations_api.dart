@@ -53,6 +53,7 @@ class LocationsApi {
     required String code,
     required String locationType,
     String? description,
+    int? capacity,
   }) async {
     final response = await _apiClient.guard(
       (dio) => dio.post<Map<String, dynamic>>(
@@ -62,6 +63,7 @@ class LocationsApi {
           'code': code,
           'locationType': locationType,
           if (description != null && description.isNotEmpty) 'description': description,
+          'capacity': ?capacity,
         },
       ),
     );
@@ -77,6 +79,7 @@ class LocationsApi {
     required String code,
     required String locationType,
     String? description,
+    int? capacity,
   }) async {
     final response = await _apiClient.guard(
       (dio) => dio.post<Map<String, dynamic>>(
@@ -87,6 +90,7 @@ class LocationsApi {
           'code': code,
           'locationType': locationType,
           if (description != null && description.isNotEmpty) 'description': description,
+          'capacity': ?capacity,
         },
       ),
     );
@@ -100,6 +104,8 @@ class LocationsApi {
     String? locationType,
     String? description,
     bool? isActive,
+    int? capacity,
+    bool clearCapacity = false,
   }) async {
     final response = await _apiClient.guard(
       (dio) => dio.patch<Map<String, dynamic>>(
@@ -110,6 +116,7 @@ class LocationsApi {
           'locationType': ?locationType,
           'description': ?description,
           'isActive': ?isActive,
+          if (clearCapacity) 'capacity': null else 'capacity': ?capacity,
         },
       ),
     );
@@ -152,6 +159,7 @@ class LocationsApi {
     String? namePrefix,
     String? codePrefix,
     int? startIndex,
+    int? capacity,
   }) async {
     final response = await _apiClient.guard(
       (dio) => dio.post<List<dynamic>>(
@@ -162,6 +170,7 @@ class LocationsApi {
           'namePrefix': ?namePrefix,
           'codePrefix': ?codePrefix,
           'startIndex': ?startIndex,
+          'capacity': ?capacity,
         },
       ),
     );

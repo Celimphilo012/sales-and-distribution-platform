@@ -1,7 +1,7 @@
 'use strict';
 
 const { InventoryTransactionType } = require('../../core/enums');
-const { obj, uuid, dateString, enumOf } = require('../../core/schema');
+const { obj, uuid, dateString, enumOf, int } = require('../../core/schema');
 
 const balancesQuery = obj({ productId: uuid, locationId: uuid, warehouseId: uuid });
 const transactionsQuery = obj({
@@ -10,6 +10,8 @@ const transactionsQuery = obj({
   type: enumOf(InventoryTransactionType),
   from: dateString,
   to: dateString,
+  // Newest first; a limit keeps history screens (receipts, transfers) quick on a large ledger.
+  limit: int({ minimum: 1, maximum: 5000 }),
 });
 
 // Read-only views over the ledger — every write goes through InventoryService.applyTransaction.

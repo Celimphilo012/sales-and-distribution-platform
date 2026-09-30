@@ -2,6 +2,9 @@ import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
+
+import '../nx/nx_primitives.dart';
 
 /// The "pick an image from device storage" half of an image field that also
 /// accepts a pasted URL (see the product-images editor and the workstream
@@ -37,12 +40,11 @@ class _DeviceImagePickerState extends State<DeviceImagePicker> {
 
   @override
   Widget build(BuildContext context) {
-    return OutlinedButton.icon(
+    return NxButton(
+      label: _picking ? 'Choosing…' : widget.label,
+      icon: PhosphorIconsRegular.uploadSimple,
+      small: true,
       onPressed: (_picking || !widget.enabled) ? null : _pick,
-      icon: _picking
-          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-          : const Icon(Icons.upload_outlined),
-      label: Text(widget.label),
     );
   }
 }

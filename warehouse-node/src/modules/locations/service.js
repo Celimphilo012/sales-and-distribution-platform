@@ -121,6 +121,7 @@ function createLocationsService({ db, models, cache, config, warehouses, access 
         code: dto.code,
         locationType: dto.locationType,
         description: dto.description,
+        capacity: dto.capacity,
       });
       await structureChanged();
       return created;
@@ -151,6 +152,8 @@ function createLocationsService({ db, models, cache, config, warehouses, access 
           code: dto.code ?? undefined,
           locationType: dto.locationType ?? undefined,
           description: dto.description,
+          // undefined = unchanged; null clears it.
+          capacity: dto.capacity,
           isActive: dto.isActive ?? undefined,
         },
         'Location',
@@ -220,6 +223,7 @@ function createLocationsService({ db, models, cache, config, warehouses, access 
         name: `${namePrefix} ${n}`,
         code: `${parent.code}-${codePrefix}${n}`,
         locationType,
+        capacity: dto.capacity ?? undefined,
       };
     });
 

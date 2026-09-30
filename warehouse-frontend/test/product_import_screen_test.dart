@@ -8,6 +8,7 @@ import 'package:warehouse_frontend/core/auth/auth_provider.dart';
 import 'package:warehouse_frontend/core/auth/auth_state.dart';
 import 'package:warehouse_frontend/core/persistence/shared_preferences_provider.dart';
 import 'package:warehouse_frontend/core/theme/app_theme.dart';
+import 'package:warehouse_frontend/shared/nx/nx_primitives.dart';
 import 'package:warehouse_frontend/features/product_import/presentation/product_import_screen.dart';
 
 class _FakeUserNotifier extends AuthNotifier {
@@ -59,13 +60,11 @@ void main() {
 
     expect(find.text('Import products'), findsOneWidget);
     expect(find.text('Step 1 of 3 — Upload a file'), findsOneWidget);
-    expect(find.widgetWithText(OutlinedButton, 'Download template (.xlsx)'), findsOneWidget);
-    expect(find.widgetWithText(OutlinedButton, 'Choose file'), findsOneWidget);
+    expect(find.widgetWithText(NxButton, 'Download template (.xlsx)'), findsOneWidget);
+    expect(find.widgetWithText(NxButton, 'Choose file'), findsOneWidget);
     expect(find.text('No file chosen — .xlsx or .csv'), findsOneWidget);
 
-    final uploadButton = tester.widget<FilledButton>(
-      find.ancestor(of: find.text('Upload & preview'), matching: find.byType(FilledButton)),
-    );
+    final uploadButton = tester.widget<NxButton>(find.widgetWithText(NxButton, 'Upload & preview'));
     expect(uploadButton.onPressed, isNull); // no file picked yet
   });
 }

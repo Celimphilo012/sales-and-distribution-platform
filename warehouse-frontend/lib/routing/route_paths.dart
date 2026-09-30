@@ -3,8 +3,9 @@
 /// literal, so a path never drifts between the router and its callers.
 ///
 /// This is the WAREHOUSE app's nav table (ARCHITECTURE.md §A2) — there is no
-/// orders/customers/fulfilment/reports section here, those belong to the
-/// separate ordering frontend talking to /backend.
+/// orders/customers/fulfilment section here; those belong to the separate
+/// ordering frontend talking to /ordering-backend. (Reports here are the
+/// warehouse's own stock reports.)
 class RoutePaths {
   const RoutePaths._();
 
@@ -32,6 +33,7 @@ class RoutePaths {
   static const users = '/users';
   static const roles = '/roles';
   static String roleDetail(String id) => '$roles/$id';
+  static const reports = '/reports';
   static const audit = '/audit';
   static const settings = '/settings';
 

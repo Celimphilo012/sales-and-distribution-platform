@@ -10,10 +10,13 @@ import 'package:warehouse_frontend/core/auth/auth_state.dart';
 import 'package:warehouse_frontend/core/persistence/shared_preferences_provider.dart';
 import 'package:warehouse_frontend/core/theme/app_theme.dart';
 import 'package:warehouse_frontend/features/categories/data/categories_providers.dart';
+import 'package:warehouse_frontend/features/categories/domain/category.dart';
 import 'package:warehouse_frontend/features/products/domain/product.dart';
 import 'package:warehouse_frontend/features/products/domain/product_status.dart';
 import 'package:warehouse_frontend/features/products/presentation/products_list_providers.dart';
 import 'package:warehouse_frontend/features/products/presentation/products_list_screen.dart';
+import 'package:warehouse_frontend/features/workstreams/data/workstreams_providers.dart';
+import 'package:warehouse_frontend/features/workstreams/domain/workstream.dart';
 
 const _viewer = AppUser(id: 'u1', name: 'Viewer', email: 'v@example.com', permissions: {'catalogue.view'});
 
@@ -66,7 +69,8 @@ Future<void> _pump(WidgetTester tester) async {
         sharedPreferencesProvider.overrideWithValue(prefs),
         authProvider.overrideWith(_FakeUserNotifier.new),
         productsListProvider.overrideWith((ref) async => _fakeProducts),
-        categoryTreeProvider(false).overrideWith((ref) => const AsyncValue.data([])),
+        categoriesProvider(true).overrideWith((ref) async => const <Category>[]),
+        workstreamsProvider(true).overrideWith((ref) async => const <Workstream>[]),
       ],
       child: MaterialApp.router(theme: AppTheme.dark(), routerConfig: router),
     ),
@@ -78,41 +82,58 @@ void main() {
   testWidgets('defaults to the table view and shows correct stats', (tester) async {
     await _pump(tester);
 
-    // Stats: 3 shown, 2 active, 1 inactive, avg price (10+20+6)/3 = 12.00.
-    expect(find.text('3'), findsOneWidget);
-    expect(find.text('shown'), findsOneWidget);
-    expect(find.text('2'), findsOneWidget);
-    expect(find.text('active'), findsOneWidget);
-    expect(find.text('1'), findsOneWidget);
-    expect(find.text('inactive'), findsOneWidget);
-    expect(find.text('12.00'), findsOneWidget);
+    // Stats: 3 products, 2 active; avg selling price (10+20+6)/3 = 12.
+    expect(find.text('Products'), findsWidgets); // page title + stat label
+    expect(find.text('3'), findsWidgets);
+    expect(find.text('2 active'), findsOneWidget);
+    expect(find.textContaining('12.00'), findsWidgets);
 
     // Table view is the default — real product rows visible.
     expect(find.text('Soap'), findsOneWidget);
     expect(find.text('Shampoo'), findsOneWidget);
+    expect(find.text('SKU'), findsOneWidget); // column header
   });
 
   testWidgets('switching to List shows a compact row per product', (tester) async {
     await _pump(tester);
 
-    await tester.tap(find.text('List'));
+    await tester.tap(find.byTooltip('List'));
     await tester.pumpAndSettle();
 
-    expect(find.text('SKU-1'), findsOneWidget);
+    expect(find.text('SKU'), findsNothing); // no table header any more
     expect(find.text('Soap'), findsOneWidget);
+    expect(find.textContaining('SKU-1'), findsOneWidget);
   });
 
-  testWidgets('switching to Grid shows a tile per product with a placeholder image', (tester) async {
+  testWidgets('switching to Grid shows a card per product', (tester) async {
     await _pump(tester);
 
-    await tester.tap(find.text('Grid'));
+    await tester.tap(find.byTooltip('Grid'));
     await tester.pumpAndSettle();
 
     expect(find.text('Soap'), findsOneWidget);
-    expect(find.text('SKU-1'), findsOneWidget);
-    // No image URL on any fake product — every tile falls back to the
-    // placeholder icon rather than attempting a network image.
-    expect(find.byIcon(Icons.inventory_2_outlined), findsWidgets);
+    expect(find.textContaining('SKU-1'), findsOneWidget);
+  });
+
+  testWidgets('the quick filter narrows to inactive products', (tester) async {
+    await _pump(tester);
+
+    await tester.tap(find.text('Inactive').first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Old Candle'), findsOneWidget);
+    expect(find.text('Soap'), findsNothing);
+    expect(find.textContaining('1 of 3'), findsOneWidget);
+  });
+
+  testWidgets('search matches on SKU or name', (tester) async {
+    await _pump(tester);
+
+    await tester.enterText(find.byType(TextField).first, 'sham');
+    await tester.pumpAndSettle();
+
+    expect(find.text('Shampoo'), findsOneWidget);
+    expect(find.text('Soap'), findsNothing);
   });
 
   testWidgets('an empty product list shows the empty state in every view mode', (tester) async {
@@ -129,7 +150,8 @@ void main() {
           sharedPreferencesProvider.overrideWithValue(prefs),
           authProvider.overrideWith(_FakeUserNotifier.new),
           productsListProvider.overrideWith((ref) async => const []),
-          categoryTreeProvider(false).overrideWith((ref) => const AsyncValue.data([])),
+          categoriesProvider(true).overrideWith((ref) async => const <Category>[]),
+        workstreamsProvider(true).overrideWith((ref) async => const <Workstream>[]),
         ],
         child: MaterialApp.router(theme: AppTheme.dark(), routerConfig: router),
       ),

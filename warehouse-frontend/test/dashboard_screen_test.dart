@@ -21,7 +21,6 @@ class _FakeUserNotifier extends AuthNotifier {
   Future<AuthState> build() async => AuthState.authenticated(user);
 }
 
-const _viewer = AppUser(id: 'u1', name: 'Viewer', email: 'v@example.com', permissions: {});
 const _manager = AppUser(id: 'u2', name: 'Manager', email: 'm@example.com', permissions: {'reports.view'});
 
 final _now = DateTime(2026, 1, 1, 12, 0);
@@ -87,7 +86,7 @@ final _fakeSummary = DashboardSummary(
   openStockCounts: const OpenStockCountsSummary(count: 0),
 );
 
-Future<void> _pump(WidgetTester tester, AppUser user, {bool withData = true}) async {
+Future<void> _pump(WidgetTester tester, AppUser user) async {
   SharedPreferences.setMockInitialValues({});
   final prefs = await SharedPreferences.getInstance();
   tester.view.physicalSize = const Size(1200, 1400);
@@ -99,7 +98,7 @@ Future<void> _pump(WidgetTester tester, AppUser user, {bool withData = true}) as
       overrides: [
         sharedPreferencesProvider.overrideWithValue(prefs),
         authProvider.overrideWith(() => _FakeUserNotifier(user)),
-        if (withData) dashboardSummaryProvider.overrideWith((ref) async => _fakeSummary),
+        dashboardSummaryProvider.overrideWith((ref) async => _fakeSummary),
       ],
       child: MaterialApp(theme: AppTheme.light(), home: const Scaffold(body: DashboardScreen())),
     ),
@@ -108,34 +107,25 @@ Future<void> _pump(WidgetTester tester, AppUser user, {bool withData = true}) as
 }
 
 void main() {
-  testWidgets('a user without reports.view sees a permission gate, not the dashboard', (tester) async {
-    await _pump(tester, _viewer, withData: false);
+  // Who may open the dashboard is the router's job (reports.view on the nav item).
 
-    expect(find.text("You don't have permission to view the dashboard"), findsOneWidget);
-    expect(find.text('Active products'), findsNothing);
-  });
-
-  testWidgets('a reports.view user sees real KPI tiles and preview lists', (tester) async {
+  testWidgets('a reports.view user sees real KPI tiles and preview panels', (tester) async {
     await _pump(tester, _manager);
 
     expect(find.text('25'), findsOneWidget); // active products
-    expect(find.text('2'), findsWidgets); // low-stock count tile + shown elsewhere
-    expect(find.text('31514.00'), findsOneWidget); // valuation total
-    expect(find.textContaining('excluded'), findsOneWidget);
+    expect(find.textContaining('31,514'), findsOneWidget); // valuation total
+    expect(find.textContaining('without cost excluded'), findsOneWidget);
 
-    // Low stock preview.
-    expect(find.textContaining('Soap (SOP-1)'), findsWidgets); // appears in both low-stock and adjustments cards
-    expect(find.textContaining('Shampoo (SHM-1)'), findsOneWidget);
+    // Low stock panel.
+    expect(find.text('Soap'), findsWidgets); // in both low-stock and pending panels
+    expect(find.text('Shampoo'), findsOneWidget);
 
-    // Pending adjustments preview.
+    // Pending adjustments panel.
     expect(find.textContaining('damaged carton'), findsOneWidget);
 
     // Recent activity.
-    expect(find.textContaining('Tote Bag (TOT-1)'), findsOneWidget);
+    expect(find.textContaining('Tote Bag'), findsWidgets);
     expect(find.textContaining('Warehouse Administrator'), findsOneWidget);
-
-    // Open stock counts.
-    expect(find.text('No stock counts currently open'), findsOneWidget);
   });
 
   testWidgets('an empty low-stock/adjustments state renders a plain message, not an empty list', (tester) async {
@@ -166,9 +156,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('All active products meet their minimum stock level.'), findsOneWidget);
-    expect(find.text('No adjustment requests are pending approval.'), findsOneWidget);
-    expect(find.text('No inventory transactions in this period.'), findsOneWidget);
-    expect(find.text('No inventory transactions yet.'), findsOneWidget);
+    expect(find.text('Every active product is at or above its minimum.'), findsOneWidget);
+    expect(find.text('Nothing waiting for review.'), findsOneWidget);
+    expect(find.text('No stock moved in this period.'), findsOneWidget);
+    expect(find.text('No stock has moved yet.'), findsOneWidget);
   });
 }

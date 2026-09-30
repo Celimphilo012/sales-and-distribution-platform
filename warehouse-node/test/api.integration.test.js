@@ -827,6 +827,70 @@ describe('warehouse API (Express port)', () => {
       assert.equal(res.json.length, 12);
       assert.equal(res.json[0].code, `${rack.code}-S1`);
     });
+
+    it('carries an optional capacity (fill/utilisation), set on create, levels and edit, cleared with null', async () => {
+      const rack = (await api.post('/locations', { warehouseId: fx.warehouseId, name: 'Cap rack', code: `CR-${uid()}`, locationType: 'RACK' })).json;
+      assert.equal(rack.capacity, null);
+      const levels = (await api.post(`/locations/${rack.id}/levels`, { count: 2, capacity: 400 })).json;
+      assert.deepEqual(levels.map((l) => l.capacity), [400, 400]);
+      const slot = (await api.post(`/locations/${rack.id}/children`, { name: 'Bin', code: `CB-${uid()}`, locationType: 'BIN', capacity: 120 })).json;
+      assert.equal(slot.capacity, 120);
+      assert.equal((await api.patch(`/locations/${slot.id}`, { capacity: 150 })).json.capacity, 150);
+      assert.equal((await api.patch(`/locations/${slot.id}`, { name: 'Bin renamed' })).json.capacity, 150, 'untouched when omitted');
+      assert.equal((await api.patch(`/locations/${slot.id}`, { capacity: null })).json.capacity, null);
+      assert.equal((await api.patch(`/locations/${slot.id}`, { capacity: -1 })).status, 400);
+      const subtree = (await api.get(`/locations/${rack.id}/subtree`)).json;
+      assert.ok(subtree.some((l) => l.capacity === 400), 'the tree read carries capacity too');
+    });
+  });
+
+  describe('list summaries for the console', () => {
+    it('lists each workstream with its scoped managers', async () => {
+      const ws = (await api.post('/workstreams', { warehouseId: fx.warehouseId, name: `Mgd ${uid()}`, code: `M-${uid()}` })).json;
+      const user = (await api.post('/users', { email: `m-${uid()}@test.local`, password: 'Passw0rd!x', fullName: 'Listed Manager', roleIds: [] })).json;
+      await api.put(`/users/${user.id}/warehouses`, { warehouseIds: [fx.warehouseId] });
+      assert.equal((await api.post(`/workstreams/${ws.id}/managers`, { userId: user.id })).status, 201);
+      const listed = (await api.get('/workstreams')).json.find((w) => w.id === ws.id);
+      assert.deepEqual(listed.managers, [{ userId: user.id, fullName: 'Listed Manager' }]);
+      assert.deepEqual((await api.get('/workstreams')).json.find((w) => w.id === fx.workstream.id).managers, []);
+    });
+
+    it('lists each warehouse with location, slot, capacity, unit and workstream totals', async () => {
+      const wh = (await api.post('/warehouses', { name: `Sum ${uid()}`, code: `S-${uid()}` })).json;
+      const zone = (await api.post('/locations', { warehouseId: wh.id, name: 'Zone', code: `SZ-${uid()}`, locationType: 'ZONE' })).json;
+      const bins = (await api.post(`/locations/${zone.id}/levels`, { count: 2, locationType: 'BIN', capacity: 50 })).json;
+      await api.post('/workstreams', { warehouseId: wh.id, name: `SW ${uid()}`, code: `SW-${uid()}` });
+      assert.equal((await api.post('/inventory/receiving', { productId: fx.product.id, toLocationId: bins[0].id, quantity: 7, supplier: 'Test supplier' })).status, 201);
+      const listed = (await api.get('/warehouses')).json.find((w) => w.id === wh.id);
+      assert.deepEqual(listed.summary, { locations: 3, slots: 2, capacity: 100, units: 7, workstreams: 1 });
+    });
+  });
+
+  describe('report branding', () => {
+    it('anyone signed in reads it; only settings.manage changes the name and logo', async () => {
+      const initial = (await api.get('/settings/branding')).json;
+      assert.equal(typeof initial.companyName, 'string');
+
+      const renamed = await api.put('/settings/branding', { companyName: `  Acme Wholesale ${run}  ` });
+      assert.equal(renamed.status, 200, renamed.body);
+      assert.equal(renamed.json.companyName, `Acme Wholesale ${run}`);
+
+      const logo = await multipart({}, [{ field: 'file', content: PNG, type: 'image/png', filename: 'logo.png' }]);
+      const uploaded = await api.request('POST', '/settings/branding/logo', { raw: logo });
+      assert.equal(uploaded.status, 200, uploaded.body);
+      assert.equal(uploaded.json.hasLogo, true);
+      const file = await api.get('/settings/branding/logo');
+      assert.equal(file.status, 200);
+      assert.equal(file.headers['content-type'], 'image/png');
+
+      const notImage = await multipart({}, [{ field: 'file', content: Buffer.from('hello'), type: 'text/plain', filename: 'x.txt' }]);
+      assert.equal((await api.request('POST', '/settings/branding/logo', { raw: notImage })).status, 400);
+
+      const reset = await api.delete('/settings/branding/logo');
+      assert.equal(reset.json.hasLogo, false);
+      assert.equal((await api.get('/settings/branding/logo')).status, 404);
+      await api.put('/settings/branding', { companyName: initial.companyName });
+    });
   });
 
   describe('platform concerns', () => {

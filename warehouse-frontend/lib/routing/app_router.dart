@@ -16,17 +16,14 @@ import '../features/locations/presentation/warehouse_structure_screen.dart';
 import '../features/packing/presentation/packing_screen.dart';
 import '../features/dashboard/presentation/dashboard_screen.dart';
 import '../features/product_import/presentation/product_import_screen.dart';
-import '../features/products/presentation/product_detail_screen.dart';
-import '../features/products/presentation/product_form_screen.dart';
 import '../features/products/presentation/products_list_screen.dart';
-import '../features/receiving/presentation/receiving_form_screen.dart';
-import '../features/roles/presentation/role_detail_screen.dart';
+import '../features/receiving/presentation/receiving_screen.dart';
+import '../features/reports/presentation/reports_screen.dart';
 import '../features/roles/presentation/roles_screen.dart';
 import '../features/settings/presentation/settings_screen.dart';
 import '../features/stock_adjustments/presentation/stock_adjustments_screen.dart';
-import '../features/stock_counts/presentation/stock_count_detail_screen.dart';
 import '../features/stock_counts/presentation/stock_counts_screen.dart';
-import '../features/transfers/presentation/transfer_form_screen.dart';
+import '../features/transfers/presentation/transfers_screen.dart';
 import '../features/users/presentation/users_screen.dart';
 import '../features/warehouses/presentation/warehouses_list_screen.dart';
 import '../features/workstreams/presentation/workstreams_screen.dart';
@@ -64,6 +61,7 @@ const _customBuiltPaths = {
   RoutePaths.users,
   RoutePaths.roles,
   RoutePaths.audit,
+  RoutePaths.reports,
   RoutePaths.settings,
 };
 
@@ -150,16 +148,20 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 builder: (context, state) => ComingSoonView(title: item.label, icon: item.icon),
               ),
           GoRoute(path: RoutePaths.dashboard, builder: (context, state) => const DashboardScreen()),
-          GoRoute(path: RoutePaths.products, builder: (context, state) => const ProductsListScreen()),
-          GoRoute(path: RoutePaths.productNew, builder: (context, state) => const ProductFormScreen()),
+          GoRoute(
+            path: RoutePaths.products,
+            builder: (context, state) => ProductsListScreen(openProductId: state.uri.queryParameters['open']),
+          ),
+          GoRoute(path: RoutePaths.productNew, redirect: (context, state) => RoutePaths.products),
           GoRoute(path: RoutePaths.productImport, builder: (context, state) => const ProductImportScreen()),
+          // Product detail/edit are a sheet over the list now; old links open it.
           GoRoute(
             path: '${RoutePaths.products}/:id',
-            builder: (context, state) => ProductDetailScreen(productId: state.pathParameters['id']!),
+            redirect: (context, state) => '${RoutePaths.products}?open=${state.pathParameters['id']}',
           ),
           GoRoute(
             path: '${RoutePaths.products}/:id/edit',
-            builder: (context, state) => ProductFormScreen(productId: state.pathParameters['id']!),
+            redirect: (context, state) => '${RoutePaths.products}?open=${state.pathParameters['id']}',
           ),
           GoRoute(path: RoutePaths.workstreams, builder: (context, state) => const WorkstreamsScreen()),
           GoRoute(path: RoutePaths.categories, builder: (context, state) => const CategoriesScreen()),
@@ -174,23 +176,33 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: RoutePaths.inventory,
             builder: (context, state) => InventoryScreen(initialProductId: state.uri.queryParameters['productId']),
           ),
-          GoRoute(path: RoutePaths.receiving, builder: (context, state) => const ReceivingFormScreen()),
-          GoRoute(path: RoutePaths.transfers, builder: (context, state) => const TransferFormScreen()),
-          GoRoute(path: RoutePaths.stockCounts, builder: (context, state) => const StockCountsScreen()),
+          GoRoute(path: RoutePaths.receiving, builder: (context, state) => const ReceivingScreen()),
+          GoRoute(path: RoutePaths.transfers, builder: (context, state) => const TransfersScreen()),
+          GoRoute(
+            path: RoutePaths.stockCounts,
+            builder: (context, state) => StockCountsScreen(openCountId: state.uri.queryParameters['open']),
+          ),
           GoRoute(
             path: '${RoutePaths.stockCounts}/:id',
-            builder: (context, state) => StockCountDetailScreen(countId: state.pathParameters['id']!),
+            redirect: (context, state) => '${RoutePaths.stockCounts}?open=${state.pathParameters['id']}',
           ),
           GoRoute(path: RoutePaths.stockAdjustments, builder: (context, state) => const StockAdjustmentsScreen()),
           GoRoute(path: RoutePaths.packing, builder: (context, state) => const PackingScreen()),
           GoRoute(path: RoutePaths.users, builder: (context, state) => const UsersScreen()),
-          GoRoute(path: RoutePaths.roles, builder: (context, state) => const RolesScreen()),
+          GoRoute(
+            path: RoutePaths.roles,
+            builder: (context, state) => RolesScreen(openRoleId: state.uri.queryParameters['open']),
+          ),
           GoRoute(
             path: '${RoutePaths.roles}/:id',
-            builder: (context, state) => RoleDetailScreen(roleId: state.pathParameters['id']!),
+            redirect: (context, state) => '${RoutePaths.roles}?open=${state.pathParameters['id']}',
           ),
+          GoRoute(path: RoutePaths.reports, builder: (context, state) => const ReportsScreen()),
           GoRoute(path: RoutePaths.audit, builder: (context, state) => const AuditLogScreen()),
-          GoRoute(path: RoutePaths.settings, builder: (context, state) => const SettingsScreen()),
+          GoRoute(
+            path: RoutePaths.settings,
+            builder: (context, state) => SettingsScreen(initialSection: state.uri.queryParameters['section']),
+          ),
         ],
       ),
     ],

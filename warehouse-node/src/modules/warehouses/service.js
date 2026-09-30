@@ -15,10 +15,60 @@ function createWarehousesService({ db, models, cache, config, access }) {
   async function findAll(query = {}, viewerId) {
     const scope = await access.warehouseScope(viewerId);
     const key = `warehouses:list:${query.includeInactive ? 'all' : 'active'}:${access.scopeKey(scope)}`;
-    return cache.wrap(key, cacheOpts, () => {
+    const rows = await cache.wrap(key, cacheOpts, () => {
       const where = new Where().in('w.id', scope ?? undefined);
       if (!query.includeInactive) where.raw('w.is_active = true');
       return db.query(`SELECT ${cols('warehouse', 'w')} FROM warehouses w ${where.sql} ORDER BY w.name ASC`, where.params);
+    });
+    return attachSummary(rows);
+  }
+
+  /**
+   * Each warehouse's structure + stock totals as `summary: {locations, slots, units, capacity,
+   * workstreams}` — active locations only; a slot is a leaf (no active children); capacity sums the
+   * slots that have one. DB-level aggregates, read fresh (stock moves constantly).
+   */
+  async function attachSummary(rows) {
+    if (rows.length === 0) return rows;
+    const ids = rows.map((w) => w.id);
+    const where = new Where().raw('l.is_active = true').in('l.warehouse_id', ids);
+    const stockWhere = new Where().in('l.warehouse_id', ids);
+    const streamWhere = new Where().raw('is_active = true').in('warehouse_id', ids);
+    const [structure, stock, streams] = await Promise.all([
+      db.query(
+        `SELECT l.warehouse_id AS warehouseId, COUNT(*) AS locations,
+                SUM(CASE WHEN c.id IS NULL THEN 1 ELSE 0 END) AS slots,
+                SUM(CASE WHEN c.id IS NULL THEN l.capacity ELSE 0 END) AS capacity
+           FROM locations l
+           LEFT JOIN (SELECT DISTINCT parent_id AS id FROM locations WHERE is_active = true AND parent_id IS NOT NULL) c ON c.id = l.id
+           ${where.sql} GROUP BY l.warehouse_id`,
+        where.params,
+      ),
+      db.query(
+        `SELECT l.warehouse_id AS warehouseId, SUM(b.on_hand) AS units
+           FROM inventory_balances b JOIN locations l ON l.id = b.location_id
+           ${stockWhere.sql} GROUP BY l.warehouse_id`,
+        stockWhere.params,
+      ),
+      db.query(
+        `SELECT warehouse_id AS warehouseId, COUNT(*) AS n FROM workstreams
+           ${streamWhere.sql} GROUP BY warehouse_id`,
+        streamWhere.params,
+      ),
+    ]);
+    const by = (list, id) => list.find((r) => r.warehouseId === id);
+    return rows.map((w) => {
+      const s = by(structure, w.id);
+      return {
+        ...w,
+        summary: {
+          locations: Number(s?.locations ?? 0),
+          slots: Number(s?.slots ?? 0),
+          capacity: Number(s?.capacity ?? 0),
+          units: Number(by(stock, w.id)?.units ?? 0),
+          workstreams: Number(by(streams, w.id)?.n ?? 0),
+        },
+      };
     });
   }
 

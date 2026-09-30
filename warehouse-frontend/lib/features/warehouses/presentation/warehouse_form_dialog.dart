@@ -1,72 +1,90 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/error/app_error.dart';
-import '../../../core/theme/app_spacing.dart';
-import '../../../shared/widgets/app_dialog.dart';
-import '../../../shared/widgets/app_text_field.dart';
+import '../../../core/theme/nocturne.dart';
+import '../../../routing/route_paths.dart';
+import '../../../shared/nx/nx_form.dart';
+import '../../../shared/nx/nx_overlays.dart';
+import '../../../shared/nx/nx_primitives.dart';
 import '../data/warehouses_providers.dart';
 import '../domain/warehouse.dart';
 
-/// Create (pass no [warehouse]) or edit (pass [warehouse]) — a small form,
-/// a dialog is enough (name + code only).
-Future<void> showWarehouseFormDialog(BuildContext context, {Warehouse? warehouse}) {
-  return showDialog<void>(
-    context: context,
-    builder: (context) => _WarehouseFormDialog(warehouse: warehouse),
-  );
-}
+/// New / edit warehouse (the prototype's warehouse form). The code is fixed
+/// once created; the structure is built next, from Warehouse Structure.
+Future<void> showWarehouseFormDialog(BuildContext context, {Warehouse? warehouse}) =>
+    showNxDialog<void>(context, builder: (_) => _WarehouseForm(warehouse: warehouse));
 
-class _WarehouseFormDialog extends ConsumerStatefulWidget {
-  const _WarehouseFormDialog({this.warehouse});
+class _WarehouseForm extends ConsumerStatefulWidget {
+  const _WarehouseForm({this.warehouse});
 
   final Warehouse? warehouse;
 
   @override
-  ConsumerState<_WarehouseFormDialog> createState() => _WarehouseFormDialogState();
+  ConsumerState<_WarehouseForm> createState() => _WarehouseFormState();
 }
 
-class _WarehouseFormDialogState extends ConsumerState<_WarehouseFormDialog> {
-  final _formKey = GlobalKey<FormState>();
-  late final TextEditingController _nameController;
-  late final TextEditingController _codeController;
+class _WarehouseFormState extends ConsumerState<_WarehouseForm> {
+  late final _name = TextEditingController(text: widget.warehouse?.name ?? '');
+  late final _code = TextEditingController(text: widget.warehouse?.code ?? '');
+  late bool _active = widget.warehouse?.isActive ?? true;
+  final Map<String, String> _errors = {};
   bool _saving = false;
-  String? _error;
+  String? _formError;
 
-  bool get _isEditing => widget.warehouse != null;
-
-  @override
-  void initState() {
-    super.initState();
-    _nameController = TextEditingController(text: widget.warehouse?.name ?? '');
-    _codeController = TextEditingController(text: widget.warehouse?.code ?? '');
-  }
+  bool get _editing => widget.warehouse != null;
 
   @override
   void dispose() {
-    _nameController.dispose();
-    _codeController.dispose();
+    _name.dispose();
+    _code.dispose();
     super.dispose();
   }
 
-  Future<void> _save() async {
-    if (!(_formKey.currentState?.validate() ?? false)) return;
+  Future<void> _submit() async {
+    final code = _code.text.trim().toUpperCase();
+    final errors = <String, String>{
+      if (_name.text.trim().isEmpty) 'name': 'Required',
+      if (code.isEmpty) 'code': 'Required',
+    };
     setState(() {
-      _saving = true;
-      _error = null;
+      _errors
+        ..clear()
+        ..addAll(errors);
+      _formError = null;
     });
-
+    if (errors.isNotEmpty) return;
+    setState(() => _saving = true);
     final api = ref.read(warehousesApiProvider);
     try {
-      if (_isEditing) {
-        await api.update(widget.warehouse!.id, name: _nameController.text.trim(), code: _codeController.text.trim());
+      String id;
+      if (_editing) {
+        final w = widget.warehouse!;
+        id = w.id;
+        await api.update(w.id, name: _name.text.trim(), isActive: _active && !w.isActive ? true : null);
+        if (!_active && w.isActive) await api.deactivate(w.id);
       } else {
-        await api.create(name: _nameController.text.trim(), code: _codeController.text.trim());
+        id = (await api.create(name: _name.text.trim(), code: code)).id;
+        if (!_active) await api.deactivate(id);
       }
       invalidateWarehouses(ref);
-      if (mounted) Navigator.of(context, rootNavigator: true).pop();
+      if (!mounted) return;
+      final router = GoRouter.of(context);
+      Navigator.of(context).pop();
+      NxToast.ok(
+        _editing ? 'Warehouse updated' : 'Warehouse created',
+        '${_name.text.trim()} ($code)',
+        _editing ? null : NxToastAction('Build structure', () => router.go('${RoutePaths.locations}?warehouseId=$id')),
+      );
     } on AppError catch (e) {
-      setState(() => _error = e.message);
+      setState(() {
+        if (e.message.toLowerCase().contains('code')) {
+          _errors['code'] = e.message;
+        } else {
+          _formError = e.message;
+        }
+      });
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -74,39 +92,46 @@ class _WarehouseFormDialogState extends ConsumerState<_WarehouseFormDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return AppDialog(
-      title: _isEditing ? 'Edit warehouse' : 'New warehouse',
-      content: Form(
-        key: _formKey,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            AppTextField(
+    final n = context.nx;
+    return NxDialogFrame(
+      title: _editing ? 'Edit warehouse' : 'New warehouse',
+      sub: 'Build its structure next, from Warehouse Structure.',
+      body: NxFormGrid(
+        children: [
+          NxSpan2(
+            child: NxField(
               label: 'Name',
-              controller: _nameController,
-              validator: (v) => (v == null || v.trim().isEmpty) ? 'Name is required' : null,
+              required: true,
+              error: _errors['name'],
+              child: NxInput(controller: _name, error: _errors['name'] != null, autofocus: true),
             ),
-            const SizedBox(height: AppSpacing.md),
-            AppTextField(
-              label: 'Code',
-              controller: _codeController,
-              helperText: 'Unique across all warehouses',
-              validator: (v) => (v == null || v.trim().isEmpty) ? 'Code is required' : null,
+          ),
+          NxField(
+            label: 'Code',
+            required: true,
+            error: _errors['code'],
+            child: NxInput(controller: _code, placeholder: 'PTA-01', enabled: !_editing, error: _errors['code'] != null),
+          ),
+          NxField(
+            label: 'Status',
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: NxSeg<bool>(
+                options: const [(true, 'Active', null), (false, 'Inactive', null)],
+                value: _active,
+                onChanged: (v) => setState(() => _active = v),
+              ),
             ),
-            if (_error != null) ...[
-              const SizedBox(height: AppSpacing.sm),
-              Text(_error!, style: TextStyle(color: theme.colorScheme.error)),
-            ],
-          ],
-        ),
+          ),
+          if (_formError != null) NxSpan2(child: Text(_formError!, style: TextStyle(fontSize: 12, color: n.bad))),
+        ],
       ),
       actions: [
-        TextButton(
-          onPressed: _saving ? null : () => Navigator.of(context, rootNavigator: true).pop(),
-          child: const Text('Cancel'),
+        NxButton(label: 'Cancel', onPressed: () => Navigator.of(context).pop()),
+        NxButton.primary(
+          label: _saving ? 'Saving…' : (_editing ? 'Save changes' : 'Create warehouse'),
+          onPressed: _saving ? null : _submit,
         ),
-        FilledButton(onPressed: _saving ? null : _save, child: Text(_saving ? 'Saving…' : 'Save')),
       ],
     );
   }

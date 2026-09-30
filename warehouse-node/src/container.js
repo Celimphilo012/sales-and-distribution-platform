@@ -28,6 +28,7 @@ const { StockCountsService } = require('./modules/stock-counts/service');
 const { StockReservationsService } = require('./modules/external-api/stock-reservations.service');
 const { createReportsService } = require('./modules/reports/service');
 const { createPackingService } = require('./modules/packing/service');
+const { createBrandingService } = require('./modules/branding/service');
 const { ProductImportService } = require('./modules/product-import/product-import.service');
 const { ProductImportSessionStore } = require('./modules/product-import/product-import-session.store');
 
@@ -57,6 +58,7 @@ function buildServices({ db, models, cache, config, auth, notifier, logger }) {
     workstreamManagers: services.workstreamManagers,
   });
   services.attributeTypes = createAttributeTypesService(base);
+  services.branding = createBrandingService(base);
   services.products = createProductsService({
     ...base,
     categories: services.categories,

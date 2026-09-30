@@ -18,6 +18,7 @@ class Location {
     required this.code,
     required this.locationType,
     this.description,
+    this.capacity,
     required this.isActive,
     required this.createdAt,
     required this.updatedAt,
@@ -31,6 +32,10 @@ class Location {
   final String code;
   final String locationType;
   final String? description;
+
+  /// Units this location holds when full (usually set on storage slots) —
+  /// the fill / utilisation bars. Null = not set.
+  final int? capacity;
   final bool isActive;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -44,6 +49,7 @@ class Location {
     code: json['code'] as String,
     locationType: json['locationType'] as String,
     description: json['description'] as String?,
+    capacity: json['capacity'] == null ? null : (json['capacity'] as num).toInt(),
     isActive: boolFromJson(json['isActive']),
     createdAt: DateTime.parse(json['createdAt'] as String),
     updatedAt: DateTime.parse(json['updatedAt'] as String),

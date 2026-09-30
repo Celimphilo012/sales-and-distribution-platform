@@ -18,6 +18,7 @@ class Workstream {
     this.contactEmail,
     this.contactPhone,
     required this.isActive,
+    this.managers = const [],
   });
 
   final String id;
@@ -41,6 +42,9 @@ class Workstream {
 
   final bool isActive;
 
+  /// Scoped managers (list reads only).
+  final List<WorkstreamManagerRef> managers;
+
   bool get hasImage => imageUrl != null || hasImageFile;
 
   /// Whether there's any contact info at all worth showing.
@@ -58,7 +62,19 @@ class Workstream {
     contactEmail: json['contactEmail'] as String?,
     contactPhone: json['contactPhone'] as String?,
     isActive: boolFromJson(json['isActive']),
+    managers: [
+      for (final m in (json['managers'] as List<dynamic>?) ?? const [])
+        WorkstreamManagerRef(userId: (m as Map<String, dynamic>)['userId'] as String, fullName: m['fullName'] as String),
+    ],
   );
+}
+
+/// `{userId, fullName}` — a scoped manager as embedded on a listed workstream.
+class WorkstreamManagerRef {
+  const WorkstreamManagerRef({required this.userId, required this.fullName});
+
+  final String userId;
+  final String fullName;
 }
 
 /// The `{id, name, code}` the backend embeds on a category (and, nested, on

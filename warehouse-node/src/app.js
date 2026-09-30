@@ -45,6 +45,7 @@ const MODULES = [
   ['/api/v1', require('./modules/external-api/routes')],
   ['/packing', require('./modules/packing/routes')],
   ['/settings/delivery', require('./modules/delivery-settings/routes')],
+  ['/settings/branding', require('./modules/branding/routes')],
   ['/reports', require('./modules/reports/routes').reportsRoutes],
   ['/dashboard', require('./modules/reports/routes').dashboardRoutes],
 ];

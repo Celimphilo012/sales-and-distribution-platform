@@ -2,114 +2,104 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/error/app_error.dart';
-import '../../../core/theme/app_spacing.dart';
-import '../../../shared/widgets/app_dialog.dart';
-import '../../../shared/widgets/app_dropdown_field.dart';
-import '../../../shared/widgets/app_text_field.dart';
+import '../../../core/theme/nocturne.dart';
+import '../../../shared/nx/nx_form.dart';
+import '../../../shared/nx/nx_overlays.dart';
+import '../../../shared/nx/nx_primitives.dart';
 import '../../workstreams/data/workstreams_providers.dart';
+import '../../workstreams/domain/workstream.dart';
 import '../data/categories_providers.dart';
 import '../domain/category.dart';
-import '../domain/category_tree.dart';
 
-/// Create (optionally under [parentId], within [workstreamId]) or edit (pass
-/// [category]) a category. A dialog is enough here — the form is just name +
-/// workstream + parent, unlike products.
-///
-/// The workstream picker is LOCKED whenever a [parentId] is supplied while
-/// creating (adding a subcategory from a specific workstream's tree section)
-/// — a sub-category must belong to the same workstream as its parent
-/// (backend-enforced), so there is nothing to choose. It stays editable when
-/// creating a root category or editing any existing category; the "Parent
-/// category" dropdown is always scoped to the CURRENTLY selected workstream,
-/// so an invalid cross-workstream parent is never even offered (same
-/// "narrow the choices so the backend never has to reject them" idiom as the
-/// leaf-location picker).
-Future<void> showCategoryFormDialog(
-  BuildContext context, {
-  Category? category,
-  String? parentId,
-  String? workstreamId,
-}) {
-  return showDialog<void>(
-    context: context,
-    builder: (context) => _CategoryFormDialog(category: category, parentId: parentId, workstreamId: workstreamId),
-  );
-}
+/// New category / sub-category (pass [parentId]) or edit ([category]) — the
+/// prototype's category form. A sub-category always belongs to its parent's
+/// workstream (backend-enforced), so the workstream is inherited, not chosen,
+/// once a parent is set.
+Future<void> showCategoryFormDialog(BuildContext context, {Category? category, String? parentId, String? workstreamId}) =>
+    showNxDialog<void>(
+      context,
+      builder: (_) => _CategoryForm(category: category, parentId: parentId, workstreamId: workstreamId),
+    );
 
-T? _firstOrNull<T>(Iterable<T> iterable) {
-  for (final item in iterable) {
-    return item;
-  }
-  return null;
-}
-
-class _CategoryFormDialog extends ConsumerStatefulWidget {
-  const _CategoryFormDialog({this.category, this.parentId, this.workstreamId});
+class _CategoryForm extends ConsumerStatefulWidget {
+  const _CategoryForm({this.category, this.parentId, this.workstreamId});
 
   final Category? category;
   final String? parentId;
   final String? workstreamId;
 
   @override
-  ConsumerState<_CategoryFormDialog> createState() => _CategoryFormDialogState();
+  ConsumerState<_CategoryForm> createState() => _CategoryFormState();
 }
 
-class _CategoryFormDialogState extends ConsumerState<_CategoryFormDialog> {
-  final _formKey = GlobalKey<FormState>();
-  late final TextEditingController _nameController;
-  String? _parentId;
-  String? _workstreamId;
+class _CategoryFormState extends ConsumerState<_CategoryForm> {
+  late final _name = TextEditingController(text: widget.category?.name ?? '');
+  late String? _parentId = widget.category?.parentId ?? widget.parentId;
+  late String? _workstreamId = widget.category?.workstreamId ?? widget.workstreamId;
+  late bool _active = widget.category?.isActive ?? true;
+  final Map<String, String> _errors = {};
   bool _saving = false;
-  String? _error;
+  String? _formError;
 
-  bool get _isEditing => widget.category != null;
-
-  /// The workstream can't be changed here when adding a subcategory (it's
-  /// implied by the parent) — locked in that one case only.
-  bool get _workstreamLocked => !_isEditing && widget.parentId != null;
-
-  @override
-  void initState() {
-    super.initState();
-    _nameController = TextEditingController(text: widget.category?.name ?? '');
-    _parentId = widget.category?.parentId ?? widget.parentId;
-    _workstreamId = widget.category?.workstreamId ?? widget.workstreamId;
-  }
+  bool get _editing => widget.category != null;
 
   @override
   void dispose() {
-    _nameController.dispose();
+    _name.dispose();
     super.dispose();
   }
 
-  Future<void> _save() async {
-    if (!(_formKey.currentState?.validate() ?? false)) return;
-    if (_workstreamId == null) {
-      setState(() => _error = 'Choose a workstream.');
-      return;
+  /// This category and everything under it — never offered as its own parent.
+  Set<String> _selfAndBelow(List<Category> all) {
+    final id = widget.category?.id;
+    if (id == null) return const {};
+    final out = {id};
+    var grew = true;
+    while (grew) {
+      grew = false;
+      for (final c in all) {
+        if (c.parentId != null && out.contains(c.parentId) && out.add(c.id)) grew = true;
+      }
     }
+    return out;
+  }
 
+  Future<void> _submit(Map<String, Category> byId) async {
+    final ws = _parentId != null ? byId[_parentId]?.workstreamId : _workstreamId;
+    final errors = <String, String>{
+      if (_name.text.trim().isEmpty) 'name': 'Required',
+      if (ws == null) 'ws': 'Choose a workstream',
+    };
     setState(() {
-      _saving = true;
-      _error = null;
+      _errors
+        ..clear()
+        ..addAll(errors);
+      _formError = null;
     });
-
+    if (errors.isNotEmpty) return;
+    setState(() => _saving = true);
     final api = ref.read(categoriesApiProvider);
     try {
-      if (_isEditing) {
+      if (_editing) {
+        final c = widget.category!;
         await api.update(
-          widget.category!.id,
-          name: _nameController.text.trim(),
+          c.id,
+          name: _name.text.trim(),
           parentId: _parentId,
-          workstreamId: _workstreamId,
+          workstreamId: _parentId == null ? ws : null,
+          isActive: _active != c.isActive && _active ? true : null,
         );
+        if (!_active && c.isActive) await api.deactivate(c.id);
       } else {
-        await api.create(name: _nameController.text.trim(), workstreamId: _workstreamId!, parentId: _parentId);
+        final created = await api.create(name: _name.text.trim(), workstreamId: ws!, parentId: _parentId);
+        if (!_active) await api.deactivate(created.id);
       }
       invalidateCategories(ref);
-      if (mounted) Navigator.of(context, rootNavigator: true).pop();
+      if (mounted) Navigator.of(context).pop();
+      final parent = _parentId == null ? null : byId[_parentId];
+      NxToast.ok(_editing ? 'Category updated' : 'Category created', '${_name.text.trim()}${parent == null ? '' : ' under ${parent.name}'}');
     } on AppError catch (e) {
-      setState(() => _error = e.message);
+      setState(() => _formError = e.message);
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -117,93 +107,80 @@ class _CategoryFormDialogState extends ConsumerState<_CategoryFormDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final workstreamsAsync = ref.watch(workstreamsProvider(false));
-    final categoriesAsync = ref.watch(categoriesProvider(false));
+    final n = context.nx;
+    final all = ref.watch(categoriesProvider(true)).value ?? const <Category>[];
+    final workstreams = ref.watch(workstreamsProvider(true)).value ?? const <Workstream>[];
+    final byId = {for (final c in all) c.id: c};
+    final excluded = _selfAndBelow(all);
+    String path(Category c) => c.parentId != null && byId[c.parentId] != null ? '${path(byId[c.parentId]!)} › ${c.name}' : c.name;
+    final parentOptions = [
+      const NxOption<String>('', '— None (top level)'),
+      ...[
+        for (final c in all.where((c) => !excluded.contains(c.id) && (c.isActive || c.id == _parentId)))
+          NxOption(c.id, path(c), sub: c.workstream?.name),
+      ]..sort((a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase())),
+    ];
+    final inherited = _parentId == null ? null : byId[_parentId]?.workstreamId;
 
-    return AppDialog(
-      title: _isEditing ? 'Edit category' : 'New category',
-      content: Form(
-        key: _formKey,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            AppTextField(
+    return NxDialogFrame(
+      title: _editing ? 'Edit category' : (widget.parentId != null ? 'New sub-category' : 'New category'),
+      sub: 'A sub-category always belongs to its parent’s workstream.',
+      body: NxFormGrid(
+        children: [
+          NxSpan2(
+            child: NxField(
               label: 'Name',
-              controller: _nameController,
-              validator: (v) => (v == null || v.trim().isEmpty) ? 'Name is required' : null,
+              required: true,
+              error: _errors['name'],
+              child: NxInput(controller: _name, error: _errors['name'] != null, autofocus: true),
             ),
-            const SizedBox(height: AppSpacing.md),
-            workstreamsAsync.when(
-              loading: () => const LinearProgressIndicator(),
-              error: (error, stackTrace) => Text(
-                'Could not load workstreams',
-                style: TextStyle(color: theme.colorScheme.error),
+          ),
+          NxSpan2(
+            child: NxField(
+              label: 'Parent category',
+              child: NxSelect<String>(
+                options: parentOptions,
+                value: _parentId ?? '',
+                searchable: parentOptions.length > 8,
+                searchPlaceholder: 'Search categories',
+                onChanged: (v) => setState(() => _parentId = (v == null || v.isEmpty) ? null : v),
               ),
-              data: (workstreams) {
-                if (_workstreamLocked) {
-                  final workstream = _firstOrNull(workstreams.where((w) => w.id == _workstreamId));
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: AppSpacing.md),
-                    child: Text(
-                      'Workstream: ${workstream?.name ?? _workstreamId}',
-                      style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                    ),
-                  );
-                }
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: AppSpacing.md),
-                  child: AppDropdownField<String>(
-                    label: 'Workstream',
-                    value: _workstreamId,
-                    items: [for (final w in workstreams) w.id],
-                    itemLabel: (id) => workstreams.firstWhere((w) => w.id == id).name,
-                    onChanged: (value) => setState(() {
-                      _workstreamId = value;
-                      // A parent from the old workstream is never valid once
-                      // the workstream changes — the backend would reject it.
-                      _parentId = null;
-                    }),
-                    validator: (v) => v == null ? 'Choose a workstream' : null,
-                  ),
-                );
-              },
             ),
-            categoriesAsync.when(
-              loading: () => const LinearProgressIndicator(),
-              error: (error, stackTrace) => const SizedBox.shrink(),
-              data: (categories) {
-                if (_workstreamId == null) return const SizedBox.shrink();
-                final tree = buildCategoryTreeForWorkstream(categories, _workstreamId!);
-                final flat = flattenCategoryTree(tree);
-                final excluded = _isEditing ? descendantIds(tree, widget.category!.id) : const <String>{};
-                final options = flat.where((n) => !excluded.contains(n.category.id)).toList();
-                return AppDropdownField<String?>(
-                  label: 'Parent category',
-                  value: _parentId,
-                  items: [null, for (final node in options) node.category.id],
-                  itemLabel: (id) {
-                    if (id == null) return 'None (top level)';
-                    final node = options.firstWhere((n) => n.category.id == id);
-                    return '${'    ' * node.depth}${node.category.name}';
-                  },
-                  onChanged: (value) => setState(() => _parentId = value),
-                );
-              },
+          ),
+          NxField(
+            label: 'Workstream',
+            required: true,
+            error: _errors['ws'],
+            hint: 'Ignored for sub-categories — inherited from the parent',
+            child: NxSelect<String>(
+              options: [for (final w in workstreams.where((w) => w.isActive || w.id == _workstreamId || w.id == inherited)) NxOption(w.id, w.name)],
+              value: inherited ?? _workstreamId,
+              enabled: inherited == null,
+              error: _errors['ws'] != null,
+              placeholder: 'Choose a workstream',
+              onChanged: (v) => setState(() => _workstreamId = v),
             ),
-            if (_error != null) ...[
-              const SizedBox(height: AppSpacing.sm),
-              Text(_error!, style: TextStyle(color: theme.colorScheme.error)),
-            ],
-          ],
-        ),
+          ),
+          NxField(
+            label: 'Status',
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: NxSeg<bool>(
+                options: const [(true, 'Active', null), (false, 'Inactive', null)],
+                value: _active,
+                onChanged: (v) => setState(() => _active = v),
+              ),
+            ),
+          ),
+          if (_formError != null) NxSpan2(child: Text(_formError!, style: TextStyle(fontSize: 12, color: n.bad))),
+        ],
       ),
       actions: [
-        TextButton(
-          onPressed: _saving ? null : () => Navigator.of(context, rootNavigator: true).pop(),
-          child: const Text('Cancel'),
+        NxButton(label: 'Cancel', onPressed: () => Navigator.of(context).pop()),
+        NxButton.primary(
+          label: _saving ? 'Saving…' : (_editing ? 'Save changes' : 'Create category'),
+          onPressed: _saving ? null : () => _submit(byId),
         ),
-        FilledButton(onPressed: _saving ? null : _save, child: Text(_saving ? 'Saving…' : 'Save')),
       ],
     );
   }

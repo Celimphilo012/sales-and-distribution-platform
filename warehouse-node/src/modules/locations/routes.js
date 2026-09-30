@@ -13,13 +13,21 @@ const createBody = obj(
     code: nonEmpty(),
     locationType: nonEmpty(),
     description: opt(str()),
+    // How many units this location holds when full (storage slots) — drives the fill/utilisation bars.
+    capacity: opt(int({ minimum: 0, maximum: 100000000 })),
   },
   ['name', 'code', 'locationType'],
 );
 
 // Same shape as create minus warehouseId/parentId (derived from the route).
 const childBody = obj(
-  { name: nonEmpty(), code: nonEmpty(), locationType: nonEmpty(), description: opt(str()) },
+  {
+    name: nonEmpty(),
+    code: nonEmpty(),
+    locationType: nonEmpty(),
+    description: opt(str()),
+    capacity: opt(int({ minimum: 0, maximum: 100000000 })),
+  },
   ['name', 'code', 'locationType'],
 );
 
@@ -30,6 +38,7 @@ const levelsBody = obj(
     namePrefix: opt(nonEmpty()),
     codePrefix: opt(nonEmpty()),
     startIndex: opt(int({ minimum: 1 })),
+    capacity: opt(int({ minimum: 0, maximum: 100000000 })),
   },
   ['count'],
 );
@@ -42,6 +51,7 @@ const updateBody = obj({
   code: opt(nonEmpty()),
   locationType: opt(nonEmpty()),
   description: opt(str()),
+  capacity: opt(int({ minimum: 0, maximum: 100000000 })),
   isActive: opt(bool),
 });
 

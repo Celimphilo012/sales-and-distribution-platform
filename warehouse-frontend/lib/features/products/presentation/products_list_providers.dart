@@ -24,11 +24,11 @@ final productsFilterProvider = NotifierProvider<ProductsFilterNotifier, Products
   ProductsFilterNotifier.new,
 );
 
-/// Re-fetches whenever [productsFilterProvider] changes. `GET /products`
-/// has no pagination param, so this always holds the complete filtered list.
+/// Every product the viewer can see, active AND inactive — the console list
+/// filters, searches and sorts client-side (as the prototype does), and the
+/// pickers narrow it themselves. `GET /products` has no pagination.
 final productsListProvider = FutureProvider.autoDispose<List<Product>>((ref) {
-  final filter = ref.watch(productsFilterProvider);
-  return ref.watch(productsApiProvider).list(filter);
+  return ref.watch(productsApiProvider).list(const ProductsFilter(includeInactive: true));
 });
 
 final productDetailProvider = FutureProvider.autoDispose.family<Product, String>((ref, id) {

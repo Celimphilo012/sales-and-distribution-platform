@@ -1,255 +1,165 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../../../app_shell/responsive_app_shell.dart';
 import '../../../core/auth/auth_provider.dart';
 import '../../../core/error/app_error.dart';
-import '../../../core/theme/app_spacing.dart';
+import '../../../core/theme/nocturne.dart';
 import '../../../routing/route_paths.dart';
-import '../../../shared/widgets/app_data_table.dart';
-import '../../../shared/widgets/app_dialog.dart';
-import '../../../shared/widgets/compact_row_list.dart';
-import '../../../shared/widgets/empty_loading_error_states.dart';
-import '../../../shared/widgets/simple_grid_view.dart';
-import '../../../shared/widgets/stat_tile.dart';
-import '../../../shared/widgets/status_badge.dart';
-import '../../../shared/widgets/view_mode_toggle.dart';
+import '../../../shared/nx/nx_actions.dart';
+import '../../../shared/nx/nx_format.dart';
+import '../../../shared/nx/nx_list_page.dart';
+import '../../../shared/nx/nx_primitives.dart';
 import '../data/warehouses_providers.dart';
 import '../domain/warehouse.dart';
 import 'warehouse_form_dialog.dart';
 
-/// Warehouses list — search-free (there's rarely more than a handful) plus
-/// an active/inactive toggle, a permission-gated "New warehouse" dialog, and
-/// a row tap that opens that warehouse's structure view. List/table/grid +
-/// stats + compact, matching the Products prototype.
-class WarehousesListScreen extends ConsumerStatefulWidget {
+/// Warehouses (prototype `warehouses`) — each owns its location tree and
+/// workstreams. Totals come from the list read's `summary`.
+class WarehousesListScreen extends ConsumerWidget {
   const WarehousesListScreen({super.key});
 
   @override
-  ConsumerState<WarehousesListScreen> createState() => _WarehousesListScreenState();
-}
+  Widget build(BuildContext context, WidgetRef ref) {
+    final n = context.nx;
+    final canManage = ref.watch(authProvider.select((s) => s.value?.user?.can('warehouse.structure.manage') ?? false));
+    final async = ref.watch(warehousesProvider(true));
 
-class _WarehousesListScreenState extends ConsumerState<WarehousesListScreen> {
-  bool _includeInactive = false;
-  ViewMode _view = ViewMode.table;
-
-  // Warehouses are soft-deleted (CLAUDE.md rule 10): locations and the stock
-  // ledger reference them historically, so the only "delete" is deactivate.
-  Future<void> _deactivate(Warehouse warehouse) async {
-    final confirmed = await ConfirmDialog.show(
-      context,
-      title: 'Deactivate warehouse?',
-      message:
-          'This marks "${warehouse.name}" (${warehouse.code}) inactive and hides it from the '
-          'warehouse pickers. Its locations and stock history are kept — nothing is deleted, and '
-          'you can reactivate it later from "Show inactive".',
-      confirmLabel: 'Deactivate',
-      isDestructive: true,
-    );
-    if (!confirmed) return;
-    await _run(() => ref.read(warehousesApiProvider).deactivate(warehouse.id), 'Warehouse deactivated');
-  }
-
-  Future<void> _reactivate(Warehouse warehouse) =>
-      _run(() => ref.read(warehousesApiProvider).reactivate(warehouse.id), 'Warehouse reactivated');
-
-  Future<void> _run(Future<void> Function() action, String successMessage) async {
-    final messenger = ScaffoldMessenger.of(context);
-    try {
-      await action();
-      invalidateWarehouses(ref);
-      messenger.showSnackBar(SnackBar(content: Text(successMessage)));
-    } on AppError catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text(e.message)));
-    }
-  }
-
-  void _open(Warehouse warehouse) => context.go('${RoutePaths.locations}?warehouseId=${warehouse.id}');
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final canManage = ref.watch(
-      authProvider.select((s) => s.value?.user?.can('warehouse.structure.manage') ?? false),
-    );
-    final warehousesAsync = ref.watch(warehousesProvider(_includeInactive));
-
-    return Padding(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(child: Text('Warehouses', style: theme.textTheme.headlineSmall)),
-              if (canManage)
-                FilledButton.icon(
-                  onPressed: () => showWarehouseFormDialog(context),
-                  icon: const Icon(Icons.add),
-                  label: const Text('New warehouse'),
-                ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          warehousesAsync.maybeWhen(
-            data: (warehouses) => _WarehousesStats(warehouses: warehouses),
-            orElse: () => const SizedBox.shrink(),
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          Row(
-            children: [
-              FilterChip(
-                label: const Text('Show inactive'),
-                selected: _includeInactive,
-                onSelected: (value) => setState(() => _includeInactive = value),
-              ),
-              const Spacer(),
-              ViewModeToggle(value: _view, onChanged: (mode) => setState(() => _view = mode)),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          Expanded(
-            child: warehousesAsync.when(
-              loading: () => const LoadingStateView(message: 'Loading warehouses…'),
-              error: (error, stackTrace) => ErrorStateView(
-                message: error is AppError ? error.message : 'Could not load warehouses.',
-                onRetry: () => ref.invalidate(warehousesProvider(_includeInactive)),
-              ),
-              data: (warehouses) => switch (_view) {
-                ViewMode.table => _WarehousesTable(warehouses: warehouses, canManage: canManage, onOpen: _open, onEdit: (w) => showWarehouseFormDialog(context, warehouse: w), onToggleActive: (w) => w.isActive ? _deactivate(w) : _reactivate(w)),
-                ViewMode.list => CompactRowList<Warehouse>(
-                    items: warehouses,
-                    onTap: _open,
-                    emptyTitle: 'No warehouses yet',
-                    rowBuilder: (context, w) => Row(
-                      children: [
-                        Expanded(flex: 2, child: Text(w.name, style: theme.textTheme.bodyMedium)),
-                        Expanded(
-                          child: Text(
-                            w.code,
-                            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                          ),
-                        ),
-                        StatusBadge(
-                          label: w.isActive ? 'Active' : 'Inactive',
-                          tone: w.isActive ? StatusTone.success : StatusTone.neutral,
-                        ),
-                      ],
-                    ),
-                  ),
-                ViewMode.grid => SimpleGridView<Warehouse>(
-                    items: warehouses,
-                    onTap: _open,
-                    emptyTitle: 'No warehouses yet',
-                    maxCrossAxisExtent: 240,
-                    childAspectRatio: 2.2,
-                    contentBuilder: (context, w) => Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Row(
-                          children: [
-                            Icon(Icons.warehouse_outlined, size: 18, color: theme.colorScheme.primary),
-                            const SizedBox(width: AppSpacing.xs),
-                            Expanded(
-                              child: Text(
-                                w.name,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 2),
-                        Text(w.code, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-                        const SizedBox(height: AppSpacing.xs),
-                        StatusBadge(
-                          label: w.isActive ? 'Active' : 'Inactive',
-                          tone: w.isActive ? StatusTone.success : StatusTone.neutral,
-                        ),
-                      ],
-                    ),
-                  ),
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _WarehousesStats extends StatelessWidget {
-  const _WarehousesStats({required this.warehouses});
-
-  final List<Warehouse> warehouses;
-
-  @override
-  Widget build(BuildContext context) {
-    final active = warehouses.where((w) => w.isActive).length;
-    final inactive = warehouses.length - active;
-
-    return Wrap(
-      spacing: AppSpacing.sm,
-      runSpacing: AppSpacing.xs,
-      children: [
-        StatTile(label: 'shown', value: '${warehouses.length}', icon: Icons.warehouse_outlined),
-        StatTile(label: 'active', value: '$active', tone: StatusTone.success, icon: Icons.check_circle_outline),
-        if (inactive > 0)
-          StatTile(label: 'inactive', value: '$inactive', tone: StatusTone.neutral, icon: Icons.block_outlined),
-      ],
-    );
-  }
-}
-
-class _WarehousesTable extends StatelessWidget {
-  const _WarehousesTable({
-    required this.warehouses,
-    required this.canManage,
-    required this.onOpen,
-    required this.onEdit,
-    required this.onToggleActive,
-  });
-
-  final List<Warehouse> warehouses;
-  final bool canManage;
-  final void Function(Warehouse) onOpen;
-  final void Function(Warehouse) onEdit;
-  final void Function(Warehouse) onToggleActive;
-
-  @override
-  Widget build(BuildContext context) {
-    return AppDataTable<Warehouse>(
-      rows: warehouses,
-      emptyTitle: 'No warehouses yet',
-      onRowTap: onOpen,
-      columns: [
-        AppDataColumn(label: 'Name', cellBuilder: (w) => Text(w.name)),
-        AppDataColumn(label: 'Code', cellBuilder: (w) => Text(w.code)),
-        AppDataColumn(
-          label: 'Status',
-          cellBuilder: (w) => StatusBadge(
-            label: w.isActive ? 'Active' : 'Inactive',
-            tone: w.isActive ? StatusTone.success : StatusTone.neutral,
-          ),
+    return NxPageScroll(
+      onRefresh: () async => invalidateWarehouses(ref),
+      child: async.when(
+        loading: () => const NxLoading(message: 'Loading warehouses…'),
+        error: (e, _) => NxError(
+          message: e is AppError ? e.message : 'Could not load warehouses.',
+          onRetry: () => invalidateWarehouses(ref),
         ),
-        if (canManage)
-          AppDataColumn(
-            label: '',
-            cellBuilder: (w) => Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                IconButton(icon: const Icon(Icons.edit_outlined), tooltip: 'Edit', onPressed: () => onEdit(w)),
-                IconButton(
-                  icon: Icon(w.isActive ? Icons.block_outlined : Icons.restore_outlined),
-                  tooltip: w.isActive ? 'Deactivate' : 'Reactivate',
-                  onPressed: () => onToggleActive(w),
-                ),
-              ],
+        data: (rows) {
+          WarehouseSummary s(Warehouse w) => w.summary ?? const WarehouseSummary();
+          void open(Warehouse w) => context.go('${RoutePaths.locations}?warehouseId=${w.id}');
+          NxTag status(Warehouse w) => NxTag(w.isActive ? 'Active' : 'Inactive', tone: w.isActive ? Tone.ok : Tone.neutral);
+          String util(Warehouse w) => s(w).capacity > 0 ? '${(s(w).utilisation * 100).round()}%' : '—';
+          void toggle(Warehouse w) => nxToggleActive(
+            context,
+            name: w.name,
+            active: w.isActive,
+            deactivate: () => ref.read(warehousesApiProvider).deactivate(w.id),
+            reactivate: () => ref.read(warehousesApiProvider).reactivate(w.id),
+            refresh: () => invalidateWarehouses(ref),
+          );
+
+          return NxListPage<Warehouse>(
+            stateKey: 'warehouses',
+            title: 'Warehouses',
+            sub: 'Each warehouse owns its location tree and workstreams.',
+            actions: [
+              if (canManage)
+                NxButton.primary(label: 'New warehouse', icon: PhosphorIconsRegular.plus, onPressed: () => showWarehouseFormDialog(context)),
+            ],
+            rows: rows,
+            search: (w) => '${w.name} ${w.code}',
+            searchPlaceholder: 'Name or code',
+            stats: (rs) {
+              final cap = rs.fold<double>(0, (a, w) => a + s(w).capacity);
+              final units = rs.fold<double>(0, (a, w) => a + s(w).units);
+              final bare = rs.where((w) => s(w).locations == 0);
+              return [
+                NxStat('Warehouses', fmtNum(rs.length), sub: '${rs.where((w) => w.isActive).length} active'),
+                NxStat('Locations', fmtNum(rs.fold<int>(0, (a, w) => a + s(w).locations)), sub: '${fmtNum(rs.fold<int>(0, (a, w) => a + s(w).slots))} storage slots'),
+                NxStat('Units on hand', fmtNum(units)),
+                NxStat('Utilisation', cap > 0 ? '${(units / cap * 100).round()}%' : '—', sub: 'of slot capacity'),
+                NxStat('Not structured', fmtNum(bare.length), sub: 'no locations yet', color: bare.any((w) => w.isActive) ? n.warn : null),
+              ];
+            },
+            quick: NxQuick(
+              get: (w) => w.isActive ? 'yes' : 'no',
+              options: const [('', 'All'), ('yes', 'Active'), ('no', 'Inactive')],
             ),
-          ),
-      ],
+            filters: [
+              NxToggleFilter('struct', 'Structure', text: 'Has locations', get: (w) => s(w).locations > 0),
+              NxRangeFilter('util', 'Utilisation %', get: (w) => (s(w).utilisation * 100).round()),
+            ],
+            defaultSort: ('name', 1),
+            columns: [
+              NxColumn(key: 'name', label: 'Warehouse', sort: (w) => w.name.toLowerCase(), cell: (w) => NxCellText(w.name, weight: FontWeight.w500, sub: w.code)),
+              NxColumn(
+                key: 'ws',
+                label: 'Workstreams',
+                align: TextAlign.right,
+                hide: NxHide.md,
+                sort: (w) => s(w).workstreams,
+                cell: (w) => NxCellText(fmtNum(s(w).workstreams), align: TextAlign.right),
+              ),
+              NxColumn(
+                key: 'locs',
+                label: 'Locations',
+                align: TextAlign.right,
+                sort: (w) => s(w).locations,
+                cell: (w) => s(w).locations > 0
+                    ? NxCellText(fmtNum(s(w).locations), align: TextAlign.right)
+                    : NxCellText('None yet', color: n.n500, align: TextAlign.right),
+              ),
+              NxColumn(
+                key: 'units',
+                label: 'Units',
+                align: TextAlign.right,
+                hide: NxHide.md,
+                sort: (w) => s(w).units,
+                cell: (w) => NxCellText(fmtNum(s(w).units), align: TextAlign.right),
+              ),
+              NxColumn(
+                key: 'util',
+                label: 'Utilisation',
+                width: 170,
+                sort: (w) => s(w).utilisation,
+                cell: (w) => s(w).capacity > 0
+                    ? NxLabeledBar(label: util(w), fraction: s(w).utilisation, color: s(w).utilisation > 0.9 ? n.warn : n.a500)
+                    : NxCellText('—', color: n.n500),
+              ),
+              NxColumn(key: 'status', label: 'Status', cell: (w) => Align(alignment: Alignment.centerLeft, child: status(w))),
+              NxColumn(
+                key: 'act',
+                label: '',
+                width: canManage ? 104 : 40,
+                cell: (w) => NxRowActions([
+                  NxRowAction(icon: PhosphorIconsRegular.treeStructure, label: 'Open structure', onPressed: () => open(w)),
+                  if (canManage) ...[
+                    NxRowAction(icon: PhosphorIconsRegular.pencilSimple, label: 'Edit', onPressed: () => showWarehouseFormDialog(context, warehouse: w)),
+                    NxRowAction(
+                      icon: w.isActive ? PhosphorIconsRegular.prohibit : PhosphorIconsRegular.arrowCounterClockwise,
+                      label: w.isActive ? 'Deactivate' : 'Reactivate',
+                      danger: w.isActive,
+                      onPressed: () => toggle(w),
+                    ),
+                  ],
+                ]),
+              ),
+            ],
+            listRow: (w) => NxListRowSpec(
+              icon: PhosphorIconsDuotone.buildings,
+              iconColor: n.a400,
+              title: w.name,
+              sub: '${w.code} · ${s(w).locations} locations · ${s(w).workstreams} workstreams',
+              right: util(w),
+              rightSub: 'utilised',
+              tag: status(w),
+            ),
+            card: (w) => NxCardSpec(
+              icon: PhosphorIconsDuotone.buildings,
+              title: w.name,
+              sub: w.code,
+              metrics: [('Locations', fmtNum(s(w).locations), null), ('Units', fmtNum(s(w).units), null), ('Utilised', util(w), null)],
+              tag: status(w),
+              bar: s(w).capacity > 0 ? s(w).utilisation : null,
+              barColor: n.a500,
+            ),
+            onOpen: open,
+            emptyTitle: 'No warehouses',
+            emptyMessage: 'Adjust filters or add one.',
+          );
+        },
+      ),
     );
   }
 }

@@ -10,9 +10,9 @@ class AppSpacing {
   static const double xl = 32;
   static const double xxl = 48;
 
-  // Broadsheet look: near-square corners everywhere (a hairline of softening
-  // only so edges don't alias) — hierarchy comes from rules and space.
-  static const double radiusSm = 2;
-  static const double radiusMd = 2;
-  static const double radiusLg = 2;
+  // Nocturne radii (`--radius-sm/md/lg`): soft 8px corners on controls and
+  // cards, 14px on sheets and dialogs.
+  static const double radiusSm = 4;
+  static const double radiusMd = 8;
+  static const double radiusLg = 14;
 }

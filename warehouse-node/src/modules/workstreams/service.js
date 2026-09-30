@@ -30,7 +30,7 @@ function createWorkstreamsService({ db, models, cache, config, access, warehouse
   async function findAll(query = {}, viewerId) {
     const [scope, warehouseIds] = await Promise.all([scopeIds(viewerId), access.warehouseScope(viewerId)]);
     const key = `workstreams:list:${query.warehouseId ?? '-'}:${query.includeInactive ? 'all' : 'active'}:${scope ? scope.join(',') : '*'}:${access.scopeKey(warehouseIds)}`;
-    return cache.wrap(key, { ttlMs: config.cache.referenceTtlMs, tags: [TAGS.CATALOGUE] }, () => {
+    const rows = await cache.wrap(key, { ttlMs: config.cache.referenceTtlMs, tags: [TAGS.CATALOGUE] }, () => {
       const where = new Where()
         .eq('w.warehouse_id', query.warehouseId)
         .in('w.warehouse_id', warehouseIds ?? undefined)
@@ -38,6 +38,25 @@ function createWorkstreamsService({ db, models, cache, config, access, warehouse
       if (!query.includeInactive) where.raw('w.is_active = true');
       return db.query(`SELECT ${cols('workstream', 'w')} FROM workstreams w ${where.sql} ORDER BY w.name ASC`, where.params);
     });
+    return attachManagers(rows);
+  }
+
+  /**
+   * Each workstream's scoped managers as `managers: [{userId, fullName}]` — read fresh (outside the
+   * catalogue cache) since assignments change independently of the catalogue.
+   */
+  async function attachManagers(rows) {
+    if (rows.length === 0) return rows;
+    const where = new Where().in('wm.workstream_id', rows.map((w) => w.id));
+    const links = await db.query(
+      `SELECT wm.workstream_id AS workstreamId, u.id AS userId, u.full_name AS fullName
+         FROM workstream_managers wm JOIN users u ON u.id = wm.user_id ${where.sql} ORDER BY u.full_name ASC`,
+      where.params,
+    );
+    return rows.map((w) => ({
+      ...w,
+      managers: links.filter((l) => l.workstreamId === w.id).map(({ userId, fullName }) => ({ userId, fullName })),
+    }));
   }
 
   // Never cached: writers (and audit old-values) must see the row as it is right now.

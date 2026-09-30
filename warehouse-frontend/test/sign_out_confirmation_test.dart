@@ -72,7 +72,7 @@ void main() {
   testWidgets('tapping Sign out asks for confirmation before actually signing out', (tester) async {
     final notifier = await _pump(tester);
 
-    await tester.tap(find.widgetWithText(OutlinedButton, 'Sign out'));
+    await tester.tap(find.byTooltip('Sign out'));
     await tester.pumpAndSettle();
 
     expect(find.text('Sign out?'), findsOneWidget);
@@ -82,7 +82,7 @@ void main() {
   testWidgets('cancelling the confirmation leaves the user signed in', (tester) async {
     final notifier = await _pump(tester);
 
-    await tester.tap(find.widgetWithText(OutlinedButton, 'Sign out'));
+    await tester.tap(find.byTooltip('Sign out'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
@@ -94,11 +94,10 @@ void main() {
   testWidgets('confirming actually signs out', (tester) async {
     final notifier = await _pump(tester);
 
-    await tester.tap(find.widgetWithText(OutlinedButton, 'Sign out'));
+    await tester.tap(find.byTooltip('Sign out'));
     await tester.pumpAndSettle();
-    // The dialog's own confirm button shares the "Sign out" label —
-    // distinguish it from the trigger by its FilledButton type.
-    await tester.tap(find.widgetWithText(FilledButton, 'Sign out'));
+    // The dialog's confirm button (the trigger is an icon, so this is the only "Sign out" text).
+    await tester.tap(find.text('Sign out').last);
     await tester.pumpAndSettle();
 
     expect(notifier.loggedOut, isTrue);

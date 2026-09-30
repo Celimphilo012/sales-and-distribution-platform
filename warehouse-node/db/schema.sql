@@ -139,6 +139,7 @@ CREATE TABLE `locations` (
   `code` varchar(191) NOT NULL,
   `location_type` varchar(191) NOT NULL,
   `description` varchar(191) DEFAULT NULL,
+  `capacity` int(11) DEFAULT NULL,
   `is_active` tinyint(1) NOT NULL DEFAULT 1,
   `created_at` datetime(3) NOT NULL DEFAULT current_timestamp(3),
   `updated_at` datetime(3) NOT NULL,

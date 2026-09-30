@@ -86,7 +86,7 @@ const MODELS = {
   location: {
     table: 'locations',
     fields: [
-      'id', 'warehouseId', 'parentId', 'name', 'code', 'locationType', 'description', 'isActive',
+      'id', 'warehouseId', 'parentId', 'name', 'code', 'locationType', 'description', 'capacity', 'isActive',
       'createdAt', 'updatedAt',
     ],
     defaults: { isActive: true },

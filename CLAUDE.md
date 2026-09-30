@@ -58,6 +58,21 @@ cross-imports, no foreign keys across the boundary, no shared DB transaction. Se
 - Verified: warehouse-node 111 tests, warehouse-frontend 94 tests + analyze clean + browser pass
   (MFA setup dialog, OTP prompt → code → retry on a test API key, Users, Packing).
 
+**WAREHOUSE CONSOLE REDESIGN (2026-09-30)** — `/warehouse-frontend` now follows the "Warehouse Console v2"
+prototype (`warehouse-frontend/warehouse-prototype`, Nocturne design system): dark-first theme
+(`core/theme/nocturne.dart`, light toggle), grouped sidebar / tablet rail / phone bottom bar, and every
+collection is one `NxListPage` (`shared/nx/`: stats strip, quick segment, filters + chips, table/list/grid,
+state remembered per screen). Forms are `showNxDialog`, detail/work views are `showNxSheet`, feedback is
+`NxToast`. Kept beyond the prototype: adjustment evidence PHOTO (request form + shown to the reviewer),
+SEARCHABLE product/location pickers everywhere (`NxSelect(searchable: true)`), count drafts kept on the
+device until submitted, workstream images/contacts, MFA/contact/delivery settings. Reports: 7 reports built
+client-side from live data, exported to PDF (`pdf`) and Excel (`excel`) with the company logo/name from
+Settings → Report branding (`/settings/branding`, stored in `app_settings`); pick lists print as PDF.
+Backend additions: `locations.capacity` (upgrade `2026-09-30-location-capacity.sql`), `GET /warehouses`
+carries `summary {locations, slots, capacity, units, workstreams}`, `GET /workstreams` carries `managers`,
+`GET /inventory/transactions` carries `performedByUser` + `limit`. Verified: warehouse-node 116 tests,
+warehouse-frontend 84 tests + analyze clean.
+
 **Ordering port DONE (2026-09-28):** `/ordering-backend` — 33/33 read endpoints + error shapes
 byte-identical to `/backend` on real data (parity script, removed with `/backend`); 14 integration tests (full lifecycle
 against an in-process fake warehouse); `/ordering-frontend` repointed to 3300 (analyze clean, 51

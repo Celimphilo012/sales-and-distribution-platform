@@ -82,12 +82,11 @@ void main() {
       await _pumpShell(tester, const Size(1280, 800));
 
       expect(find.text('SIGNED IN AS'), findsOneWidget);
-      // The current route's group (Stock) is open on arrival…
-      expect(find.text('Stock Receiving'), findsOneWidget);
-      // …while other groups are collapsed until tapped.
+      // Groups start collapsed (the active one carries an accent cue).
+      expect(find.text('Stock Receiving'), findsNothing);
       expect(find.text('Warehouse Structure'), findsNothing);
 
-      await tester.tap(find.text('Warehousing'));
+      await tester.tap(find.text('WAREHOUSING'));
       await tester.pumpAndSettle();
       expect(find.text('Warehouses'), findsOneWidget);
       expect(find.text('Warehouse Structure'), findsOneWidget);
@@ -97,14 +96,14 @@ void main() {
       expect(find.text('page:/locations'), findsWidgets);
 
       // Collapsing a group hides its items again.
-      await tester.tap(find.text('Warehousing'));
+      await tester.tap(find.text('WAREHOUSING'));
       await tester.pumpAndSettle();
       expect(find.text('Warehouses'), findsNothing);
     });
 
     testWidgets('renders in the dark theme without layout errors', (tester) async {
       await _pumpShell(tester, const Size(1280, 800), theme: AppTheme.dark());
-      expect(find.text('Warehouse System'), findsWidgets);
+      expect(find.text('SIGNED IN AS'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   });
@@ -114,8 +113,8 @@ void main() {
       await _pumpShell(tester, const Size(820, 900));
 
       expect(find.text('SIGNED IN AS'), findsNothing); // no sidebar
-      expect(find.text('Stock'), findsOneWidget); // rail caption for the Stock group
-      expect(find.text('Stock Receiving'), findsNothing); // items live in the menu/drawer
+      expect(find.text('Stock'), findsWidgets); // rail caption (and the breadcrumb)
+      expect(find.text('Stock Receiving'), findsNothing); // items live in the flyout/drawer
 
       await tester.tap(find.text('Warehouse')); // rail caption for "Warehousing"
       await tester.pumpAndSettle();
@@ -124,6 +123,7 @@ void main() {
       await tester.tap(find.text('Warehouse Structure'));
       await tester.pumpAndSettle();
       expect(find.text('page:/locations'), findsWidgets);
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets('the menu button opens the full grouped drawer', (tester) async {
@@ -131,7 +131,7 @@ void main() {
 
       await tester.tap(find.byTooltip('Menu'));
       await tester.pumpAndSettle();
-      expect(find.text('User management'), findsOneWidget);
+      expect(find.text('USER MANAGEMENT'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   });
@@ -144,12 +144,12 @@ void main() {
         expect(find.text(label), findsWidgets, reason: 'bottom bar entry $label');
       }
 
-      await tester.tap(find.text('Menu'));
+      await tester.tap(find.text('Menu').last);
       await tester.pumpAndSettle();
-      expect(find.text('Warehousing'), findsOneWidget);
-      expect(find.text('User management'), findsOneWidget);
+      expect(find.text('WAREHOUSING'), findsOneWidget);
+      expect(find.text('USER MANAGEMENT'), findsOneWidget);
 
-      await tester.tap(find.text('Warehousing'));
+      await tester.tap(find.text('WAREHOUSING'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Warehouses'));
       await tester.pumpAndSettle();

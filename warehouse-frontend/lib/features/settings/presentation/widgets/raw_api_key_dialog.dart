@@ -1,97 +1,72 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
-import '../../../../core/theme/app_semantic_colors.dart';
-import '../../../../core/theme/app_spacing.dart';
-import '../../../../shared/widgets/app_dialog.dart';
+import '../../../../core/theme/nocturne.dart';
+import '../../../../shared/nx/nx_overlays.dart';
+import '../../../../shared/nx/nx_primitives.dart';
 import '../../domain/api_key.dart';
 
-/// Shows a freshly created key's raw value EXACTLY ONCE, per the step-3
-/// mechanism (ARCHITECTURE.md §A2: "raw key stored only as an argon2 hash —
-/// shown once at creation"). Not dismissible by tapping outside or the back
-/// button — the only way out is the explicit "I've copied it" button, so a
-/// stray tap can't lose it unacknowledged. The value never touches any
-/// provider/cache; it lives only in this dialog's own build.
-Future<void> showRawApiKeyDialog(BuildContext context, ApiKeyCreated created) {
-  return showDialog<void>(
-    context: context,
-    barrierDismissible: false,
-    builder: (context) => PopScope(canPop: false, child: _RawApiKeyDialog(created: created)),
-  );
-}
+/// Shows a new key's raw value EXACTLY ONCE (only a hash is stored). Not
+/// dismissible by tapping outside or Back — only the explicit "I've copied
+/// it" button closes it, so a stray tap can't lose it.
+Future<void> showRawApiKeyDialog(BuildContext context, ApiKeyCreated created) => showNxDialog<void>(
+  context,
+  dismissible: false,
+  builder: (_) => PopScope(canPop: false, child: _RawKey(created: created)),
+);
 
-class _RawApiKeyDialog extends StatelessWidget {
-  const _RawApiKeyDialog({required this.created});
+class _RawKey extends StatelessWidget {
+  const _RawKey({required this.created});
 
   final ApiKeyCreated created;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final semantic = context.semanticColors;
-
-    return AppDialog(
+    final n = context.nx;
+    return NxDialogFrame(
       title: '"${created.record.name}" created',
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Container(
-            padding: const EdgeInsets.all(AppSpacing.sm),
-            decoration: BoxDecoration(
-              color: semantic.warningContainer,
-              borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
-            ),
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(color: n.warn.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(NxRadius.md)),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.warning_amber_outlined, color: semantic.onWarningContainer, size: 20),
-                const SizedBox(width: AppSpacing.sm),
+                Icon(PhosphorIconsRegular.warning, size: 18, color: n.warn),
+                const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Copy this key now — you will not be able to see it again. Only a hash is '
-                    'stored; if you lose it, revoke this key and create a new one.',
-                    style: theme.textTheme.bodySmall?.copyWith(color: semantic.onWarningContainer),
+                    'Copy this key now — you will not be able to see it again. Only a hash is stored; if you lose it, revoke this key and create a new one.',
+                    style: TextStyle(fontSize: 12, color: n.warn),
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: AppSpacing.md),
+          const SizedBox(height: 12),
           Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(AppSpacing.sm),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
-            ),
-            child: SelectableText(
-              created.rawKey,
-              style: theme.textTheme.bodyMedium?.copyWith(fontFamily: 'monospace'),
-            ),
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(color: n.bg, borderRadius: BorderRadius.circular(NxRadius.md)),
+            child: SelectableText(created.rawKey, style: TextStyle(fontFamily: 'monospace', fontSize: 13, color: n.text)),
           ),
-          const SizedBox(height: AppSpacing.sm),
+          const SizedBox(height: 8),
           Align(
             alignment: Alignment.centerRight,
-            child: TextButton.icon(
+            child: NxButton.ghost(
+              label: 'Copy',
+              icon: PhosphorIconsRegular.copy,
               onPressed: () async {
                 await Clipboard.setData(ClipboardData(text: created.rawKey));
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Copied to clipboard')));
-                }
+                NxToast.info('Copied to clipboard');
               },
-              icon: const Icon(Icons.copy_outlined),
-              label: const Text('Copy'),
             ),
           ),
         ],
       ),
-      actions: [
-        FilledButton(
-          onPressed: () => Navigator.of(context, rootNavigator: true).pop(),
-          child: const Text("I've copied it — close"),
-        ),
-      ],
+      actions: [NxButton.primary(label: 'I’ve copied it — close', onPressed: () => Navigator.of(context).pop())],
     );
   }
 }

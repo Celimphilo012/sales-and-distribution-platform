@@ -1,136 +1,160 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../../../app_shell/responsive_app_shell.dart';
 import '../../../core/auth/auth_provider.dart';
 import '../../../core/error/app_error.dart';
-import '../../../core/theme/app_spacing.dart';
-import '../../../shared/widgets/app_data_table.dart';
-import '../../../shared/widgets/empty_loading_error_states.dart';
-import '../../../shared/widgets/status_badge.dart';
+import '../../../core/theme/nocturne.dart';
+import '../../../shared/nx/nx_actions.dart';
+import '../../../shared/nx/nx_format.dart';
+import '../../../shared/nx/nx_list_page.dart';
+import '../../../shared/nx/nx_primitives.dart';
+import '../../products/domain/product.dart';
+import '../../products/presentation/products_list_providers.dart';
 import '../data/attribute_types_providers.dart';
 import '../domain/attribute_type.dart';
 import 'attribute_type_form_dialog.dart';
 
-/// Attribute-types management — the admin-managed catalog behind product
-/// attributes (colour, size, weight, ...). Purely reference data: create/
-/// edit/deactivate here is how the attribute model stays extensible (a new
-/// type is a row here, never a schema change or a product-form code edit).
-/// Gated the same way as Categories/Workstreams: visible with
-/// `catalogue.view`, manage actions need `products.manage`.
-class AttributeTypesScreen extends ConsumerStatefulWidget {
+class _Row {
+  _Row(this.t, this.used);
+
+  final AttributeType t;
+
+  /// Products carrying a value of this type.
+  final int used;
+
+  bool get number => t.dataType == AttributeDataType.number;
+  bool get hasUnit => (t.unit ?? '').isNotEmpty;
+}
+
+/// Attribute Types (prototype `attributes`) — the admin-managed catalogue
+/// behind product attributes.
+class AttributeTypesScreen extends ConsumerWidget {
   const AttributeTypesScreen({super.key});
 
   @override
-  ConsumerState<AttributeTypesScreen> createState() => _AttributeTypesScreenState();
-}
-
-class _AttributeTypesScreenState extends ConsumerState<AttributeTypesScreen> {
-  bool _includeInactive = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+  Widget build(BuildContext context, WidgetRef ref) {
+    final n = context.nx;
     final canManage = ref.watch(authProvider.select((s) => s.value?.user?.can('products.manage') ?? false));
-    final attributeTypesAsync = ref.watch(attributeTypesProvider(_includeInactive));
+    final async = ref.watch(attributeTypesProvider(true));
+    final products = ref.watch(productsListProvider).value ?? const <Product>[];
 
-    return Padding(
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(child: Text('Attribute Types', style: theme.textTheme.headlineSmall)),
+    return NxPageScroll(
+      onRefresh: () async => invalidateAttributeTypes(ref),
+      child: async.when(
+        loading: () => const NxLoading(message: 'Loading attribute types…'),
+        error: (e, _) => NxError(
+          message: e is AppError ? e.message : 'Could not load attribute types.',
+          onRetry: () => invalidateAttributeTypes(ref),
+        ),
+        data: (types) {
+          final used = <String, int>{};
+          for (final p in products) {
+            for (final id in {for (final a in p.attributes) a.attributeTypeId}) {
+              used[id] = (used[id] ?? 0) + 1;
+            }
+          }
+          final rows = [for (final t in types) _Row(t, used[t.id] ?? 0)];
+          NxTag status(_Row r) => NxTag(r.t.isActive ? 'Active' : 'Inactive', tone: r.t.isActive ? Tone.ok : Tone.neutral);
+          IconData icon(_Row r) => r.number ? PhosphorIconsDuotone.hash : PhosphorIconsDuotone.textAa;
+          void toggle(_Row r) => nxToggleActive(
+            context,
+            name: r.t.name,
+            active: r.t.isActive,
+            deactivate: () => ref.read(attributeTypesApiProvider).deactivate(r.t.id),
+            reactivate: () => ref.read(attributeTypesApiProvider).reactivate(r.t.id),
+            refresh: () => invalidateAttributeTypes(ref),
+          );
+
+          return NxListPage<_Row>(
+            stateKey: 'attributes',
+            title: 'Attribute Types',
+            sub: 'The admin-managed catalogue behind product attributes. Values are stored as text; Number types validate input.',
+            actions: [
               if (canManage)
-                FilledButton.icon(
-                  onPressed: () => showAttributeTypeFormDialog(context),
-                  icon: const Icon(Icons.add),
-                  label: const Text('New attribute type'),
+                NxButton.primary(label: 'New attribute type', icon: PhosphorIconsRegular.plus, onPressed: () => showAttributeTypeFormDialog(context)),
+            ],
+            rows: rows,
+            search: (r) => '${r.t.name} ${r.t.code}',
+            searchPlaceholder: 'Name or code',
+            stats: (rs) {
+              final unused = rs.where((r) => r.used == 0).length;
+              return [
+                NxStat('Types', fmtNum(rs.length), sub: '${rs.where((r) => r.t.isActive).length} active'),
+                NxStat('Text', fmtNum(rs.where((r) => !r.number).length)),
+                NxStat('Number', fmtNum(rs.where((r) => r.number).length), sub: '${rs.where((r) => r.hasUnit).length} with units'),
+                NxStat('Values in use', fmtNum(rs.fold<int>(0, (s, r) => s + r.used)), sub: 'across products'),
+                NxStat('Unused', fmtNum(unused), color: unused > 0 ? n.warn : null),
+              ];
+            },
+            quick: NxQuick(
+              get: (r) => r.number ? 'NUMBER' : 'TEXT',
+              options: const [('', 'All'), ('TEXT', 'Text'), ('NUMBER', 'Number')],
+            ),
+            filters: [
+              NxSelectFilter('st', 'Status', options: const [('yes', 'Active'), ('no', 'Inactive')], get: (r) => r.t.isActive ? 'yes' : 'no'),
+              NxToggleFilter('unit', 'Unit', text: 'Has a unit', get: (r) => r.hasUnit),
+              NxRangeFilter('used', 'Products using', get: (r) => r.used),
+            ],
+            defaultSort: ('name', 1),
+            columns: [
+              NxColumn(key: 'name', label: 'Name', sort: (r) => r.t.name.toLowerCase(), cell: (r) => NxCellText(r.t.name, weight: FontWeight.w500)),
+              NxColumn(key: 'code', label: 'Code', sort: (r) => r.t.code, cell: (r) => NxCellText(r.t.code, mono: true, color: n.n300)),
+              NxColumn(
+                key: 'type',
+                label: 'Data type',
+                sort: (r) => r.number ? 1 : 0,
+                cell: (r) => Align(
+                  alignment: Alignment.centerLeft,
+                  child: NxTag(r.number ? 'Number' : 'Text', tone: r.number ? Tone.info : Tone.neutral),
+                ),
+              ),
+              NxColumn(
+                key: 'unit',
+                label: 'Unit',
+                hide: NxHide.md,
+                cell: (r) => r.hasUnit ? NxCellText(r.t.unit!) : NxCellText('—', color: n.n500),
+              ),
+              NxColumn(key: 'used', label: 'Products', align: TextAlign.right, sort: (r) => r.used, cell: (r) => NxCellText(fmtNum(r.used), align: TextAlign.right)),
+              NxColumn(key: 'status', label: 'Status', cell: (r) => Align(alignment: Alignment.centerLeft, child: status(r))),
+              if (canManage)
+                NxColumn(
+                  key: 'act',
+                  label: '',
+                  width: 76,
+                  cell: (r) => NxRowActions([
+                    NxRowAction(icon: PhosphorIconsRegular.pencilSimple, label: 'Edit', onPressed: () => showAttributeTypeFormDialog(context, attributeType: r.t)),
+                    NxRowAction(
+                      icon: r.t.isActive ? PhosphorIconsRegular.prohibit : PhosphorIconsRegular.arrowCounterClockwise,
+                      label: r.t.isActive ? 'Deactivate' : 'Reactivate',
+                      danger: r.t.isActive,
+                      onPressed: () => toggle(r),
+                    ),
+                  ]),
                 ),
             ],
-          ),
-          const SizedBox(height: AppSpacing.md),
-          FilterChip(
-            label: const Text('Show inactive'),
-            selected: _includeInactive,
-            onSelected: (value) => setState(() => _includeInactive = value),
-          ),
-          const SizedBox(height: AppSpacing.lg),
-          Expanded(
-            child: attributeTypesAsync.when(
-              loading: () => const LoadingStateView(message: 'Loading attribute types…'),
-              error: (error, stackTrace) => ErrorStateView(
-                message: error is AppError ? error.message : 'Could not load attribute types.',
-                onRetry: () => ref.invalidate(attributeTypesProvider(_includeInactive)),
-              ),
-              data: (attributeTypes) => AppDataTable<AttributeType>(
-                rows: attributeTypes,
-                emptyTitle: 'No attribute types yet',
-                columns: [
-                  AppDataColumn(label: 'Name', cellBuilder: (t) => Text(t.name)),
-                  AppDataColumn(label: 'Code', cellBuilder: (t) => Text(t.code)),
-                  AppDataColumn(
-                    label: 'Data type',
-                    cellBuilder: (t) => Text(t.dataType == AttributeDataType.number ? 'Number' : 'Text'),
-                  ),
-                  AppDataColumn(label: 'Unit', cellBuilder: (t) => Text(t.unit?.isNotEmpty == true ? t.unit! : '—')),
-                  AppDataColumn(
-                    label: 'Status',
-                    cellBuilder: (t) => StatusBadge(
-                      label: t.isActive ? 'Active' : 'Inactive',
-                      tone: t.isActive ? StatusTone.success : StatusTone.neutral,
-                    ),
-                  ),
-                  if (canManage)
-                    AppDataColumn(
-                      label: '',
-                      cellBuilder: (t) => Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.edit_outlined),
-                            tooltip: 'Edit',
-                            onPressed: () => showAttributeTypeFormDialog(context, attributeType: t),
-                          ),
-                          if (t.isActive)
-                            IconButton(
-                              icon: const Icon(Icons.block),
-                              tooltip: 'Deactivate',
-                              onPressed: () => _deactivate(context, t),
-                            )
-                          else
-                            IconButton(
-                              icon: const Icon(Icons.check_circle_outline),
-                              tooltip: 'Reactivate',
-                              onPressed: () => _reactivate(context, t),
-                            ),
-                        ],
-                      ),
-                    ),
-                ],
-              ),
+            listRow: (r) => NxListRowSpec(
+              icon: icon(r),
+              iconColor: n.a400,
+              title: r.t.name,
+              sub: '${r.t.code}${r.hasUnit ? ' · ${r.t.unit}' : ''}',
+              right: '${r.used} products',
+              tag: status(r),
             ),
-          ),
-        ],
+            card: (r) => NxCardSpec(
+              icon: icon(r),
+              title: r.t.name,
+              sub: r.t.code,
+              metrics: [('Type', r.number ? 'Number' : 'Text', null), ('Unit', r.hasUnit ? r.t.unit! : '—', null), ('Products', fmtNum(r.used), null)],
+              tag: status(r),
+            ),
+            onOpen: canManage ? (r) => showAttributeTypeFormDialog(context, attributeType: r.t) : null,
+            emptyTitle: 'No attribute types',
+            emptyMessage: 'Adjust filters or add a type.',
+          );
+        },
       ),
     );
-  }
-
-  Future<void> _deactivate(BuildContext context, AttributeType attributeType) async {
-    try {
-      await ref.read(attributeTypesApiProvider).deactivate(attributeType.id);
-      invalidateAttributeTypes(ref);
-    } on AppError catch (e) {
-      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
-    }
-  }
-
-  Future<void> _reactivate(BuildContext context, AttributeType attributeType) async {
-    try {
-      await ref.read(attributeTypesApiProvider).reactivate(attributeType.id);
-      invalidateAttributeTypes(ref);
-    } on AppError catch (e) {
-      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
-    }
   }
 }

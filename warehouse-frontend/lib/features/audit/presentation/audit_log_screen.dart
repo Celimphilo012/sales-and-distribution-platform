@@ -2,32 +2,29 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
-import '../../../core/auth/auth_provider.dart';
+import '../../../app_shell/responsive_app_shell.dart';
 import '../../../core/error/app_error.dart';
-import '../../../core/theme/app_spacing.dart';
-import '../../../shared/date_format.dart';
-import '../../../shared/widgets/app_data_table.dart';
-import '../../../shared/widgets/app_dialog.dart';
-import '../../../shared/widgets/app_text_field.dart';
-import '../../../shared/widgets/compact_row_list.dart';
-import '../../../shared/widgets/empty_loading_error_states.dart';
-import '../../../shared/widgets/simple_grid_view.dart';
-import '../../../shared/widgets/stat_tile.dart';
-import '../../../shared/widgets/view_mode_toggle.dart';
+import '../../../core/theme/nocturne.dart';
+import '../../../shared/nx/nx_format.dart';
+import '../../../shared/nx/nx_list_page.dart';
+import '../../../shared/nx/nx_overlays.dart';
+import '../../../shared/nx/nx_primitives.dart';
 import '../data/audit_logs_providers.dart';
 import '../domain/audit_log.dart';
-import '../domain/audit_log_query.dart';
 
-/// STEP 6f, wired up: the warehouse backend now has a `GET /audit-logs`
-/// (`AuditController`/`AuditService`, gated `audit.view`) closing the gap
-/// this screen used to report — the interceptor always wrote `audit_logs`,
-/// there was just no controller reading it back. Newest-first, filterable,
-/// paginated, ported from the ordering app's near-identical screen (which
-/// got a real backend first) with one addition: rows here can be attributed
-/// to an API key instead of a user (the warehouse's external API is
-/// key-authenticated), so the actor column and detail dialog show whichever
-/// applies.
+Tone _actionTone(String action) => switch (action.toUpperCase()) {
+  'CREATE' => Tone.ok,
+  'UPDATE' => Tone.info,
+  'DELETE' || 'DEACTIVATE' || 'REJECT' => Tone.bad,
+  'APPROVE' => Tone.accent,
+  _ => Tone.neutral,
+};
+
+/// Audit Log (prototype `audit`) — every write, newest first, attributed to
+/// a user or an API key. The server pages it (100 a page); search, filters
+/// and sorting work within the loaded page.
 class AuditLogScreen extends ConsumerStatefulWidget {
   const AuditLogScreen({super.key});
 
@@ -36,330 +33,159 @@ class AuditLogScreen extends ConsumerStatefulWidget {
 }
 
 class _AuditLogScreenState extends ConsumerState<AuditLogScreen> {
-  late final TextEditingController _userIdController;
-  late final TextEditingController _entityController;
-  late final TextEditingController _entityIdController;
-  late final TextEditingController _actionController;
-  DateTime? _from;
-  DateTime? _to;
-  ViewMode _view = ViewMode.table;
-
   @override
   void initState() {
     super.initState();
-    final query = ref.read(auditLogQueryProvider);
-    _userIdController = TextEditingController(text: query.userId ?? '');
-    _entityController = TextEditingController(text: query.entity ?? '');
-    _entityIdController = TextEditingController(text: query.entityId ?? '');
-    _actionController = TextEditingController(text: query.action ?? '');
-    _from = query.from;
-    _to = query.to;
-  }
-
-  @override
-  void dispose() {
-    _userIdController.dispose();
-    _entityController.dispose();
-    _entityIdController.dispose();
-    _actionController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _pickDate({required bool isFrom}) async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: (isFrom ? _from : _to) ?? DateTime.now(),
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now().add(const Duration(days: 1)),
-    );
-    if (picked == null) return;
-    setState(() {
-      if (isFrom) {
-        _from = picked;
-      } else {
-        _to = picked;
-      }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final q = ref.read(auditLogQueryProvider);
+      if (q.pageSize != 100) ref.read(auditLogQueryProvider.notifier).update((q) => q.copyWith(pageSize: 100, page: 1));
     });
   }
 
-  void _applyFilters() {
-    ref
-        .read(auditLogQueryProvider.notifier)
-        .update(
-          (q) => AuditLogQuery(
-            userId: _userIdController.text.trim().isEmpty ? null : _userIdController.text.trim(),
-            entity: _entityController.text.trim().isEmpty ? null : _entityController.text.trim(),
-            entityId: _entityIdController.text.trim().isEmpty ? null : _entityIdController.text.trim(),
-            action: _actionController.text.trim().isEmpty ? null : _actionController.text.trim(),
-            from: _from,
-            to: _to,
-            page: 1,
-            pageSize: q.pageSize,
-          ),
-        );
-  }
-
-  void _clearFilters() {
-    setState(() {
-      _userIdController.clear();
-      _entityController.clear();
-      _entityIdController.clear();
-      _actionController.clear();
-      _from = null;
-      _to = null;
-    });
-    ref.read(auditLogQueryProvider.notifier).update((q) => const AuditLogQuery());
-  }
-
-  void _goToPage(int page) {
-    ref.read(auditLogQueryProvider.notifier).update((q) => q.copyWith(page: page));
-  }
+  void _goTo(int page) => ref.read(auditLogQueryProvider.notifier).update((q) => q.copyWith(page: page));
 
   @override
   Widget build(BuildContext context) {
-    final canView = ref.watch(authProvider.select((s) => s.value?.user?.can('audit.view') ?? false));
-    if (!canView) {
-      return const EmptyStateView(
-        title: "You don't have permission to view the audit log",
-        message: 'Ask an administrator for the audit.view permission.',
-        icon: Icons.lock_outline,
-      );
-    }
+    final n = context.nx;
+    final async = ref.watch(auditLogsPageProvider);
 
-    final theme = Theme.of(context);
-    final pageAsync = ref.watch(auditLogsPageProvider);
-
-    return Padding(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Audit Log', style: theme.textTheme.headlineSmall),
-          const SizedBox(height: AppSpacing.sm),
-          pageAsync.maybeWhen(data: (page) => _AuditLogStats(page: page), orElse: () => const SizedBox.shrink()),
-          const SizedBox(height: AppSpacing.sm),
-          Wrap(
-            spacing: AppSpacing.sm,
-            runSpacing: AppSpacing.sm,
-            crossAxisAlignment: WrapCrossAlignment.end,
+    return NxPageScroll(
+      onRefresh: () async => ref.invalidate(auditLogsPageProvider),
+      child: async.when(
+        loading: () => const NxLoading(message: 'Loading the audit log…'),
+        error: (e, _) => NxError(
+          message: e is AppError ? e.message : 'Could not load the audit log.',
+          onRetry: () => ref.invalidate(auditLogsPageProvider),
+        ),
+        data: (page) {
+          final rows = page.data;
+          List<(String, String)> opts(Iterable<String> v) => [for (final x in ({...v}.toList()..sort())) (x, x)];
+          NxTag tag(AuditLog r) => NxTag(r.action, tone: _actionTone(r.action));
+          final pages = page.totalPages == 0 ? 1 : page.totalPages;
+          final pager = Row(
             children: [
-              SizedBox(width: 220, child: AppTextField(label: 'User ID', controller: _userIdController)),
-              SizedBox(
-                width: 180,
-                child: AppTextField(label: 'Entity', controller: _entityController, hintText: 'products'),
+              Expanded(
+                child: Text(
+                  'Page ${page.page} of $pages · ${fmtNum(page.total)} entries on the server',
+                  style: TextStyle(fontSize: 12, color: n.n400),
+                ),
               ),
-              SizedBox(width: 200, child: AppTextField(label: 'Entity ID', controller: _entityIdController)),
-              SizedBox(
-                width: 160,
-                child: AppTextField(label: 'Action', controller: _actionController, hintText: 'CREATE'),
-              ),
-              OutlinedButton.icon(
-                onPressed: () => _pickDate(isFrom: true),
-                icon: const Icon(Icons.calendar_today_outlined, size: 16),
-                label: Text(_from == null ? 'From' : formatDateTime(_from!).split(' ').first),
-              ),
-              OutlinedButton.icon(
-                onPressed: () => _pickDate(isFrom: false),
-                icon: const Icon(Icons.calendar_today_outlined, size: 16),
-                label: Text(_to == null ? 'To' : formatDateTime(_to!).split(' ').first),
-              ),
-              FilledButton.icon(
-                onPressed: _applyFilters,
-                icon: const Icon(Icons.filter_alt_outlined),
-                label: const Text('Apply'),
-              ),
-              TextButton(onPressed: _clearFilters, child: const Text('Clear')),
-              ViewModeToggle(value: _view, onChanged: (mode) => setState(() => _view = mode)),
+              NxIconButton(icon: PhosphorIconsRegular.caretLeft, tooltip: 'Newer', onPressed: page.page > 1 ? () => _goTo(page.page - 1) : null),
+              const SizedBox(width: 4),
+              NxIconButton(icon: PhosphorIconsRegular.caretRight, tooltip: 'Older', onPressed: page.page < page.totalPages ? () => _goTo(page.page + 1) : null),
             ],
-          ),
-          const SizedBox(height: AppSpacing.md),
-          Expanded(
-            child: pageAsync.when(
-              loading: () => const LoadingStateView(message: 'Loading audit log…'),
-              error: (error, stackTrace) => ErrorStateView(
-                message: error is AppError ? error.message : 'Could not load the audit log.',
-                onRetry: () => ref.invalidate(auditLogsPageProvider),
+          );
+
+          return NxListPage<AuditLog>(
+            stateKey: 'audit',
+            title: 'Audit Log',
+            sub: 'Every write, newest first. Rows can be attributed to a user or an API key.',
+            rows: rows,
+            totalCount: page.total,
+            search: (r) => '${r.actorLabel} ${r.entity} ${r.entityId ?? ''} ${r.action}',
+            searchPlaceholder: 'Entity ID, entity or person',
+            stats: (rs) => [
+              NxStat('Entries', fmtNum(rs.length), sub: 'of ${fmtNum(page.total)} on the server'),
+              NxStat('People', fmtNum({for (final r in rs) ?r.user?.id}.length)),
+              NxStat('API calls', fmtNum(rs.where((r) => r.apiKey != null).length), color: n.a300),
+              NxStat('Creates', fmtNum(rs.where((r) => r.action == 'CREATE').length)),
+              NxStat('Updates', fmtNum(rs.where((r) => r.action == 'UPDATE').length)),
+              NxStat(
+                'Deletes',
+                fmtNum(rs.where((r) => r.action == 'DELETE').length),
+                color: rs.any((r) => r.action == 'DELETE') ? n.bad : null,
               ),
-              data: (page) => Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: switch (_view) {
-                      ViewMode.table => AppDataTable<AuditLog>(
-                          rows: page.data,
-                          emptyTitle: 'No audit log entries',
-                          emptyMessage: 'Try widening or clearing the filters.',
-                          onRowTap: (log) => _showDetail(context, log),
-                          columns: [
-                            AppDataColumn(label: 'When', cellBuilder: (l) => Text(formatDateTime(l.createdAt))),
-                            AppDataColumn(label: 'Who', cellBuilder: (l) => Text(l.actorLabel)),
-                            AppDataColumn(label: 'Action', cellBuilder: (l) => Text(l.action)),
-                            AppDataColumn(label: 'Entity', cellBuilder: (l) => Text(l.entity)),
-                            AppDataColumn(label: 'Entity ID', cellBuilder: (l) => Text(l.entityId ?? '—')),
-                          ],
-                        ),
-                      ViewMode.list => CompactRowList<AuditLog>(
-                          items: page.data,
-                          onTap: (log) => _showDetail(context, log),
-                          emptyTitle: 'No audit log entries',
-                          emptyMessage: 'Try widening or clearing the filters.',
-                          rowBuilder: (context, l) => Row(
-                            children: [
-                              SizedBox(
-                                width: 140,
-                                child: Text(formatDateTime(l.createdAt), style: theme.textTheme.bodySmall),
-                              ),
-                              Expanded(flex: 2, child: Text(l.actorLabel, overflow: TextOverflow.ellipsis)),
-                              Expanded(child: Text(l.action, style: theme.textTheme.bodySmall)),
-                              Expanded(
-                                flex: 2,
-                                child: Text(
-                                  '${l.entity}${l.entityId != null ? ' (${l.entityId})' : ''}',
-                                  overflow: TextOverflow.ellipsis,
-                                  style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ViewMode.grid => SimpleGridView<AuditLog>(
-                          items: page.data,
-                          onTap: (log) => _showDetail(context, log),
-                          emptyTitle: 'No audit log entries',
-                          emptyMessage: 'Try widening or clearing the filters.',
-                          maxCrossAxisExtent: 260,
-                          childAspectRatio: 1.6,
-                          contentBuilder: (context, l) => Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Row(
-                                children: [
-                                  Icon(Icons.history_outlined, size: 16, color: theme.colorScheme.primary),
-                                  const SizedBox(width: AppSpacing.xs),
-                                  Expanded(
-                                    child: Text(
-                                      l.action,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                '${l.entity}${l.entityId != null ? ' (${l.entityId})' : ''}',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: theme.textTheme.bodySmall,
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                l.actorLabel,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                              ),
-                              const SizedBox(height: AppSpacing.xs),
-                              Text(formatDateTime(l.createdAt), style: theme.textTheme.bodySmall),
-                            ],
-                          ),
-                        ),
-                    },
-                  ),
-                  const SizedBox(height: AppSpacing.md),
-                  _PaginationBar(page: page, onGoToPage: _goToPage),
-                ],
-              ),
+            ],
+            quick: NxQuick(
+              get: (r) => r.action,
+              options: [('', 'All'), for (final a in {for (final r in rows) r.action}.toList()..sort()) (a, sentenceEnum(a))],
             ),
+            filters: [
+              NxSelectFilter('entity', 'Entity', options: opts(rows.map((r) => r.entity)), get: (r) => r.entity),
+              NxSelectFilter('who', 'Who', searchable: true, options: opts(rows.map((r) => r.actorLabel)), get: (r) => r.actorLabel),
+              NxSelectFilter('src', 'Source', options: const [('user', 'User'), ('api', 'API key')], get: (r) => r.apiKey != null ? 'api' : 'user'),
+              NxDateFilter('date', 'Date', get: (r) => r.createdAt.toLocal()),
+            ],
+            defaultSort: ('when', -1),
+            aboveContent: pager,
+            columns: [
+              NxColumn(key: 'when', label: 'When', sort: (r) => r.createdAt, cell: (r) => NxCellText(fmtTime(r.createdAt.toLocal()), sub: fmtDate(r.createdAt.toLocal()))),
+              NxColumn(key: 'who', label: 'Who', sort: (r) => r.actorLabel, cell: (r) => NxCellText(r.user?.fullName ?? r.apiKey?.name ?? '—', sub: r.apiKey != null ? 'API key' : null)),
+              NxColumn(key: 'action', label: 'Action', sort: (r) => r.action, cell: (r) => Align(alignment: Alignment.centerLeft, child: tag(r))),
+              NxColumn(key: 'entity', label: 'Entity', hide: NxHide.md, sort: (r) => r.entity, cell: (r) => NxCellText(r.entity, mono: true, color: n.n300)),
+              NxColumn(key: 'eid', label: 'Entity ID', hide: NxHide.wide, cell: (r) => NxCellText(r.entityId ?? '—', mono: true, color: n.n400)),
+            ],
+            listRow: (r) => NxListRowSpec(
+              icon: r.apiKey != null ? PhosphorIconsDuotone.key : PhosphorIconsDuotone.user,
+              iconColor: r.apiKey != null ? n.a400 : n.n500,
+              title: '${r.action} · ${r.entity}',
+              sub: '${r.entityId ?? '—'} · ${r.actorLabel}',
+              right: fmtTime(r.createdAt.toLocal()),
+              rightSub: fmtDate(r.createdAt.toLocal()),
+            ),
+            card: (r) => NxCardSpec(
+              icon: r.apiKey != null ? PhosphorIconsDuotone.key : PhosphorIconsDuotone.clockCounterClockwise,
+              title: '${r.action} ${r.entity}',
+              sub: r.entityId ?? '—',
+              metrics: [('Who', r.actorLabel, null), ('When', fmtDateTime(r.createdAt.toLocal()), null)],
+              tag: tag(r),
+            ),
+            onOpen: (r) => _showAuditEntry(context, r),
+            emptyTitle: 'No entries match',
+            emptyMessage: 'Try widening or clearing the filters.',
+          );
+        },
+      ),
+    );
+  }
+}
+
+void _showAuditEntry(BuildContext context, AuditLog log) {
+  const encoder = JsonEncoder.withIndent('  ');
+  String render(Object? v) => v == null ? '(none)' : encoder.convert(v);
+  final who = log.user != null ? '${log.user!.fullName} (${log.user!.email})' : (log.apiKey != null ? '${log.apiKey!.name} (API key)' : '—');
+  showNxDialog<void>(
+    context,
+    width: 720,
+    builder: (ctx) {
+      final n = ctx.nx;
+      Widget block(String label, Object? v) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          NxKicker(label, color: n.n500),
+          const SizedBox(height: 4),
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(color: n.bg, borderRadius: BorderRadius.circular(NxRadius.md)),
+            child: SelectableText(render(v), style: TextStyle(fontFamily: 'monospace', fontSize: 11.5, color: n.n200)),
           ),
         ],
-      ),
-    );
-  }
-
-  void _showDetail(BuildContext context, AuditLog log) {
-    const encoder = JsonEncoder.withIndent('  ');
-    String render(Object? value) => value == null ? '(none)' : encoder.convert(value);
-    final who = log.user != null
-        ? '${log.user!.fullName} (${log.user!.email})'
-        : (log.apiKey != null ? '${log.apiKey!.name} (API key)' : '—');
-
-    AppDialog.show<void>(
-      context,
-      title: '${log.action} · ${log.entity}${log.entityId != null ? ' (${log.entityId})' : ''}',
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+      );
+      return NxDialogFrame(
+        title: log.action,
+        titleWidget: Wrap(
+          spacing: 8,
+          runSpacing: 4,
+          crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            Text('When: ${formatDateTime(log.createdAt)}'),
-            Text('Who: $who'),
-            const SizedBox(height: AppSpacing.md),
-            Text('Old value', style: Theme.of(context).textTheme.labelLarge),
-            SelectableText(render(log.oldValue), style: const TextStyle(fontFamily: 'monospace')),
-            const SizedBox(height: AppSpacing.md),
-            Text('New value', style: Theme.of(context).textTheme.labelLarge),
-            SelectableText(render(log.newValue), style: const TextStyle(fontFamily: 'monospace')),
+            NxTag(log.action, tone: _actionTone(log.action)),
+            Text(log.entity, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w500, color: n.text)),
+            if (log.entityId != null) Text(log.entityId!, style: TextStyle(fontFamily: 'monospace', fontSize: 13, color: n.n400)),
           ],
         ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context, rootNavigator: true).pop(),
-          child: const Text('Close'),
+        sub: '${fmtDateTime(log.createdAt.toLocal())} · $who',
+        body: LayoutBuilder(
+          builder: (context, box) {
+            final two = box.maxWidth >= 460;
+            final a = block('Before', log.oldValue);
+            final b = block('After', log.newValue);
+            return two
+                ? Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(child: a), const SizedBox(width: 10), Expanded(child: b)])
+                : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [a, const SizedBox(height: 10), b]);
+          },
         ),
-      ],
-    );
-  }
-}
-
-class _PaginationBar extends StatelessWidget {
-  const _PaginationBar({required this.page, required this.onGoToPage});
-
-  final AuditLogPage page;
-  final void Function(int page) onGoToPage;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Row(
-      children: [
-        Text(
-          'Page ${page.page} of ${page.totalPages == 0 ? 1 : page.totalPages} · ${page.total} total',
-          style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-        ),
-        const Spacer(),
-        IconButton(
-          tooltip: 'Previous page',
-          icon: const Icon(Icons.chevron_left),
-          onPressed: page.page > 1 ? () => onGoToPage(page.page - 1) : null,
-        ),
-        IconButton(
-          tooltip: 'Next page',
-          icon: const Icon(Icons.chevron_right),
-          onPressed: page.page < page.totalPages ? () => onGoToPage(page.page + 1) : null,
-        ),
-      ],
-    );
-  }
-}
-
-class _AuditLogStats extends StatelessWidget {
-  const _AuditLogStats({required this.page});
-
-  final AuditLogPage page;
-
-  @override
-  Widget build(BuildContext context) {
-    return Wrap(
-      spacing: AppSpacing.sm,
-      runSpacing: AppSpacing.xs,
-      children: [
-        StatTile(label: 'shown', value: '${page.data.length}', icon: Icons.receipt_long_outlined),
-        StatTile(label: 'total matching', value: '${page.total}', icon: Icons.filter_alt_outlined),
-      ],
-    );
-  }
+        actions: [NxButton(label: 'Close', onPressed: () => Navigator.of(ctx).pop())],
+      );
+    },
+  );
 }

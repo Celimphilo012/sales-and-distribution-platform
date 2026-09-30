@@ -5,10 +5,12 @@ import '../../locations/data/locations_providers.dart';
 import '../../locations/domain/location.dart';
 import '../../locations/domain/location_path.dart';
 import '../../products/data/products_providers.dart';
+import '../../products/presentation/products_list_providers.dart';
 import '../../products/domain/product.dart';
 import '../../products/domain/products_filter.dart';
 import '../../warehouses/data/warehouses_providers.dart';
 import '../domain/inventory_balance.dart';
+import '../domain/ledger_entry.dart';
 import '../domain/product_location_stock.dart';
 import 'inventory_api.dart';
 
@@ -75,3 +77,30 @@ final productStockBreakdownProvider = FutureProvider.autoDispose
           ),
       ];
     });
+
+/// Every balance the viewer can see (all their warehouses) — the Inventory
+/// list, the structure map's fill figures, and the transfer source picker.
+final allBalancesProvider = FutureProvider.autoDispose<List<InventoryBalance>>((ref) {
+  return ref.watch(inventoryApiProvider).balances();
+});
+
+/// Ledger rows of one type (RECEIVE, TRANSFER…), newest first — the receiving
+/// and transfer history lists.
+final ledgerByTypeProvider = FutureProvider.autoDispose.family<List<LedgerEntry>, String>((ref, type) {
+  return ref.watch(inventoryApiProvider).transactions(type: type, limit: 1000);
+});
+
+/// A product's latest movements (the product sheet).
+final productLedgerProvider = FutureProvider.autoDispose.family<List<LedgerEntry>, String>((ref, productId) {
+  return ref.watch(inventoryApiProvider).transactions(productId: productId, limit: 8);
+});
+
+/// Everything that moves stock invalidates these.
+void invalidateStockViews(WidgetRef ref) {
+  ref.invalidate(allBalancesProvider);
+  ref.invalidate(ledgerByTypeProvider);
+  ref.invalidate(productLedgerProvider);
+  ref.invalidate(productStockBreakdownProvider);
+  ref.invalidate(locationBalancesProvider);
+  ref.invalidate(productsListProvider);
+}

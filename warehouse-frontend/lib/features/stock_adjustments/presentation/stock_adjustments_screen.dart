@@ -1,297 +1,178 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
-import '../../../core/auth/app_user.dart';
+import '../../../app_shell/responsive_app_shell.dart';
 import '../../../core/auth/auth_provider.dart';
 import '../../../core/error/app_error.dart';
-import '../../../core/theme/app_spacing.dart';
-import '../../../shared/widgets/empty_loading_error_states.dart';
-import '../../../shared/widgets/stat_tile.dart';
-import '../../../shared/widgets/status_badge.dart';
+import '../../../core/theme/nocturne.dart';
+import '../../../shared/nx/nx_format.dart';
+import '../../../shared/nx/nx_list_page.dart';
+import '../../../shared/nx/nx_primitives.dart';
 import '../data/stock_adjustments_providers.dart';
 import '../domain/stock_adjustment.dart';
-import 'widgets/adjustment_request_form.dart';
-import 'widgets/adjustment_summary_tile.dart';
-import 'widgets/review_note_dialog.dart';
+import 'adjustment_form_dialog.dart';
+import 'adjustment_review_dialog.dart';
 
-enum _AdjustmentsView { request, queue }
+class _Row {
+  _Row(this.a, {required this.own});
 
-/// STEP 6e-2 — STOCK ADJUSTMENTS, the two-step approval workflow (§F):
-/// `inventory.adjust.request` (WAREHOUSE) proposes, `inventory.adjust.
-/// approve` (MANAGER) reviews. A request never moves stock; only an approval
-/// does (`StockAdjustmentsService.approve` is the sole caller of
-/// `InventoryService.applyTransaction()` in this feature). Separation of
-/// duties — a requester cannot approve their own request — is enforced on
-/// the backend regardless; this screen mirrors it by hiding approve/reject on
-/// a user's own pending requests, and still handles a 403 gracefully if one
-/// ever slips through (e.g. a stale list racing a permission change).
-class StockAdjustmentsScreen extends ConsumerStatefulWidget {
+  final StockAdjustment a;
+
+  /// Requested by the signed-in user (they can't review it).
+  final bool own;
+
+  bool get inc => a.direction == AdjustmentDirection.increase;
+  bool get pending => a.status == AdjustmentStatus.pending;
+  double get signed => inc ? a.delta : -a.delta;
+  int get days => pending ? daysSince(a.requestedAt) : 0;
+  String get bucketS => a.bucket.label.toLowerCase();
+}
+
+/// Stock Adjustments (prototype `adjustments`) — the approval queue first.
+/// Only an approval moves stock; nobody reviews their own request. Requests
+/// can carry an evidence photo, shown to the reviewer.
+class StockAdjustmentsScreen extends ConsumerWidget {
   const StockAdjustmentsScreen({super.key});
 
   @override
-  ConsumerState<StockAdjustmentsScreen> createState() => _StockAdjustmentsScreenState();
-}
-
-class _StockAdjustmentsScreenState extends ConsumerState<StockAdjustmentsScreen> {
-  _AdjustmentsView _view = _AdjustmentsView.queue;
-
-  void _refresh() {
-    ref.invalidate(stockAdjustmentsListProvider(null));
-  }
-
-  Future<void> _approve(StockAdjustment adjustment) async {
-    final note = await showReviewNoteDialog(
-      context,
-      title: 'Approve adjustment',
-      actionLabel: 'Approve',
-      required: false,
-    );
-    if (note == null || !mounted) return;
-    try {
-      await ref
-          .read(stockAdjustmentsApiProvider)
-          .approve(adjustment.id, reviewNote: note.isEmpty ? null : note);
-      if (!mounted) return;
-      _refresh();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Approved — stock moved for ${adjustment.product.name}.')),
-      );
-    } on AppError catch (e) {
-      if (!mounted) return;
-      _refresh();
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
-    }
-  }
-
-  Future<void> _reject(StockAdjustment adjustment) async {
-    final note = await showReviewNoteDialog(
-      context,
-      title: 'Reject adjustment',
-      actionLabel: 'Reject',
-      required: true,
-    );
-    if (note == null || !mounted) return;
-    try {
-      await ref.read(stockAdjustmentsApiProvider).reject(adjustment.id, reviewNote: note);
-      if (!mounted) return;
-      _refresh();
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Adjustment rejected — no stock moved.')));
-    } on AppError catch (e) {
-      if (!mounted) return;
-      _refresh();
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final user = ref.watch(authProvider.select((s) => s.value?.user));
+  Widget build(BuildContext context, WidgetRef ref) {
+    final n = context.nx;
+    final user = ref.watch(authProvider).value?.user;
     final canRequest = user?.can('inventory.adjust.request') ?? false;
     final canApprove = user?.can('inventory.adjust.approve') ?? false;
+    final async = ref.watch(stockAdjustmentsListProvider(null));
 
-    if (!canRequest && !canApprove) {
-      return const EmptyStateView(
-        title: "You don't have permission to view stock adjustments",
-        message: 'Ask an administrator for the inventory.adjust.request or inventory.adjust.approve permission.',
-        icon: Icons.lock_outline,
-      );
-    }
+    return NxPageScroll(
+      onRefresh: () async => ref.invalidate(stockAdjustmentsListProvider),
+      child: async.when(
+        loading: () => const NxLoading(message: 'Loading adjustments…'),
+        error: (e, _) => NxError(
+          message: e is AppError ? e.message : 'Could not load adjustments.',
+          onRetry: () => ref.invalidate(stockAdjustmentsListProvider),
+        ),
+        data: (list) {
+          final rows = [for (final a in list) _Row(a, own: a.requestedBy == user?.id)];
+          NxTag status(_Row r) => NxTag(r.a.status.label, tone: switch (r.a.status) {
+            AdjustmentStatus.pending => Tone.warn,
+            AdjustmentStatus.approved => Tone.ok,
+            AdjustmentStatus.rejected => Tone.bad,
+          });
+          NxTag? wait(_Row r) => r.pending
+              ? NxTag(fmtWaiting(r.days), tone: r.days >= 3 ? Tone.bad : r.days >= 1 ? Tone.warn : Tone.neutral)
+              : null;
+          List<NxRowAction> acts(_Row r) => !r.pending || r.own || !canApprove
+              ? const []
+              : [
+                  NxRowAction(icon: PhosphorIconsRegular.x, label: 'Reject', text: 'Reject', onPressed: () => showAdjustmentReview(context, r.a, approve: false)),
+                  NxRowAction(icon: PhosphorIconsRegular.check, label: 'Approve', text: 'Approve', primary: true, onPressed: () => showAdjustmentReview(context, r.a, approve: true)),
+                ];
+          final requesters = {for (final a in list) a.requestedByUser.fullName}.toList()..sort();
+          final locs = {for (final a in list) a.location.code}.toList()..sort();
+          String photo(_Row r) => r.a.hasPhoto ? ' · photo attached' : '';
 
-    return Padding(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Stock Adjustments', style: theme.textTheme.headlineSmall),
-          const SizedBox(height: AppSpacing.sm),
-          // No list/table/grid switcher here (unlike Products) — each
-          // adjustment is a rich card (evidence photo, approve/reject
-          // actions, reviewer note), not a flat record; a table would have
-          // to either drop that inline UI or awkwardly cram it into cells.
-          SegmentedButton<_AdjustmentsView>(
-            segments: [
-              const ButtonSegment(
-                value: _AdjustmentsView.queue,
-                label: Text('Queue & history'),
-                icon: Icon(Icons.checklist_rtl_outlined),
-              ),
+          return NxListPage<_Row>(
+            stateKey: 'adjustments',
+            title: 'Stock Adjustments',
+            sub: 'Only an approval moves stock. You can’t approve your own requests.',
+            actions: [
               if (canRequest)
-                const ButtonSegment(
-                  value: _AdjustmentsView.request,
-                  label: Text('Request adjustment'),
-                  icon: Icon(Icons.request_page_outlined),
-                ),
+                NxButton.primary(label: 'Request adjustment', icon: PhosphorIconsRegular.plus, onPressed: () => showAdjustmentForm(context)),
             ],
-            selected: {_view},
-            onSelectionChanged: (selection) => setState(() => _view = selection.first),
-          ),
-          const SizedBox(height: AppSpacing.lg),
-          Expanded(
-            child: switch (_view) {
-              _AdjustmentsView.request => canRequest
-                  ? SingleChildScrollView(
-                      child: AdjustmentRequestForm(onSubmitted: () {
-                        _refresh();
-                        setState(() => _view = _AdjustmentsView.queue);
-                      }),
-                    )
-                  : const SizedBox.shrink(),
-              _AdjustmentsView.queue => _QueueAndHistory(
-                  user: user,
-                  canApprove: canApprove,
-                  onApprove: _approve,
-                  onReject: _reject,
-                ),
+            rows: rows,
+            search: (r) => '${r.a.product.name} ${r.a.product.sku} ${r.a.reference ?? ''} ${r.a.reason}',
+            searchPlaceholder: 'Product, reference or reason',
+            stats: (rs) {
+              final pend = rs.where((r) => r.pending).toList();
+              final oldest = pend.isEmpty ? null : pend.map((r) => r.days).reduce((a, b) => a > b ? a : b);
+              final net = pend.fold<double>(0, (s, r) => s + r.signed);
+              return [
+                NxStat('Pending', fmtNum(pend.length), sub: '${pend.where((r) => r.own).length} are yours', color: pend.isNotEmpty ? n.warn : null),
+                NxStat('Oldest wait', oldest == null ? '—' : '${oldest}d', color: (oldest ?? 0) >= 3 ? n.bad : null),
+                NxStat('Approved', fmtNum(rs.where((r) => r.a.status == AdjustmentStatus.approved).length), color: n.ok),
+                NxStat('Rejected', fmtNum(rs.where((r) => r.a.status == AdjustmentStatus.rejected).length)),
+                NxStat('Net pending', fmtSigned(net), sub: 'units if all approved'),
+              ];
             },
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _QueueAndHistory extends ConsumerWidget {
-  const _QueueAndHistory({
-    required this.user,
-    required this.canApprove,
-    required this.onApprove,
-    required this.onReject,
-  });
-
-  final AppUser? user;
-  final bool canApprove;
-  final void Function(StockAdjustment) onApprove;
-  final void Function(StockAdjustment) onReject;
-
-  /// An approver sees every adjustment; a request-only user sees only their
-  /// own — `findAll` itself has no "mine" filter (it only gates on
-  /// `inventory.view`), so this is a client-side visibility choice, not a
-  /// backend restriction.
-  List<StockAdjustment> _visible(List<StockAdjustment> all) {
-    if (canApprove) return all;
-    final uid = user?.id;
-    return all.where((a) => a.requestedBy == uid).toList();
-  }
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
-    final adjustmentsAsync = ref.watch(stockAdjustmentsListProvider(null));
-
-    return adjustmentsAsync.when(
-      loading: () => const LoadingStateView(message: 'Loading adjustments…'),
-      error: (error, stackTrace) => ErrorStateView(
-        message: error is AppError ? error.message : 'Could not load adjustments.',
-        onRetry: () => ref.invalidate(stockAdjustmentsListProvider(null)),
-      ),
-      data: (all) {
-        final visible = _visible(all);
-        final pending = visible.where((a) => a.status == AdjustmentStatus.pending).toList();
-        final reviewed = visible.where((a) => a.status != AdjustmentStatus.pending).toList()
-          ..sort((a, b) => (b.reviewedAt ?? b.requestedAt).compareTo(a.reviewedAt ?? a.requestedAt));
-
-        if (visible.isEmpty) {
-          return const EmptyStateView(
-            title: 'No adjustments yet',
-            message: 'Requested adjustments — yours or, if you approve, everyone\'s — will show up here.',
-            icon: Icons.tune_outlined,
-          );
-        }
-
-        final approved = visible.where((a) => a.status == AdjustmentStatus.approved).length;
-        final rejected = visible.where((a) => a.status == AdjustmentStatus.rejected).length;
-
-        return ListView(
-          children: [
-            Wrap(
-              spacing: AppSpacing.sm,
-              runSpacing: AppSpacing.xs,
-              children: [
-                StatTile(label: 'shown', value: '${visible.length}', icon: Icons.tune_outlined),
-                if (pending.isNotEmpty)
-                  StatTile(label: 'pending', value: '${pending.length}', tone: StatusTone.warning, icon: Icons.hourglass_empty),
-                if (approved > 0)
-                  StatTile(label: 'approved', value: '$approved', tone: StatusTone.success, icon: Icons.check_circle_outline),
-                if (rejected > 0)
-                  StatTile(label: 'rejected', value: '$rejected', tone: StatusTone.danger, icon: Icons.cancel_outlined),
-              ],
+            quick: NxQuick(
+              defaultValue: 'PENDING',
+              get: (r) => r.a.status.apiValue,
+              options: const [('PENDING', 'Queue'), ('APPROVED', 'Approved'), ('REJECTED', 'Rejected'), ('', 'All')],
             ),
-            const SizedBox(height: AppSpacing.md),
-            Text('Pending (${pending.length})', style: theme.textTheme.titleMedium),
-            const SizedBox(height: AppSpacing.sm),
-            if (pending.isEmpty)
-              Padding(
-                padding: const EdgeInsets.only(bottom: AppSpacing.md),
-                child: Text(
-                  'No pending adjustments.',
-                  style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                ),
-              )
-            else
-              for (final adjustment in pending) ...[
-                AdjustmentSummaryTile(adjustment: adjustment, trailing: _pendingTrailing(context, theme, adjustment)),
-                const SizedBox(height: AppSpacing.sm),
-              ],
-            const SizedBox(height: AppSpacing.lg),
-            Text('History (${reviewed.length})', style: theme.textTheme.titleMedium),
-            const SizedBox(height: AppSpacing.sm),
-            if (reviewed.isEmpty)
-              Text(
-                'No approved or rejected adjustments yet.',
-                style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-              )
-            else
-              for (final adjustment in reviewed) ...[
-                AdjustmentSummaryTile(adjustment: adjustment),
-                const SizedBox(height: AppSpacing.sm),
-              ],
-          ],
-        );
-      },
-    );
-  }
-
-  Widget? _pendingTrailing(BuildContext context, ThemeData theme, StockAdjustment adjustment) {
-    final isOwnRequest = user != null && adjustment.requestedBy == user!.id;
-
-    if (!canApprove) {
-      return isOwnRequest
-          ? Text(
-              'Awaiting approval from a manager.',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-                fontStyle: FontStyle.italic,
+            filters: [
+              NxMultiFilter('bucket', 'Bucket', options: [for (final b in AdjustmentBucket.values) (b.apiValue, b.label)], get: (r) => r.a.bucket.apiValue),
+              NxSelectFilter('dir', 'Direction', options: const [('INCREASE', 'Increase'), ('DECREASE', 'Decrease')], get: (r) => r.a.direction.apiValue),
+              NxSelectFilter('by', 'Requested by', options: [for (final x in requesters) (x, x)], get: (r) => r.a.requestedByUser.fullName),
+              NxSelectFilter('loc', 'Location', searchable: true, options: [for (final x in locs) (x, x)], get: (r) => r.a.location.code),
+              NxRangeFilter('days', 'Waiting (days)', get: (r) => r.days),
+              NxToggleFilter('photo', 'Evidence', text: 'With a photo', get: (r) => r.a.hasPhoto),
+              NxToggleFilter('mine', 'Ownership', text: 'Hide my own requests', get: (r) => !r.own),
+            ],
+            defaultView: NxView.list,
+            defaultSort: ('when', -1),
+            columns: [
+              NxColumn(
+                key: 'chg',
+                label: 'Change',
+                sort: (r) => r.signed,
+                cell: (r) => NxCellText(adjustmentDelta(r.a), color: r.inc ? n.ok : n.bad, weight: FontWeight.w500, sub: r.bucketS),
               ),
-            )
-          : null;
-    }
-
-    if (isOwnRequest) {
-      return Text(
-        'You requested this — a different reviewer must approve it.',
-        style: theme.textTheme.bodySmall?.copyWith(
-          color: theme.colorScheme.onSurfaceVariant,
-          fontStyle: FontStyle.italic,
-        ),
-      );
-    }
-
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        OutlinedButton.icon(
-          onPressed: () => onReject(adjustment),
-          icon: const Icon(Icons.close),
-          label: const Text('Reject'),
-        ),
-        const SizedBox(width: AppSpacing.sm),
-        FilledButton.icon(
-          onPressed: () => onApprove(adjustment),
-          icon: const Icon(Icons.check),
-          label: const Text('Approve'),
-        ),
-      ],
+              NxColumn(
+                key: 'p',
+                label: 'Product',
+                sort: (r) => r.a.product.name.toLowerCase(),
+                cell: (r) => NxCellText(r.a.product.name, weight: FontWeight.w500, sub: '${r.a.location.code}${photo(r)}'),
+              ),
+              NxColumn(key: 'reason', label: 'Reason', hide: NxHide.wide, cell: (r) => NxCellText('“${r.a.reason}”', color: n.n300)),
+              NxColumn(
+                key: 'when',
+                label: 'Requested',
+                hide: NxHide.md,
+                sort: (r) => r.a.requestedAt,
+                cell: (r) => NxCellText(r.a.requestedByUser.fullName, sub: fmtWhen(r.a.requestedAt)),
+              ),
+              NxColumn(
+                key: 'wait',
+                label: 'Waiting',
+                sort: (r) => r.days,
+                cell: (r) => wait(r) != null
+                    ? Align(alignment: Alignment.centerLeft, child: wait(r))
+                    : NxCellText(r.a.reviewedByUser == null ? '—' : 'by ${r.a.reviewedByUser!.fullName}', color: n.n400),
+              ),
+              NxColumn(key: 'status', label: 'Status', cell: (r) => Align(alignment: Alignment.centerLeft, child: status(r))),
+              NxColumn(
+                key: 'act',
+                label: '',
+                width: 170,
+                cell: (r) => r.pending && r.own
+                    ? NxCellText('Needs another reviewer', color: n.n500)
+                    : NxRowActions(acts(r), withText: true),
+              ),
+            ],
+            listRow: (r) => NxListRowSpec(
+              icon: r.inc ? PhosphorIconsDuotone.plusCircle : PhosphorIconsDuotone.minusCircle,
+              iconColor: r.inc ? n.ok : n.bad,
+              title: '${adjustmentDelta(r.a)} ${r.bucketS} · ${r.a.product.name}',
+              sub:
+                  '${r.a.location.code} · “${r.a.reason}” · ${r.a.requestedByUser.fullName}${r.own && r.pending ? ' (you — another reviewer must approve)' : ''}${photo(r)}',
+              tag: wait(r) ?? status(r),
+              actions: acts(r),
+            ),
+            card: (r) => NxCardSpec(
+              icon: r.inc ? PhosphorIconsDuotone.plusCircle : PhosphorIconsDuotone.minusCircle,
+              iconColor: r.inc ? n.ok : n.bad,
+              title: r.a.product.name,
+              sub: '${r.a.location.code} · ${r.a.requestedByUser.fullName}${photo(r)}',
+              metrics: [('Change', adjustmentDelta(r.a), r.inc ? n.ok : n.bad), ('Bucket', r.bucketS, null)],
+              tag: wait(r) ?? status(r),
+              actions: acts(r),
+            ),
+            onOpen: (r) => showAdjustmentDetail(context, r.a),
+            emptyTitle: 'Nothing here',
+            emptyMessage: 'No adjustments match — the queue may be clear.',
+          );
+        },
+      ),
     );
   }
 }

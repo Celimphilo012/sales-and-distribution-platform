@@ -26,6 +26,7 @@ const { createTransfersService } = require('./modules/transfers/service');
 const { StockAdjustmentsService } = require('./modules/stock-adjustments/service');
 const { StockCountsService } = require('./modules/stock-counts/service');
 const { StockReservationsService } = require('./modules/external-api/stock-reservations.service');
+const { SalesService } = require('./modules/sales/service');
 const { createReportsService } = require('./modules/reports/service');
 const { createPackingService } = require('./modules/packing/service');
 const { createBrandingService } = require('./modules/branding/service');
@@ -80,7 +81,7 @@ function buildServices({ db, models, cache, config, auth, notifier, logger, bran
 
   // ---- Inventory ledger. InventoryService.applyTransaction is the ONLY writer of inventory_balances (rule 2). ----
   services.inventory = new InventoryService(base, services.products, services.locations, cache);
-  services.receiving = createReceivingService({ inventory: services.inventory, locations: services.locations });
+  services.receiving = createReceivingService({ inventory: services.inventory, locations: services.locations, products: services.products });
   services.transfers = createTransfersService({ inventory: services.inventory, locations: services.locations });
   services.stockAdjustments = new StockAdjustmentsService(
     base,
@@ -91,6 +92,7 @@ function buildServices({ db, models, cache, config, auth, notifier, logger, bran
   );
   services.stockCounts = new StockCountsService(base, services.products, services.locations, services.stockAdjustments, cache);
   services.stockReservations = new StockReservationsService(base, services.products, services.locations, services.inventory);
+  services.sales = new SalesService(base, services.products, cache);
 
   services.packing = createPackingService({ ...base, workstreamManagers: services.workstreamManagers });
 

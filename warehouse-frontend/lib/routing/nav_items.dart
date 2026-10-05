@@ -161,6 +161,12 @@ const List<NavGroup> kNavGroups = [
         requiredPermissions: ['inventory.adjust.request', 'inventory.adjust.approve'],
       ),
       NavItem(
+        label: 'Sale Campaigns',
+        path: RoutePaths.sales,
+        icon: PhosphorIconsDuotone.tag,
+        requiredPermissions: ['sales.view', 'sales.schedule', 'sales.approve'],
+      ),
+      NavItem(
         label: 'Packing',
         path: RoutePaths.packing,
         icon: PhosphorIconsDuotone.package,

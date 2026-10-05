@@ -1,4 +1,4 @@
-package com.swoop.distribution_platform
+package com.docsecure.ordering
 
 import io.flutter.embedding.android.FlutterActivity
 

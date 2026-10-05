@@ -11,7 +11,8 @@ class AppConfig {
 
   static const String apiBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'http://localhost:3200',
+    // defaultValue: 'http://localhost:3200',
+    defaultValue: 'https://botle.docsecuresd.com',
   );
 
   static const Duration connectTimeout = Duration(seconds: 15);

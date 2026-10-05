@@ -32,6 +32,7 @@ class CustomersApi {
     String? address,
     String? locationText,
     String? notes,
+    String? assignedConsultantId,
   }) async {
     final response = await _apiClient.guard(
       (dio) => dio.post<Map<String, dynamic>>(
@@ -42,6 +43,7 @@ class CustomersApi {
           'address': ?address,
           'locationText': ?locationText,
           'notes': ?notes,
+          'assignedConsultantId': ?assignedConsultantId,
         },
       ),
     );
@@ -56,6 +58,7 @@ class CustomersApi {
     String? locationText,
     String? notes,
     CustomerStatus? status,
+    String? assignedConsultantId,
   }) async {
     final response = await _apiClient.guard(
       (dio) => dio.patch<Map<String, dynamic>>(
@@ -67,6 +70,7 @@ class CustomersApi {
           'locationText': ?locationText,
           'notes': ?notes,
           'status': ?status?.apiValue,
+          'assignedConsultantId': ?assignedConsultantId,
         },
       ),
     );

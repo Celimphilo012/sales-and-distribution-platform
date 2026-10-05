@@ -31,7 +31,21 @@ const ORDER_SELECT = `
     JOIN customers c ON c.id = o.customer_id
     LEFT JOIN users u ON u.id = o.consultant_id`;
 
-function createOrdersService({ db, models, auth, customers, warehouseApi, notifications }) {
+/** PERCENT/FIXED_AMOUNT/FIXED_PRICE -> a price, never negative. Mirrors warehouse-node's
+ * products/service.js `discountedPrice` exactly — deliberately duplicated, no shared code across
+ * systems (CLAUDE.md). Only needed for a RESTRICTED campaign; the warehouse already resolves
+ * `effectivePrice` server-side for ALL_CUSTOMERS. */
+function discountedPrice(sellingPrice, discountType, discountValue) {
+  const raw =
+    discountType === 'PERCENT'
+      ? sellingPrice * (1 - discountValue / 100)
+      : discountType === 'FIXED_AMOUNT'
+        ? sellingPrice - discountValue
+        : discountValue; // FIXED_PRICE
+  return Math.max(0, Math.round(raw * 100) / 100);
+}
+
+function createOrdersService({ db, models, auth, customers, warehouseApi, notifications, salesEligibility }) {
   async function loadOrders(where = new Where(), orderBy = 'ORDER BY o.created_at DESC', executor) {
     const orders = (await db.query(`${ORDER_SELECT} ${where.sql} ${orderBy}`, where.params, executor)).map(nest);
     if (orders.length === 0) return orders;
@@ -92,18 +106,64 @@ function createOrdersService({ db, models, auth, customers, warehouseApi, notifi
   /**
    * Rule 8 across the split: every line's name + price is snapshotted from the warehouse catalogue
    * at save time — never client-supplied. An INACTIVE product is rejected.
+   *
+   * A product carrying a `sale` block (warehouse-node's attachActiveSale) gets its discount applied
+   * HERE, once the minimum quantity and eligibility are both satisfied — `effectivePrice` is used
+   * directly for an ALL_CUSTOMERS campaign (the warehouse already resolved it); a RESTRICTED one is
+   * resolved locally, since the warehouse never learns which customer is ordering (ARCHITECTURE.md).
    */
-  function buildLineInputs(items) {
+  /** How many of this customer's own orders (any status but CANCELLED/REJECTED — a DRAFT still
+   * counts, since saving a draft re-runs this check anyway and an uncapped draft wouldn't) already
+   * carry this campaign — the per-customer usage cap's enforcement point, since the warehouse has no
+   * concept of a customer at all (ARCHITECTURE.md) and so cannot count this itself. */
+  async function campaignUsesByCustomer(campaignId, customerId) {
+    const row = await db.one(
+      `SELECT COUNT(DISTINCT oi.order_id) AS n
+         FROM order_items oi
+         JOIN orders o ON o.id = oi.order_id
+        WHERE oi.sale_campaign_id = ? AND o.customer_id = ? AND o.status NOT IN ('CANCELLED', 'REJECTED')`,
+      [campaignId, customerId],
+    );
+    return Number(row.n);
+  }
+
+  function buildLineInputs(items, customerId) {
     return Promise.all(
       items.map(async (item) => {
         const product = await warehouseApi.getProduct(item.productId);
         if (product.status !== 'ACTIVE') throw badRequest(`Product ${product.sku} is not active and cannot be ordered`);
-        const unitPrice = Number(product.sellingPrice);
+        let unitPrice = Number(product.sellingPrice);
+        let originalUnitPrice = null;
+        let saleCampaignId = null;
+        let saleCampaignName = null;
+        if (product.sale) {
+          const meetsQty = item.quantity >= Number(product.sale.minQuantity);
+          const eligible =
+            product.sale.eligibility === 'ALL_CUSTOMERS' || (await salesEligibility.isEligible(product.sale.campaignId, customerId));
+          const underCap =
+            product.sale.maxUsesPerCustomer === undefined ||
+            (await campaignUsesByCustomer(product.sale.campaignId, customerId)) < product.sale.maxUsesPerCustomer;
+          if (meetsQty && eligible && underCap) {
+            originalUnitPrice = unitPrice;
+            unitPrice =
+              product.sale.effectivePrice !== undefined
+                ? Number(product.sale.effectivePrice)
+                : discountedPrice(unitPrice, product.sale.discountType, Number(product.sale.discountValue));
+            saleCampaignId = product.sale.campaignId;
+            saleCampaignName = product.sale.campaignName;
+          }
+        }
         return {
           productId: item.productId,
           productName: product.name,
           quantityOrdered: item.quantity,
           unitPrice,
+          originalUnitPrice,
+          saleCampaignId,
+          saleCampaignName,
+          // A snapshot, same principle as originalUnitPrice above — null when the warehouse product
+          // has no cost_price set (never treated as 0; see modules/finances.js's margin query).
+          unitCost: product.costPrice == null ? null : Number(product.costPrice),
           lineTotal: round2(unitPrice * item.quantity),
         };
       }),
@@ -126,7 +186,7 @@ function createOrdersService({ db, models, auth, customers, warehouseApi, notifi
 
   async function create(dto, consultantId) {
     await customers.getExisting(dto.customerId);
-    const lines = await buildLineInputs(dto.items);
+    const lines = await buildLineInputs(dto.items, dto.customerId);
     const total = round2(lines.reduce((sum, l) => sum + l.lineTotal, 0));
     const orderNumber = await generateUniqueOrderNumber();
 
@@ -153,7 +213,7 @@ function createOrdersService({ db, models, auth, customers, warehouseApi, notifi
     if (order.status !== 'DRAFT') throw conflict('Only DRAFT orders can be edited');
     if (order.consultantId !== userId) throw forbidden("Only the order's owner can edit their own draft");
 
-    const lines = dto.items ? await buildLineInputs(dto.items) : undefined;
+    const lines = dto.items ? await buildLineInputs(dto.items, order.customerId) : undefined;
     const total = lines ? round2(lines.reduce((sum, l) => sum + l.lineTotal, 0)) : undefined;
 
     await db.transaction(async (tx) => {

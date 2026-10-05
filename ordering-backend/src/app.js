@@ -25,6 +25,8 @@ const { createCustomersService, customersRoutes } = require('./modules/customers
 const { createOrdersService, ordersRoutes, catalogueRoutes, warehouseLocationsRoutes } = require('./modules/orders');
 const { createReportsService, reportsRoutes, dashboardRoutes } = require('./modules/reports');
 const { createBrandingService, brandingRoutes } = require('./modules/branding');
+const { createSalesEligibilityService, salesEligibilityRoutes } = require('./modules/sales-eligibility');
+const { createFinancesService, financesRoutes } = require('./modules/finances');
 
 /** [mountPath, routes function]. Express matches in order: more specific mounts first. */
 const MODULES = [
@@ -37,9 +39,11 @@ const MODULES = [
   ['/orders', ordersRoutes],
   ['/catalogue', catalogueRoutes],
   ['/warehouse-locations', warehouseLocationsRoutes],
+  ['/sales', salesEligibilityRoutes],
   ['/payments', paymentsRoutes],
   ['/reports', reportsRoutes],
   ['/dashboard', dashboardRoutes],
+  ['/finances', financesRoutes],
   ['/settings/delivery', deliverySettingsRoutes],
   ['/settings/branding', brandingRoutes],
 ];
@@ -60,14 +64,17 @@ function buildServices({ db, models, config, auth, logger }) {
   services.users = createUsersService(base);
   services.roles = createRolesService(base);
   services.customers = createCustomersService(base);
+  services.salesEligibility = createSalesEligibilityService(base);
   services.orders = createOrdersService({
     ...base,
     customers: services.customers,
     warehouseApi: services.warehouseApi,
     notifications: services.notifications,
+    salesEligibility: services.salesEligibility,
   });
   services.payments = createPaymentsService({ ...base, orders: services.orders, notifications: services.notifications });
   services.reports = createReportsService(base);
+  services.finances = createFinancesService({ ...base, reports: services.reports, customers: services.customers });
   return services;
 }
 

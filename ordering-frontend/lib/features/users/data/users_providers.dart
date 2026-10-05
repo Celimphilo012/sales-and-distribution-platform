@@ -9,3 +9,9 @@ final usersApiProvider = Provider<UsersApi>((ref) => UsersApi(ref.watch(apiClien
 final usersListProvider = FutureProvider.autoDispose<List<WarehouseUser>>((ref) {
   return ref.watch(usersApiProvider).list();
 });
+
+/// For pickers (a customer's assigned consultant, sale-campaign eligibility) — a minimal directory,
+/// not full user management (`usersListProvider` needs `users.manage`, this needs `customers.view`).
+final consultantsListProvider = FutureProvider.autoDispose<List<ConsultantRef>>((ref) {
+  return ref.watch(usersApiProvider).consultants();
+});

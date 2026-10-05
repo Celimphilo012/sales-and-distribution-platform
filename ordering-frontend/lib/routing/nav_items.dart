@@ -66,6 +66,7 @@ const List<NavGroup> kNavGroups = [
         requiredPermissions: ['customers.view', 'customers.create'],
       ),
       NavItem(label: 'Payments', path: RoutePaths.payments, icon: PhosphorIconsDuotone.wallet, requiredPermissions: ['reports.view']),
+      NavItem(label: 'Finances', path: RoutePaths.finances, icon: PhosphorIconsDuotone.chartLineUp, requiredPermissions: ['finances.view']),
     ],
   ),
   NavGroup(
@@ -84,6 +85,12 @@ const List<NavGroup> kNavGroups = [
     shortLabel: 'System',
     icon: PhosphorIconsDuotone.gearSix,
     items: [
+      NavItem(
+        label: 'Sale Campaigns',
+        path: RoutePaths.saleCampaigns,
+        icon: PhosphorIconsDuotone.tag,
+        requiredPermissions: ['sales.view', 'sales.eligibility.manage'],
+      ),
       NavItem(label: 'Reports', path: RoutePaths.reports, icon: PhosphorIconsDuotone.chartBar, requiredPermissions: ['reports.view']),
       NavItem(label: 'Audit Log', path: RoutePaths.audit, icon: PhosphorIconsDuotone.listMagnifyingGlass, requiredPermissions: ['audit.view']),
       NavItem(label: 'Settings', path: RoutePaths.settings, icon: PhosphorIconsDuotone.sliders),

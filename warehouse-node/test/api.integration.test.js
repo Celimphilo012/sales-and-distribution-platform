@@ -365,6 +365,117 @@ describe('warehouse API (Express port)', () => {
     });
   });
 
+  describe('serial-tracked (unit) receiving', () => {
+    let serial;
+
+    before(async () => {
+      serial = (
+        await api.post('/products', {
+          sku: `SER-${run}`,
+          name: `Serial product ${run}`,
+          categoryId: fx.category.id,
+          sellingPrice: 25,
+          uom: 'EACH',
+          trackingMode: 'SERIAL',
+        })
+      ).json;
+    });
+
+    it('a BULK product rejects unitCodes, and a SERIAL product rejects a typed quantity', async () => {
+      const bulk = await api.post('/inventory/receiving', {
+        supplier: 'x',
+        productId: fx.product.id,
+        unitCodes: ['whatever'],
+        toLocationId: fx.locA.id,
+      });
+      assert.equal(bulk.status, 400);
+
+      const withQty = await api.post('/inventory/receiving', { supplier: 'x', productId: serial.id, quantity: 5, toLocationId: fx.locA.id });
+      assert.equal(withQty.status, 400);
+
+      const neither = await api.post('/inventory/receiving', { supplier: 'x', productId: serial.id, toLocationId: fx.locA.id });
+      assert.equal(neither.status, 400);
+    });
+
+    it('pre-printed labels come in PENDING -> ON_HAND, and an unrecognised code auto-registers as a new SUPPLIER unit', async () => {
+      const { unitIds } = (await api.post(`/products/${serial.id}/units/generate`, { count: 3 })).json;
+      assert.equal(unitIds.length, 3);
+
+      const supplierCode = `SUPPLIER-BARCODE-${uid()}`;
+      const res = await api.post('/inventory/receiving', {
+        supplier: 'Acme',
+        productId: serial.id,
+        unitCodes: [...unitIds, supplierCode],
+        toLocationId: fx.locA.id,
+      });
+      assert.equal(res.status, 201);
+      assert.equal(Number(res.json.quantity), 4, 'quantity is derived from the scanned codes, never trusted from the client');
+      assert.deepEqual(await balanceOf(serial.id, fx.locA.id), { onHand: 4, reserved: 0, available: 4 });
+
+      const units = (await app.db.query('SELECT status, location_id AS locationId, source FROM inventory_units WHERE id IN (?)', [unitIds])).map((u) => u);
+      assert.ok(units.every((u) => u.status === 'ON_HAND' && u.locationId === fx.locA.id));
+
+      const [registered] = await app.db.query('SELECT status, source FROM inventory_units WHERE unit_code = ?', [supplierCode]);
+      assert.equal(registered.status, 'ON_HAND');
+      assert.equal(registered.source, 'SUPPLIER');
+    });
+
+    it('a code already received cannot be received again, and rejects the whole line (nothing written)', async () => {
+      const { unitIds } = (await api.post(`/products/${serial.id}/units/generate`, { count: 1 })).json;
+      const first = await api.post('/inventory/receiving', { supplier: 'x', productId: serial.id, unitCodes: unitIds, toLocationId: fx.locA.id });
+      assert.equal(first.status, 201);
+
+      const balanceBefore = await balanceOf(serial.id, fx.locA.id);
+      const again = await api.post('/inventory/receiving', { supplier: 'x', productId: serial.id, unitCodes: unitIds, toLocationId: fx.locA.id });
+      assert.equal(again.status, 409);
+      assert.ok(again.json.rejectedCodes?.some((r) => r.code === unitIds[0]));
+      assert.deepEqual(await balanceOf(serial.id, fx.locA.id), balanceBefore);
+    });
+
+    it('generating unit labels is refused for a BULK product', async () => {
+      const res = await api.post(`/products/${fx.product.id}/units/generate`, { count: 1 });
+      assert.equal(res.status, 400);
+    });
+
+    it('lists a product\'s units, paginated, newest first, with the current status and location', async () => {
+      const product = (
+        await api.post('/products', {
+          sku: `SER-LIST-${run}`,
+          name: `Serial list product ${run}`,
+          categoryId: fx.category.id,
+          sellingPrice: 10,
+          uom: 'EACH',
+          trackingMode: 'SERIAL',
+        })
+      ).json;
+      const { unitIds } = (await api.post(`/products/${product.id}/units/generate`, { count: 5 })).json;
+      await api.post('/inventory/receiving', {
+        supplier: 'x',
+        productId: product.id,
+        unitCodes: unitIds.slice(0, 2),
+        toLocationId: fx.locA.id,
+      });
+
+      const page1 = (await api.get(`/inventory/units?productId=${product.id}&pageSize=2`)).json;
+      assert.equal(page1.total, 5);
+      assert.equal(page1.totalPages, 3);
+      assert.equal(page1.data.length, 2);
+      // Newest-generated first; the two just received are the most recently updated, not necessarily
+      // first in generation order, but every row must come back exactly once across all pages.
+      const page2 = (await api.get(`/inventory/units?productId=${product.id}&page=2&pageSize=2`)).json;
+      const page3 = (await api.get(`/inventory/units?productId=${product.id}&page=3&pageSize=2`)).json;
+      const allIds = [...page1.data, ...page2.data, ...page3.data].map((u) => u.id);
+      assert.deepEqual([...allIds].sort(), [...unitIds].sort());
+
+      const onHand = [...page1.data, ...page2.data, ...page3.data].filter((u) => u.status === 'ON_HAND');
+      assert.equal(onHand.length, 2);
+      for (const u of onHand) assert.equal(u.location.id, fx.locA.id);
+
+      const filtered = (await api.get(`/inventory/units?productId=${product.id}&status=PENDING`)).json;
+      assert.equal(filtered.total, 3);
+    });
+  });
+
   describe('two-step adjustments (separation of duties)', () => {
     let requester;
     let requesterId;

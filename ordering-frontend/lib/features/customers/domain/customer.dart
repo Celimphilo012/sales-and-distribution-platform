@@ -31,6 +31,7 @@ class Customer {
     this.locationText,
     required this.status,
     this.notes,
+    this.assignedConsultantId,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -42,6 +43,10 @@ class Customer {
   final String? locationText;
   final CustomerStatus status;
   final String? notes;
+
+  /// Which consultant this customer belongs to — drives RESTRICTED sale-campaign eligibility
+  /// (a campaign is opened to consultants; every customer assigned to an eligible one qualifies).
+  final String? assignedConsultantId;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -53,6 +58,7 @@ class Customer {
     locationText: json['locationText'] as String?,
     status: customerStatusFromJson(json['status'] as String),
     notes: json['notes'] as String?,
+    assignedConsultantId: json['assignedConsultantId'] as String?,
     createdAt: DateTime.parse(json['createdAt'] as String),
     updatedAt: DateTime.parse(json['updatedAt'] as String),
   );

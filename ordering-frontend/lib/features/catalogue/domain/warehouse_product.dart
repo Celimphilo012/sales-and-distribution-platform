@@ -59,6 +59,55 @@ class WarehouseProductAttribute {
   String get display => unit != null && unit!.isNotEmpty ? '$name: $value $unit' : '$name: $value';
 }
 
+/// The `sale` block a product carries when it's currently on an ACTIVE sale campaign
+/// (warehouse-node's `attachActiveSale`) — terms only; `effectivePrice` is set for an
+/// ALL_CUSTOMERS campaign, null for RESTRICTED (the warehouse never resolves a customer-specific
+/// price — see orders.js `buildLineInputs`, which is what actually prices the order line on save).
+/// Display/estimate only here — same "server snapshots the real price" principle as the rest of
+/// this picker.
+class WarehouseProductSale {
+  const WarehouseProductSale({
+    required this.campaignId,
+    required this.campaignName,
+    required this.discountType,
+    required this.discountValue,
+    required this.minQuantity,
+    required this.eligibility,
+    this.effectivePrice,
+  });
+
+  final String campaignId;
+  final String campaignName;
+  final String discountType; // PERCENT | FIXED_AMOUNT | FIXED_PRICE
+  final double discountValue;
+  final double minQuantity;
+  final String eligibility; // ALL_CUSTOMERS | RESTRICTED
+  final double? effectivePrice;
+
+  bool get isRestricted => eligibility == 'RESTRICTED';
+
+  /// Same math as warehouse-node's `discountedPrice` / ordering-backend's `discountedPrice` —
+  /// deliberately duplicated a third time, no shared code across systems or apps.
+  double previewPrice(double sellingPrice) {
+    final raw = switch (discountType) {
+      'PERCENT' => sellingPrice * (1 - discountValue / 100),
+      'FIXED_AMOUNT' => sellingPrice - discountValue,
+      _ => discountValue, // FIXED_PRICE
+    };
+    return raw < 0 ? 0 : (raw * 100).round() / 100;
+  }
+
+  factory WarehouseProductSale.fromJson(Map<String, dynamic> json) => WarehouseProductSale(
+    campaignId: json['campaignId'] as String,
+    campaignName: json['campaignName'] as String,
+    discountType: json['discountType'] as String,
+    discountValue: _num(json['discountValue']),
+    minQuantity: _num(json['minQuantity']),
+    eligibility: json['eligibility'] as String,
+    effectivePrice: json['effectivePrice'] == null ? null : _num(json['effectivePrice']),
+  );
+}
+
 class WarehouseProduct {
   const WarehouseProduct({
     required this.id,
@@ -70,6 +119,7 @@ class WarehouseProduct {
     required this.status,
     this.category,
     this.attributes = const [],
+    this.sale,
   });
 
   final String id;
@@ -81,6 +131,7 @@ class WarehouseProduct {
   final String status;
   final WarehouseProductCategoryRef? category;
   final List<WarehouseProductAttribute> attributes;
+  final WarehouseProductSale? sale;
 
   bool get isActive => status == 'ACTIVE';
 
@@ -98,6 +149,7 @@ class WarehouseProduct {
     attributes: (json['attributes'] as List<dynamic>? ?? const [])
         .map((e) => WarehouseProductAttribute.fromJson(e as Map<String, dynamic>))
         .toList(),
+    sale: json['sale'] == null ? null : WarehouseProductSale.fromJson(json['sale'] as Map<String, dynamic>),
   );
 }
 

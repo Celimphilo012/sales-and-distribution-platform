@@ -22,6 +22,10 @@ const OTP_ACTIONS = {
   'role.delete': 'delete a role',
   'api_key.revoke': 'revoke an API key',
   'mfa.disable': 'turn off sign-in verification',
+  'sale_campaign.approve': 'approve a sale campaign',
+  'sale_campaign.reject': 'reject a sale campaign',
+  'sale_campaign.cancel': 'cancel a sale campaign',
+  'sale_campaign.reopen': 'reopen a sale campaign',
 };
 
 module.exports = { OTP_ACTIONS };

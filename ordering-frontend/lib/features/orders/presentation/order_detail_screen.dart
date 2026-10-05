@@ -240,12 +240,32 @@ class _Lines extends StatelessWidget {
             NxColumn(
               key: 'p',
               label: 'Product',
-              cell: (i) => NxCellText(
-                i.productName ?? '(unknown product)',
-                weight: FontWeight.w500,
-                sub: i.allocations.isEmpty
-                    ? null
-                    : 'Reserved at ${i.allocations.map((a) => '${a.locationLabel ?? 'location'} × ${fmtNum(a.quantity)}').join(' · ')}',
+              cell: (i) => Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Flexible(
+                        child: Text(
+                          i.productName ?? '(unknown product)',
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: n.text),
+                        ),
+                      ),
+                      if (i.wasDiscounted) ...[
+                        const SizedBox(width: 6),
+                        NxTag(i.saleCampaignName ?? 'Sale', tone: Tone.accent, small: true),
+                      ],
+                    ],
+                  ),
+                  if (i.allocations.isNotEmpty)
+                    Text(
+                      'Reserved at ${i.allocations.map((a) => '${a.locationLabel ?? 'location'} × ${fmtNum(a.quantity)}').join(' · ')}',
+                      style: TextStyle(fontSize: 11, color: n.n500),
+                    ),
+                ],
               ),
             ),
             NxColumn(key: 'q', label: 'Qty', align: TextAlign.right, cell: (i) => NxCellText(fmtNum(i.quantityOrdered), align: TextAlign.right)),
@@ -263,7 +283,25 @@ class _Lines extends StatelessWidget {
                 ),
               ),
             ],
-            NxColumn(key: 'u', label: 'Unit price', align: TextAlign.right, hide: NxHide.md, cell: (i) => NxCellText(fmtMoney(i.unitPrice), align: TextAlign.right, color: n.n300)),
+            NxColumn(
+              key: 'u',
+              label: 'Unit price',
+              align: TextAlign.right,
+              hide: NxHide.md,
+              cell: (i) => i.wasDiscounted
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          fmtMoney(i.originalUnitPrice!),
+                          style: TextStyle(fontSize: 11, color: n.n500, decoration: TextDecoration.lineThrough),
+                        ),
+                        Text(fmtMoney(i.unitPrice), style: TextStyle(fontSize: 13, color: n.warn, fontWeight: FontWeight.w600)),
+                      ],
+                    )
+                  : NxCellText(fmtMoney(i.unitPrice), align: TextAlign.right, color: n.n300),
+            ),
             NxColumn(key: 't', label: 'Line total', align: TextAlign.right, cell: (i) => NxCellText(fmtMoney(i.lineTotal), align: TextAlign.right, weight: FontWeight.w500)),
           ],
         ),

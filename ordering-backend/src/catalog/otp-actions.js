@@ -11,6 +11,7 @@ const OTP_ACTIONS = {
   'order.reject': 'reject an order',
   'order.cancel': 'cancel an order',
   'payment.void': 'void a payment',
+  'expense.void': 'void an expense',
   'customer.deactivate': 'deactivate a customer',
   'user.deactivate': 'deactivate a user',
   'role.delete': 'delete a role',

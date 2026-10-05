@@ -18,6 +18,7 @@ import '../../receiving/presentation/receive_sheet.dart';
 import '../data/products_providers.dart';
 import '../domain/product.dart';
 import '../domain/product_attribute.dart';
+import '../domain/tracking_mode.dart';
 import 'products_list_providers.dart';
 import 'widgets/product_image_view.dart';
 
@@ -50,6 +51,7 @@ class _ProductFormState extends ConsumerState<_ProductForm> {
   late final _desc = TextEditingController(text: widget.product?.description ?? '');
   late String? _categoryId = widget.product?.categoryId;
   late String _uom = widget.product?.uom ?? 'each';
+  late TrackingMode _trackingMode = widget.product?.trackingMode ?? TrackingMode.bulk;
   final Map<String, TextEditingController> _attr = {};
   final Map<String, String> _errors = {};
   bool _saving = false;
@@ -136,6 +138,7 @@ class _ProductFormState extends ConsumerState<_ProductForm> {
           costPrice: cost,
           uom: _uom,
           minStockLevel: min,
+          trackingMode: _trackingMode,
           attributes: attributes,
         );
         ref.invalidate(productsListProvider);
@@ -245,6 +248,22 @@ class _ProductFormState extends ConsumerState<_ProductForm> {
                 error: _errors['cost'],
                 child: NxInput(controller: _cost, inputFormatters: NxInput.decimals(2), error: _errors['cost'] != null),
               ),
+              if (!_editing)
+                NxField(
+                  label: 'Stock tracking',
+                  hint: 'Serial gives every physical unit its own scannable code — the received/counted '
+                      'quantity always comes from distinct scans, never typed. Can\'t be changed after creation.',
+                  child: NxSelect<TrackingMode>(
+                    options: [for (final m in TrackingMode.values) NxOption(m, m.label)],
+                    value: _trackingMode,
+                    onChanged: (v) => setState(() => _trackingMode = v ?? _trackingMode),
+                  ),
+                )
+              else if (_trackingMode == TrackingMode.serial)
+                NxField(
+                  label: 'Stock tracking',
+                  child: Text('Serial — one scannable code per physical unit', style: TextStyle(fontSize: 13, color: n.n300)),
+                ),
               for (final t in types)
                 NxField(
                   label: t.unit == null || t.unit!.isEmpty ? t.name : '${t.name} (${t.unit})',

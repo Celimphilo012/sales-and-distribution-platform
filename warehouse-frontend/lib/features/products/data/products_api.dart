@@ -7,6 +7,7 @@ import '../domain/product.dart';
 import '../domain/product_attribute.dart';
 import '../domain/product_image.dart';
 import '../domain/products_filter.dart';
+import '../domain/tracking_mode.dart';
 
 /// All product + product-image API calls. Feature screens never call
 /// [ApiClient] directly — they go through this repository, which owns
@@ -40,6 +41,7 @@ class ProductsApi {
     double? costPrice,
     required String uom,
     double? minStockLevel,
+    TrackingMode trackingMode = TrackingMode.bulk,
     List<ProductAttributeInput> attributes = const [],
   }) async {
     final response = await _apiClient.guard(
@@ -54,6 +56,7 @@ class ProductsApi {
           'costPrice': ?costPrice,
           'uom': uom,
           'minStockLevel': ?minStockLevel,
+          'trackingMode': trackingMode.toJson(),
           'attributes': attributes.map((a) => a.toJson()).toList(),
         },
       ),
@@ -180,5 +183,15 @@ class ProductsApi {
 
   Future<void> deleteImage(String productId, String imageId) async {
     await _apiClient.guard((dio) => dio.delete('/products/$productId/images/$imageId'));
+  }
+
+  /// `POST /products/:id/units/generate` — pre-prints [count] unique unit labels for a SERIAL
+  /// product, ahead of it physically arriving. Returns each new unit's id (the printed label's
+  /// payload is `ScanCode.forUnit(id)`); 400 if the product isn't SERIAL-tracked.
+  Future<List<String>> generateUnits(String productId, int count) async {
+    final response = await _apiClient.guard(
+      (dio) => dio.post<Map<String, dynamic>>('/products/$productId/units/generate', data: {'count': count}),
+    );
+    return (response.data!['unitIds'] as List<dynamic>).cast<String>();
   }
 }

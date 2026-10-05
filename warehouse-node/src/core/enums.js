@@ -12,6 +12,9 @@ module.exports = {
   MfaMethod: values('NONE', 'EMAIL', 'SMS', 'TOTP'),
   OtpChannel: values('EMAIL', 'SMS', 'TOTP'),
   ProductStatus: values('ACTIVE', 'INACTIVE'),
+  TrackingMode: values('BULK', 'SERIAL'),
+  InventoryUnitSource: values('GENERATED', 'SUPPLIER'),
+  InventoryUnitStatus: values('PENDING', 'ON_HAND', 'RESERVED', 'DAMAGED', 'LOST', 'EXPIRED', 'ISSUED'),
   AttributeDataType: values('TEXT', 'NUMBER'),
   InventoryTransactionType: values(
     'RECEIVE',
@@ -31,4 +34,7 @@ module.exports = {
   AdjustmentStatus: values('PENDING', 'APPROVED', 'REJECTED'),
   StockCountStatus: values('OPEN', 'SUBMITTED'),
   StockReservationStatus: values('RESERVED', 'RELEASED', 'ISSUED'),
+  SaleCampaignEligibility: values('ALL_CUSTOMERS', 'RESTRICTED'),
+  SaleCampaignStatus: values('PENDING_APPROVAL', 'SCHEDULED', 'ACTIVE', 'ENDED', 'REJECTED', 'CANCELLED'),
+  SaleDiscountType: values('PERCENT', 'FIXED_AMOUNT', 'FIXED_PRICE'),
 };

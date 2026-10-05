@@ -6,6 +6,7 @@ import '../../../core/theme/nocturne.dart';
 import '../../../shared/nx/nx_form.dart';
 import '../../../shared/nx/nx_overlays.dart';
 import '../../../shared/nx/nx_primitives.dart';
+import '../../users/data/users_providers.dart';
 import '../data/customers_providers.dart';
 import '../domain/customer.dart';
 
@@ -30,11 +31,18 @@ class _CustomerFormState extends ConsumerState<_CustomerForm> {
   late final _address = TextEditingController(text: widget.customer?.address ?? '');
   late final _location = TextEditingController(text: widget.customer?.locationText ?? '');
   late final _notes = TextEditingController(text: widget.customer?.notes ?? '');
+  late String? _assignedConsultantId;
   String? _nameErr;
   String? _formError;
   bool _saving = false;
 
   bool get _editing => widget.customer != null;
+
+  @override
+  void initState() {
+    super.initState();
+    _assignedConsultantId = widget.customer?.assignedConsultantId;
+  }
 
   @override
   void dispose() {
@@ -66,6 +74,7 @@ class _CustomerFormState extends ConsumerState<_CustomerForm> {
           address: _address.text.trim(),
           locationText: _location.text.trim(),
           notes: _notes.text.trim(),
+          assignedConsultantId: _assignedConsultantId,
         );
         invalidateCustomer(ref, saved.id);
       } else {
@@ -75,6 +84,7 @@ class _CustomerFormState extends ConsumerState<_CustomerForm> {
           address: _address.text.trim(),
           locationText: _location.text.trim(),
           notes: _notes.text.trim(),
+          assignedConsultantId: _assignedConsultantId,
         );
         invalidateCustomers(ref);
       }
@@ -100,6 +110,25 @@ class _CustomerFormState extends ConsumerState<_CustomerForm> {
           NxSpan2(child: NxField(label: 'Address', child: NxInput(controller: _address))),
           NxSpan2(child: NxField(label: 'Location', hint: 'Area, landmark or GPS note — helps delivery', child: NxInput(controller: _location))),
           NxSpan2(child: NxField(label: 'Notes', child: NxInput(controller: _notes, maxLines: 3, minLines: 2))),
+          NxSpan2(
+            child: NxField(
+              label: 'Assigned consultant',
+              hint: 'Whose book this customer belongs to — drives eligibility for consultant-restricted sale campaigns',
+              child: Consumer(
+                builder: (context, ref, _) {
+                  final consultants = ref.watch(consultantsListProvider).value ?? const [];
+                  return NxSelect<String>(
+                    options: [for (final c in consultants) NxOption(c.id, c.fullName)],
+                    value: _assignedConsultantId,
+                    searchable: consultants.length > 8,
+                    emptyLabel: 'None',
+                    placeholder: 'No consultant assigned',
+                    onChanged: (v) => setState(() => _assignedConsultantId = v),
+                  );
+                },
+              ),
+            ),
+          ),
           if (_formError != null) NxSpan2(child: Text(_formError!, style: TextStyle(fontSize: 12, color: n.bad))),
         ],
       ),

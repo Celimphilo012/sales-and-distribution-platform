@@ -49,17 +49,46 @@ async function createFakeWarehouse() {
   ];
   const state = {
     products: [
-      { id: SOAP, sku: 'SOAP-1', name: 'Bar Soap', status: 'ACTIVE', sellingPrice: '12.5', category: { id: 'c', name: 'Soap' } },
+      // costPrice 5 -> a known margin on every SOAP line (buildLineInputs snapshots it as unitCost).
+      { id: SOAP, sku: 'SOAP-1', name: 'Bar Soap', status: 'ACTIVE', sellingPrice: '12.5', costPrice: '5', category: { id: 'c', name: 'Soap' } },
       { id: '22222222-2222-4222-8222-222222222222', sku: 'OLD-1', name: 'Old Line', status: 'INACTIVE', sellingPrice: '9', category: { id: 'c', name: 'Soap' } },
+      // No costPrice at all -> unitCost stays null (the "unknown cost, never treated as 0" case).
+      { id: '77777777-7777-4777-8777-777777777777', sku: 'NOCOST-1', name: 'No Cost Item', status: 'ACTIVE', sellingPrice: '20', category: { id: 'c', name: 'Soap' } },
     ],
     locationId: locations[0].id,
     locations,
     stock: new Map(), // productId:locationId -> { available, oldestStockAt }
     reservations: new Map(),
+    sales: new Map(), // productId -> sale block (see warehouse-node's attachActiveSale)
+    campaigns: [], // what GET /api/v1/sales returns
     calls: [],
     down: false,
     setStock(productId, locationId, available, oldestStockAt = '2026-01-01T00:00:00.000Z') {
       state.stock.set(`${productId}:${locationId}`, { available, oldestStockAt });
+    },
+    /** Puts a product on sale — mirrors warehouse-node's `sale` block exactly (see attachActiveSale).
+     * `effectivePrice` is omitted for a RESTRICTED campaign, same as the real warehouse. */
+    setSale(productId, { campaignId, campaignName, discountType, discountValue, minQuantity = 1, eligibility = 'ALL_CUSTOMERS', sellingPrice, maxUsesPerCustomer }) {
+      const effectivePrice =
+        eligibility === 'ALL_CUSTOMERS'
+          ? Math.max(
+              0,
+              Math.round(
+                (discountType === 'PERCENT'
+                  ? sellingPrice * (1 - discountValue / 100)
+                  : discountType === 'FIXED_AMOUNT'
+                    ? sellingPrice - discountValue
+                    : discountValue) * 100,
+              ) / 100,
+            )
+          : undefined;
+      state.sales.set(productId, { campaignId, campaignName, discountType, discountValue, minQuantity, eligibility, effectivePrice, maxUsesPerCustomer });
+      if (!state.campaigns.some((c) => c.id === campaignId)) {
+        state.campaigns.push({ id: campaignId, name: campaignName, status: 'ACTIVE', eligibility, products: [{ productId, discountType, discountValue, minQuantity }] });
+      }
+    },
+    clearSale(productId) {
+      state.sales.delete(productId);
     },
     availableAt: (productId, locationId) => state.stock.get(`${productId}:${locationId}`)?.available ?? 0,
     adjust(productId, locationId, delta) {
@@ -78,9 +107,12 @@ async function createFakeWarehouse() {
     next();
   });
   app.get('/api/v1/catalogue', (req, res) => {
-    const products = state.products.filter((p) => req.query.includeInactive === 'true' || p.status === (req.query.status ?? 'ACTIVE'));
+    const products = state.products
+      .filter((p) => req.query.includeInactive === 'true' || p.status === (req.query.status ?? 'ACTIVE'))
+      .map((p) => (state.sales.has(p.id) ? { ...p, sale: state.sales.get(p.id) } : p));
     res.json({ categories: [], products });
   });
+  app.get('/api/v1/sales', (req, res) => res.json({ campaigns: state.campaigns }));
   app.get('/api/v1/locations', (req, res) =>
     res.json({
       warehouses: [

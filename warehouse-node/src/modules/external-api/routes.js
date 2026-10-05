@@ -32,7 +32,7 @@ const reserveBody = obj(
 const releaseBody = obj({ reference: nonEmpty() }, ['reference']);
 
 function externalApiRoutes(app) {
-  const { products, categories, warehouses, locations, stockReservations } = app.services;
+  const { products, categories, warehouses, locations, stockReservations, sales } = app.services;
   const { requireScopes } = app;
 
   // Read view over the same services the internal /products and /categories routes use; no new business logic.
@@ -50,6 +50,13 @@ function externalApiRoutes(app) {
       return { categories: categoryRows, products: productRows };
     },
   );
+
+  // Campaign-level view (not per-product, unlike /catalogue's `sale` block) — for the ordering
+  // system's eligibility-management screen, which needs to pick a campaign by name and see which
+  // customers to restrict it to. Unscoped (system-to-system) like /catalogue.
+  app.get('/sales', { onRequest: [requireScopes('catalogue:read')] }, async () => ({
+    campaigns: (await sales.findAll({}, undefined)).filter((c) => ['SCHEDULED', 'ACTIVE'].includes(c.status)),
+  }));
 
   // Active locations only, flat (no ancestor chain) — a consumer resolves the path by walking parentId.
   app.get('/locations', { onRequest: [requireScopes('locations:read')] }, async () => {

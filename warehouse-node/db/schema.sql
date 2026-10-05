@@ -131,6 +131,45 @@ CREATE TABLE `inventory_transactions` (
   CONSTRAINT `inventory_transactions_to_location_id_fkey` FOREIGN KEY (`to_location_id`) REFERENCES `locations` (`id`) ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- One row per PHYSICAL unit of a SERIAL-tracked product (`products.tracking_mode`). Most products
+-- stay BULK and never get rows here — inventory_balances is still the whole story for them. A
+-- SERIAL product's on-hand count is also always kept consistent in inventory_balances (the
+-- aggregate cache); this table is the per-unit source of truth underneath it, written only by
+-- InventoryService.applyTransaction() (rule 2) alongside the balance delta, in the same DB
+-- transaction. `unit_code` is either our own generated id (a pre-printed `WH:U:<id>` label,
+-- `source` GENERATED) or a supplier's own barcode scanned as-is (`source` SUPPLIER, registered the
+-- first time it's seen). `location_id` is NULL while PENDING (a label printed but not yet received)
+-- and again once ISSUED (shipped out, no longer anywhere in the warehouse).
+CREATE TABLE `inventory_units` (
+  `id` varchar(191) NOT NULL,
+  `product_id` varchar(191) NOT NULL,
+  `unit_code` varchar(191) NOT NULL,
+  `source` enum('GENERATED','SUPPLIER') NOT NULL,
+  `status` enum('PENDING','ON_HAND','RESERVED','DAMAGED','LOST','EXPIRED','ISSUED') NOT NULL DEFAULT 'PENDING',
+  `location_id` varchar(191) DEFAULT NULL,
+  `created_at` datetime(3) NOT NULL DEFAULT current_timestamp(3),
+  `updated_at` datetime(3) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `inventory_units_unit_code_key` (`unit_code`),
+  KEY `inventory_units_product_id_idx` (`product_id`),
+  KEY `inventory_units_location_id_idx` (`location_id`),
+  CONSTRAINT `inventory_units_location_id_fkey` FOREIGN KEY (`location_id`) REFERENCES `locations` (`id`) ON UPDATE CASCADE,
+  CONSTRAINT `inventory_units_product_id_fkey` FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Which specific units moved in which ledger entry — a unit's full history is its rows here joined
+-- to inventory_transactions, ordered by created_at. Written alongside inventory_units in the same
+-- transaction as the inventory_transactions row itself; never edited after the fact (append-only,
+-- same as inventory_transactions).
+CREATE TABLE `inventory_transaction_units` (
+  `transaction_id` varchar(191) NOT NULL,
+  `unit_id` varchar(191) NOT NULL,
+  PRIMARY KEY (`transaction_id`,`unit_id`),
+  KEY `inventory_transaction_units_unit_id_idx` (`unit_id`),
+  CONSTRAINT `inventory_transaction_units_transaction_id_fkey` FOREIGN KEY (`transaction_id`) REFERENCES `inventory_transactions` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `inventory_transaction_units_unit_id_fkey` FOREIGN KEY (`unit_id`) REFERENCES `inventory_units` (`id`) ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE `locations` (
   `id` varchar(191) NOT NULL,
   `warehouse_id` varchar(191) NOT NULL,
@@ -232,6 +271,7 @@ CREATE TABLE `products` (
   `uom` varchar(191) NOT NULL,
   `min_stock_level` decimal(12,2) NOT NULL DEFAULT 0.00,
   `status` enum('ACTIVE','INACTIVE') NOT NULL DEFAULT 'ACTIVE',
+  `tracking_mode` enum('BULK','SERIAL') NOT NULL DEFAULT 'BULK',
   `created_at` datetime(3) NOT NULL DEFAULT current_timestamp(3),
   `updated_at` datetime(3) NOT NULL,
   PRIMARY KEY (`id`),
@@ -251,6 +291,74 @@ CREATE TABLE `refresh_tokens` (
   PRIMARY KEY (`id`),
   KEY `refresh_tokens_user_id_idx` (`user_id`),
   CONSTRAINT `refresh_tokens_user_id_fkey` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- A named, two-step-approved, time-windowed promotion. `status` is the single source of truth for
+-- whether it's live — SCHEDULED -> ACTIVE -> ENDED transitions are flipped by the standalone
+-- `scripts/sales-tick.js` (run every minute by a cPanel Cron Job; there is no in-process scheduler,
+-- see README.md), never computed from `starts_at`/`ends_at` at read time. `eligibility` ALL_CUSTOMERS
+-- is resolved to a price right here (see products.service.js attachActiveSale); RESTRICTED is not —
+-- the warehouse has no concept of a customer, so eligibility is resolved entirely by the ordering
+-- system against its own `sale_campaign_eligible_customers` table, keyed by this row's id.
+CREATE TABLE `sale_campaigns` (
+  `id` varchar(191) NOT NULL,
+  `name` varchar(191) NOT NULL,
+  `description` varchar(500) DEFAULT NULL,
+  `starts_at` datetime(3) NOT NULL,
+  `ends_at` datetime(3) NOT NULL,
+  `eligibility` enum('ALL_CUSTOMERS','RESTRICTED') NOT NULL DEFAULT 'ALL_CUSTOMERS',
+  `status` enum('PENDING_APPROVAL','SCHEDULED','ACTIVE','ENDED','REJECTED','CANCELLED') NOT NULL DEFAULT 'PENDING_APPROVAL',
+  `requested_by` varchar(191) NOT NULL,
+  `requested_at` datetime(3) NOT NULL DEFAULT current_timestamp(3),
+  `reviewed_by` varchar(191) DEFAULT NULL,
+  `reviewed_at` datetime(3) DEFAULT NULL,
+  `review_note` varchar(191) DEFAULT NULL,
+  -- Both null (default) = a plain continuous range, unchanged. Both set = the campaign is only
+  -- ACTIVE inside this time-of-day window each day between starts_at/ends_at (tick() pauses it back
+  -- to SCHEDULED at window-close rather than ENDED, until ends_at itself passes). UTC-of-day, same
+  -- convention as every DATETIME column here — a client must convert from local time before sending.
+  -- No overnight-crossing windows (22:00-02:00) in this pass.
+  `daily_window_start` time DEFAULT NULL,
+  `daily_window_end` time DEFAULT NULL,
+  -- Set once, on the first real SCHEDULED/PENDING_APPROVAL -> ACTIVE transition — lets tick() tell a
+  -- true first activation apart from a daily-window campaign re-activating the next day, so start/end
+  -- notifications fire once each, not once per day.
+  `first_activated_at` datetime(3) DEFAULT NULL,
+  -- NULL = unlimited. Enforced in ordering-backend (customer identity lives there, not here) by
+  -- counting a customer's own past orders that carry this campaign's id before applying the price.
+  `max_uses_per_customer` int DEFAULT NULL,
+  `created_at` datetime(3) NOT NULL DEFAULT current_timestamp(3),
+  `updated_at` datetime(3) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `sale_campaigns_status_idx` (`status`),
+  KEY `sale_campaigns_requested_by_fkey` (`requested_by`),
+  KEY `sale_campaigns_reviewed_by_fkey` (`reviewed_by`),
+  CONSTRAINT `sale_campaigns_requested_by_fkey` FOREIGN KEY (`requested_by`) REFERENCES `users` (`id`) ON UPDATE CASCADE,
+  CONSTRAINT `sale_campaigns_reviewed_by_fkey` FOREIGN KEY (`reviewed_by`) REFERENCES `users` (`id`) ON UPDATE CASCADE,
+  CONSTRAINT `sale_campaigns_ends_after_starts` CHECK (`ends_at` > `starts_at`),
+  CONSTRAINT `sale_campaigns_daily_window_both_or_neither`
+    CHECK ((`daily_window_start` IS NULL) = (`daily_window_end` IS NULL)),
+  CONSTRAINT `sale_campaigns_daily_window_order` CHECK (`daily_window_end` > `daily_window_start`),
+  CONSTRAINT `sale_campaigns_max_uses_positive` CHECK (`max_uses_per_customer` > 0)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- One product's discount terms within a campaign. A product may sit on only one
+-- PENDING_APPROVAL/SCHEDULED/ACTIVE campaign at a time — enforced in sales/service.js (it depends on
+-- overlapping time windows across rows, not expressible as a single-table DB constraint).
+CREATE TABLE `sale_campaign_products` (
+  `id` varchar(191) NOT NULL,
+  `campaign_id` varchar(191) NOT NULL,
+  `product_id` varchar(191) NOT NULL,
+  `discount_type` enum('PERCENT','FIXED_AMOUNT','FIXED_PRICE') NOT NULL,
+  `discount_value` decimal(12,2) NOT NULL,
+  `min_quantity` decimal(12,3) NOT NULL DEFAULT 1.000,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `sale_campaign_products_campaign_id_product_id_key` (`campaign_id`,`product_id`),
+  KEY `sale_campaign_products_product_id_idx` (`product_id`),
+  CONSTRAINT `sale_campaign_products_campaign_id_fkey` FOREIGN KEY (`campaign_id`) REFERENCES `sale_campaigns` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `sale_campaign_products_product_id_fkey` FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON UPDATE CASCADE,
+  CONSTRAINT `sale_campaign_products_discount_value_positive` CHECK (`discount_value` > 0),
+  CONSTRAINT `sale_campaign_products_min_quantity_positive` CHECK (`min_quantity` > 0)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE `role_permissions` (

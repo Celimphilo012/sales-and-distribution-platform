@@ -87,6 +87,57 @@ function createProductsService({
     return products.map((p) => ({ ...p, totalOnHand: totalByProductId.get(p.id) ?? 0 }));
   }
 
+  /** PERCENT/FIXED_AMOUNT/FIXED_PRICE -> a price, never negative. 2dp, same as every other price. */
+  function discountedPrice(sellingPrice, discountType, discountValue) {
+    const raw =
+      discountType === 'PERCENT'
+        ? sellingPrice * (1 - discountValue / 100)
+        : discountType === 'FIXED_AMOUNT'
+          ? sellingPrice - discountValue
+          : discountValue; // FIXED_PRICE
+    return Math.max(0, Math.round(raw * 100) / 100);
+  }
+
+  /**
+   * Attaches `sale` (this product's terms on whatever campaign currently has it ACTIVE — at most
+   * one, since a product sits on only one PENDING_APPROVAL/SCHEDULED/ACTIVE campaign at a time;
+   * see sales/service.js's assertNoOverlap). Batched for the whole result set, same shape as
+   * attachTotalOnHand. `effectivePrice` is only resolved for an ALL_CUSTOMERS campaign — a
+   * RESTRICTED one depends on which customer is asking, which this service never learns (see
+   * ARCHITECTURE.md: eligibility is resolved entirely on the ordering side).
+   */
+  async function attachActiveSale(products) {
+    if (products.length === 0) return [];
+    const rows = await db.query(
+      `SELECT cp.product_id AS productId, cp.discount_type AS discountType, cp.discount_value AS discountValue,
+              cp.min_quantity AS minQuantity, s.id AS campaignId, s.name AS campaignName, s.eligibility,
+              s.max_uses_per_customer AS maxUsesPerCustomer
+         FROM sale_campaign_products cp
+         JOIN sale_campaigns s ON s.id = cp.campaign_id AND s.status = 'ACTIVE'
+        WHERE cp.product_id IN (?)`,
+      [products.map((p) => p.id)],
+    );
+    const byProductId = new Map(rows.map((r) => [r.productId, r]));
+    return products.map((p) => {
+      const row = byProductId.get(p.id);
+      if (!row) return p;
+      const discountValue = Number(row.discountValue);
+      return {
+        ...p,
+        sale: {
+          campaignId: row.campaignId,
+          campaignName: row.campaignName,
+          discountType: row.discountType,
+          discountValue,
+          minQuantity: Number(row.minQuantity),
+          eligibility: row.eligibility,
+          maxUsesPerCustomer: row.maxUsesPerCustomer === null ? undefined : Number(row.maxUsesPerCustomer),
+          effectivePrice: row.eligibility === 'ALL_CUSTOMERS' ? discountedPrice(Number(p.sellingPrice), row.discountType, discountValue) : undefined,
+        },
+      };
+    });
+  }
+
   /** Same intersection logic as the categories service: explicit filter ∩ the viewer's assigned workstreams. */
   async function effectiveWorkstreamIdFilter(explicit, viewerId) {
     if (!viewerId) return explicit;
@@ -128,7 +179,7 @@ function createProductsService({
       }
     }
 
-    return attachTotalOnHand(await loadProducts(where));
+    return attachActiveSale(await attachTotalOnHand(await loadProducts(where)));
   }
 
   /**
@@ -163,7 +214,8 @@ function createProductsService({
     const [product] = await loadProducts(new Where().eq('p.id', id), '');
     if (!product) throw notFound(`Product ${id} not found`);
     const [withTotal] = await attachTotalOnHand([product]);
-    return withTotal;
+    const [withSale] = await attachActiveSale([withTotal]);
+    return withSale;
   }
 
   /** 404 unless the product exists; 403 unless `userId` may access its warehouse (no userId = unscoped). */
@@ -278,6 +330,7 @@ function createProductsService({
           costPrice: dto.costPrice,
           uom: dto.uom,
           minStockLevel: dto.minStockLevel ?? 0,
+          trackingMode: dto.trackingMode ?? 'BULK',
         },
         tx,
       );
@@ -326,6 +379,7 @@ function createProductsService({
           uom: dto.uom ?? undefined,
           minStockLevel: dto.minStockLevel ?? undefined,
           status: dto.status ?? undefined,
+          trackingMode: dto.trackingMode ?? undefined,
         },
         'Product',
         tx,

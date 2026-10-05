@@ -138,6 +138,9 @@ class OrderItem {
     required this.lineTotal,
     this.reservedLocationId,
     this.allocations = const [],
+    this.originalUnitPrice,
+    this.saleCampaignId,
+    this.saleCampaignName,
   });
 
   final String id;
@@ -151,6 +154,13 @@ class OrderItem {
   final double unitPrice;
   final double lineTotal;
   final String? reservedLocationId;
+
+  /// Set only when a sale discount applied at save time (see ordering-backend's `buildLineInputs`)
+  /// — [unitPrice] is already the discounted price; this is what it would have been otherwise.
+  final double? originalUnitPrice;
+  final String? saleCampaignId;
+  final String? saleCampaignName;
+  bool get wasDiscounted => saleCampaignId != null;
 
   /// Where this line's stock is reserved, in plan order (oldest stock
   /// first). Several entries when a line was split across locations.
@@ -171,6 +181,9 @@ class OrderItem {
     allocations: (json['allocations'] as List<dynamic>? ?? const [])
         .map((e) => ItemAllocation.fromJson(e as Map<String, dynamic>))
         .toList(),
+    originalUnitPrice: json['originalUnitPrice'] == null ? null : _num(json['originalUnitPrice']),
+    saleCampaignId: json['saleCampaignId'] as String?,
+    saleCampaignName: json['saleCampaignName'] as String?,
   );
 }
 

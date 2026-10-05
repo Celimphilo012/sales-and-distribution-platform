@@ -13,29 +13,41 @@ import '../../../shared/scan/scan_dialog.dart';
 import '../../inventory/data/inventory_providers.dart';
 import '../../locations/data/leaf_locations_provider.dart';
 import '../../products/domain/product.dart';
+import '../../products/domain/tracking_mode.dart';
 import '../../products/presentation/products_list_providers.dart';
 import '../../scan/scan_lookup.dart';
 import '../data/receiving_providers.dart';
 
 /// "Scan to receive" — a delivery counted by scanning: pick (or scan) the
-/// slot, then every scan of a product label adds 1 to that product's line.
-/// Quantities stay editable for cartons; "Receive" records ONE RECEIVE
-/// ledger transaction per product (rule 2 — nothing is written until then).
+/// slot, then every scan of a BULK product's label adds 1 to that product's
+/// line (quantity stays editable, e.g. for a whole carton). A SERIAL
+/// product's label instead just opens its line — its quantity is never
+/// typed, only ever the count of distinct unit codes scanned into it via
+/// "Scan units" (each unit carries its own code, so the same physical item
+/// can't be counted twice). "Receive" records ONE RECEIVE ledger transaction
+/// per product (rule 2 — nothing is written until then).
 Future<void> showScanReceiveSheet(BuildContext context, {String? locationId}) =>
     showNxSheet<void>(context, kicker: 'Scan to receive', builder: (_) => _ScanReceive(locationId: locationId));
 
 class _Line {
-  _Line(this.product, double qty) : qty = TextEditingController(text: fmtPlain(qty));
+  _Line(this.product) : qty = TextEditingController(text: '0');
 
   final Product product;
+
+  /// Only meaningful for a BULK line — a SERIAL line's quantity is always
+  /// [unitCodes.length], never typed.
   final TextEditingController qty;
+
+  /// Only meaningful for a SERIAL line — the distinct unit codes scanned so far.
+  final List<String> unitCodes = [];
 
   /// Set once this line is recorded (kept on screen, greyed, so a partial
   /// failure shows exactly what went through).
   bool done = false;
   String? error;
 
-  double get value => double.tryParse(qty.text.trim()) ?? 0;
+  bool get isSerial => product.trackingMode == TrackingMode.serial;
+  double get value => isSerial ? unitCodes.length.toDouble() : (double.tryParse(qty.text.trim()) ?? 0);
 }
 
 class _ScanReceive extends ConsumerStatefulWidget {
@@ -67,28 +79,35 @@ class _ScanReceiveState extends ConsumerState<_ScanReceive> {
 
   List<_Line> get _pending => _lines.where((l) => !l.done).toList();
 
-  /// Adds one of [p] (a new line, or +1 on its open line); returns the new quantity.
-  double _addOne(Product p) {
-    final line = _pending.where((l) => l.product.id == p.id).firstOrNull;
-    late double qty;
+  _Line? _lineFor(Product p) => _pending.where((l) => l.product.id == p.id).firstOrNull;
+
+  /// BULK: adds one of [p] (a new line, or +1 on its open line). SERIAL: just opens/keeps its
+  /// line (its quantity only ever comes from [_scanUnitsFor]). Returns the line, for feedback.
+  _Line _onProductScanned(Product p) {
+    final isSerial = p.trackingMode == TrackingMode.serial;
+    final existing = _lineFor(p);
     setState(() {
-      if (line == null) {
-        _lines.insert(0, _Line(p, 1));
-        qty = 1;
-      } else {
-        qty = line.value + 1;
-        line.qty.text = fmtPlain(qty);
+      if (existing != null) {
+        if (!isSerial) existing.qty.text = fmtPlain(existing.value + 1);
+        return;
       }
+      final line = _Line(p);
+      if (!isSerial) line.qty.text = '1';
+      _lines.insert(0, line);
       _errors.remove('lines');
     });
-    return qty;
+    return _lineFor(p)!;
   }
 
   Future<void> _scanItems(List<Product> products) => showScanDialog(
     context,
     title: 'Scan items',
-    sub: 'Each scan adds 1. Keep scanning — close when the delivery is done.',
+    sub: 'Scan a product label to add it — bulk items add +1 each scan; unit-tracked items open a '
+        'line, then use its "Scan units" to add each one.',
     onScan: (code) {
+      if (code.kind == ScanKind.unit) {
+        return ScanFeedback('That’s a unit’s own code — open its product line below and use “Scan units”.', ok: false);
+      }
       final p = matchScannedProduct(code, products);
       if (p == null) {
         return ScanFeedback(
@@ -96,8 +115,39 @@ class _ScanReceiveState extends ConsumerState<_ScanReceive> {
           ok: false,
         );
       }
-      final qty = _addOne(p);
-      return ScanFeedback('${p.sku} · ${p.name} — ${fmtPlain(qty)} ${p.uom}');
+      final wasOpen = _lineFor(p) != null;
+      final line = _onProductScanned(p);
+      if (p.trackingMode == TrackingMode.serial) {
+        return ScanFeedback(
+          wasOpen ? '${p.sku} · ${p.name} — already on this delivery, use “Scan units”' : '${p.sku} · ${p.name} — opened, use “Scan units” to add each one',
+        );
+      }
+      return ScanFeedback('${p.sku} · ${p.name} — ${fmtPlain(line.value)} ${p.uom}');
+    },
+  );
+
+  /// The per-line loop for a SERIAL product: every scan must be that physical item's OWN code
+  /// (never the product label), and the same code can't be scanned twice onto this line — that's
+  /// what makes the resulting count a real physical count instead of a guess.
+  Future<void> _scanUnitsFor(_Line line) => showScanDialog(
+    context,
+    title: 'Scan units — ${line.product.name}',
+    sub: 'Scan the code on each physical item — never the product’s own label. Keep scanning; close when the delivery is done.',
+    onScan: (code) {
+      if (code.kind == ScanKind.product) {
+        return ScanFeedback('That’s the product label — scan the unique code on the item itself.', ok: false);
+      }
+      if (code.kind == ScanKind.location) {
+        return ScanFeedback('That is a location label — scan the item, not the slot.', ok: false);
+      }
+      if (line.unitCodes.contains(code.value)) {
+        return ScanFeedback('Already scanned on this line.', ok: false);
+      }
+      setState(() {
+        line.unitCodes.add(code.value);
+        _errors.remove('lines');
+      });
+      return ScanFeedback('${line.unitCodes.length} scanned so far');
     },
   );
 
@@ -107,7 +157,8 @@ class _ScanReceiveState extends ConsumerState<_ScanReceive> {
       if (_locationId == null) 'dest': 'Choose or scan the slot',
       if (_supplier.text.trim().isEmpty) 'supplier': 'Supplier is required',
       if (pending.isEmpty) 'lines': 'Scan at least one item',
-      if (pending.any((l) => l.value <= 0)) 'lines': 'Every line needs a quantity above 0 (remove the ones you don’t want)',
+      if (pending.any((l) => l.value <= 0))
+        'lines': 'Every line needs at least one scan (remove the ones you don’t want, or Scan units on a unit-tracked line)',
     };
     setState(() {
       _errors
@@ -128,7 +179,8 @@ class _ScanReceiveState extends ConsumerState<_ScanReceive> {
         await api.receive(
           supplier: _supplier.text.trim(),
           productId: l.product.id,
-          quantity: l.value,
+          quantity: l.isSerial ? null : l.value,
+          unitCodes: l.isSerial ? l.unitCodes : null,
           toLocationId: _locationId!,
           reference: reference.isEmpty ? null : reference,
           notes: 'Scanned delivery',
@@ -251,8 +303,10 @@ class _ScanReceiveState extends ConsumerState<_ScanReceive> {
                                 style: TextStyle(fontSize: 13, color: l.done ? n.n500 : n.text),
                               ),
                               Text(
-                                l.done ? '${l.product.sku} · received' : l.error ?? '${l.product.sku} · ${l.product.uom}',
-                                maxLines: 2,
+                                l.done
+                                    ? '${l.product.sku} · received'
+                                    : l.error ?? '${l.product.sku}${l.isSerial ? ' · unit-tracked' : ' · ${l.product.uom}'}',
+                                maxLines: l.error != null ? 4 : 2,
                                 style: TextStyle(fontSize: 11, color: l.error != null ? n.bad : (l.done ? n.ok : n.n500)),
                               ),
                             ],
@@ -262,9 +316,28 @@ class _ScanReceiveState extends ConsumerState<_ScanReceive> {
                         if (l.done)
                           Padding(
                             padding: const EdgeInsets.only(right: 8),
-                            child: Text('+${l.qty.text}', style: TextStyle(fontSize: 13, color: n.ok, fontFeatures: tabular)),
+                            child: Text('+${fmtPlain(l.value)}', style: TextStyle(fontSize: 13, color: n.ok, fontFeatures: tabular)),
                           )
-                        else ...[
+                        else if (l.isSerial) ...[
+                          NxButton(
+                            label: '${l.unitCodes.length} scanned',
+                            small: true,
+                            icon: PhosphorIconsRegular.qrCode,
+                            onPressed: _saving ? null : () => _scanUnitsFor(l),
+                          ),
+                          NxIconButton(
+                            icon: PhosphorIconsRegular.x,
+                            tooltip: 'Remove line',
+                            size: 30,
+                            iconSize: 14,
+                            onPressed: _saving
+                                ? null
+                                : () => setState(() {
+                                    _lines.remove(l);
+                                    l.qty.dispose();
+                                  }),
+                          ),
+                        ] else ...[
                           SizedBox(
                             width: 84,
                             child: NxInput(

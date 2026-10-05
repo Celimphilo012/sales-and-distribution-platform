@@ -61,6 +61,17 @@ exports.PERMISSION_CATALOG = [
         description: 'Approve or reject a requested inventory adjustment — approval is what moves stock',
         module: 'inventory',
     },
+    { key: 'sales.view', description: 'View sale campaigns', module: 'sales' },
+    {
+        key: 'sales.schedule',
+        description: 'Create/schedule a sale campaign (does not take effect until approved)',
+        module: 'sales',
+    },
+    {
+        key: 'sales.approve',
+        description: 'Approve, reject or cancel a scheduled sale campaign — approval is what makes it live',
+        module: 'sales',
+    },
 ];
 exports.ROLE_PERMISSION_MAP = {
     ADMIN: exports.PERMISSION_CATALOG.map((p) => p.key),
@@ -88,6 +99,8 @@ exports.ROLE_PERMISSION_MAP = {
         'audit.view',
         'reports.view',
         'packing.view',
+        'sales.view',
+        'sales.approve',
     ],
     // A seeded convenience default, not a special-cased identity anywhere in
     // code (rule 1: permissions, not roles) — the SAME permissions ADMIN
@@ -96,5 +109,5 @@ exports.ROLE_PERMISSION_MAP = {
     // scoping check, which runs off assignment ROWS, not this role name.
     // Assign a user this role, then assign them to a workstream (Workstreams
     // screen → Managers) to put it into effect; the role alone does nothing.
-    WORKSTREAM_MANAGER: ['catalogue.view', 'products.manage', 'packing.view'],
+    WORKSTREAM_MANAGER: ['catalogue.view', 'products.manage', 'packing.view', 'sales.view', 'sales.schedule'],
 };

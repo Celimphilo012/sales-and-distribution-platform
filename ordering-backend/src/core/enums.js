@@ -28,4 +28,6 @@ module.exports = {
   PaymentStatus: values('UNPAID', 'PARTIAL', 'PAID'),
   PaymentMethod: values('CASH', 'MOBILE_MONEY', 'BANK_TRANSFER', 'CARD'),
   PaymentRecordStatus: values('RECORDED', 'VOIDED'),
+  ExpenseCategory: values('RENT', 'SALARIES', 'UTILITIES', 'TRANSPORT', 'MARKETING', 'SUPPLIES', 'OTHER'),
+  ExpenseStatus: values('RECORDED', 'VOIDED'),
 };

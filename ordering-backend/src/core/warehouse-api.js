@@ -65,9 +65,14 @@ function createWarehouseApi({ config }) {
     return product;
   }
 
+  /** Active + scheduled sale campaigns (name, products, discount/eligibility terms) — for the local
+   * eligibility-management screen. Not per-product (that's `sale` on each `getCatalogue()` product). */
+  const getSales = () => request('GET', '/api/v1/sales');
+
   return {
     getCatalogue,
     getProduct,
+    getSales,
     getLocations: () => request('GET', '/api/v1/locations'),
     checkAvailability: (items) => request('POST', '/api/v1/stock/availability', { items }),
     /** Per product: active locations with available stock, each with its warehouse and stock age (FIFO). */

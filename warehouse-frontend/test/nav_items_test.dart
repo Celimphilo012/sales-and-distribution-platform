@@ -86,6 +86,9 @@ void main() {
         'inventory.adjust.request',
         'inventory.adjust.approve',
         'packing.view',
+        'sales.view',
+        'sales.schedule',
+        'sales.approve',
       },
     );
 

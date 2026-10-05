@@ -15,7 +15,7 @@ import 'package:warehouse_frontend/features/receiving/presentation/scan_receive_
 import 'package:warehouse_frontend/shared/nx/nx_form.dart';
 import 'package:warehouse_frontend/shared/nx/nx_overlays.dart';
 
-Product _product(String id, String sku, String name) => Product.fromJson({
+Product _product(String id, String sku, String name, {String trackingMode = 'BULK'}) => Product.fromJson({
   'id': id,
   'sku': sku,
   'name': name,
@@ -23,6 +23,7 @@ Product _product(String id, String sku, String name) => Product.fromJson({
   'sellingPrice': 10,
   'uom': 'each',
   'status': 'ACTIVE',
+  'trackingMode': trackingMode,
   'createdAt': '2026-09-30T08:00:00Z',
   'updatedAt': '2026-09-30T08:00:00Z',
 });
@@ -35,7 +36,8 @@ class _FakeReceiving extends Fake implements ReceivingApi {
   Future<InventoryTransaction> receive({
     required String supplier,
     required String productId,
-    required double quantity,
+    double? quantity,
+    List<String>? unitCodes,
     required String toLocationId,
     String? reference,
     String? notes,
@@ -44,13 +46,14 @@ class _FakeReceiving extends Fake implements ReceivingApi {
       failShampoo = false;
       throw const NetworkError('Connection lost');
     }
-    calls.add((productId, quantity, toLocationId, supplier));
+    final effectiveQty = quantity ?? unitCodes!.length.toDouble();
+    calls.add((productId, effectiveQty, toLocationId, supplier));
     return InventoryTransaction.fromJson({
       'id': 't${calls.length}',
       'type': 'RECEIVE',
       'productId': productId,
       'toLocationId': toLocationId,
-      'quantity': quantity,
+      'quantity': effectiveQty,
       'performedBy': 'u1',
       'createdAt': '2026-09-30T08:00:00Z',
     });
@@ -124,5 +127,68 @@ void main() {
     await tester.pump(const Duration(seconds: 6)); // toast timer
     await tester.pumpAndSettle();
     expect(find.text('Scan items'), findsNothing); // sheet closed
+  });
+
+  testWidgets('a SERIAL product derives its quantity from distinct unit scans, never a typed number', (tester) async {
+    tester.view.physicalSize = const Size(1280, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final api = _FakeReceiving()..failShampoo = false;
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          receivingApiProvider.overrideWithValue(api),
+          productsListProvider.overrideWith((ref) async => [_product('p3', 'SOAP-SER', 'Serial soap', trackingMode: 'SERIAL')]),
+          leafLocationsProvider.overrideWith((ref) async => const <LeafLocation>[]),
+        ],
+        child: MaterialApp(
+          navigatorKey: rootNavigatorKey,
+          theme: AppTheme.dark(),
+          builder: (context, child) => NxToastHost(child: child ?? const SizedBox.shrink()),
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => TextButton(onPressed: () => showScanReceiveSheet(context, locationId: 'l1'), child: const Text('open')),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Scan items'));
+    await tester.pumpAndSettle();
+    Future<void> scanInto(Finder dialogField, String code) async {
+      await tester.enterText(dialogField, code);
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pump();
+    }
+
+    await scanInto(find.byType(EditableText).last, 'WH:P:p3');
+    expect(find.textContaining('opened, use'), findsOneWidget);
+    await tester.tap(find.text('Done'));
+    await tester.pumpAndSettle();
+
+    // No manual quantity field for a SERIAL line — only a "Scan units" button.
+    expect(find.text('0 scanned'), findsOneWidget);
+
+    await tester.tap(find.text('0 scanned'));
+    await tester.pumpAndSettle();
+    await scanInto(find.byType(EditableText).last, 'WH:U:unit-a');
+    await scanInto(find.byType(EditableText).last, 'WH:U:unit-a'); // duplicate within the same line
+    expect(find.text('Already scanned on this line.'), findsOneWidget);
+    await scanInto(find.byType(EditableText).last, 'WH:U:unit-b');
+    await tester.tap(find.text('Done'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('2 scanned'), findsOneWidget);
+
+    await tester.enterText(find.descendant(of: find.ancestor(of: find.text('Required'), matching: find.byType(NxInput)), matching: find.byType(EditableText)), 'Acme');
+    await tester.tap(find.text('Receive 2 units'));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(api.calls, [('p3', 2.0, 'l1', 'Acme')]);
+    await tester.pump(const Duration(seconds: 6)); // toast timer
+    await tester.pumpAndSettle();
   });
 }

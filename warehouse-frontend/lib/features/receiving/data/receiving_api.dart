@@ -13,10 +13,14 @@ class ReceivingApi {
 
   final ApiClient _apiClient;
 
+  /// Exactly one of [quantity] / [unitCodes] — the backend derives the ledger quantity from
+  /// [unitCodes].length when given (it refuses a BULK product with [unitCodes] and a SERIAL one
+  /// with [quantity], matching the product's `trackingMode`).
   Future<InventoryTransaction> receive({
     required String supplier,
     required String productId,
-    required double quantity,
+    double? quantity,
+    List<String>? unitCodes,
     required String toLocationId,
     String? reference,
     String? notes,
@@ -27,7 +31,8 @@ class ReceivingApi {
         data: {
           'supplier': supplier,
           'productId': productId,
-          'quantity': quantity,
+          'quantity': ?quantity,
+          'unitCodes': ?unitCodes,
           'toLocationId': toLocationId,
           'reference': ?reference,
           'notes': ?notes,

@@ -143,7 +143,8 @@ class _BrandingSectionState extends ConsumerState<BrandingSection> {
   }
 
   Future<void> _upload() async {
-    final file = await FilePicker.pickFile(type: FileType.custom, allowedExtensions: ['png', 'jpg', 'jpeg']);
+    // FileType.image, not custom+extensions — see device_image_picker.dart for why.
+    final file = await FilePicker.pickFile(type: FileType.image);
     if (file == null) return;
     final bytes = await file.readAsBytes();
     await _run((api) => api.uploadLogo(bytes, file.name), 'Logo updated');

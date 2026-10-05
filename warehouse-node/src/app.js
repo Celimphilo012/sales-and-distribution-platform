@@ -43,6 +43,8 @@ const MODULES = [
   ['/inventory/adjustments', require('./modules/stock-adjustments/routes')],
   ['/inventory/counts', require('./modules/stock-counts/routes')],
   ['/inventory', require('./modules/inventory/routes')],
+  ['/sales', require('./modules/sales/routes')],
+  ['/internal', require('./modules/sales/tick-route')],
   ['/api/v1', require('./modules/external-api/routes')],
   ['/packing', require('./modules/packing/routes')],
   ['/settings/delivery', require('./modules/delivery-settings/routes')],

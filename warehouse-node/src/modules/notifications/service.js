@@ -38,6 +38,15 @@ function createNotificationsService({ db, notifier, config, logger }) {
   const userById = (id) =>
     db.one("SELECT id, email, phone, notify_channel AS notifyChannel FROM users WHERE id = ? AND status = 'ACTIVE'", [id]);
 
+  /** Like `recipients()`, but for something (a sale campaign) that can touch MULTIPLE warehouses at once. */
+  async function recipientsAcrossWarehouses(permissionKey, warehouseIds, excludeUserId) {
+    const byId = new Map();
+    for (const warehouseId of warehouseIds) {
+      for (const user of await recipients(permissionKey, warehouseId, excludeUserId)) byId.set(user.id, user);
+    }
+    return [...byId.values()];
+  }
+
   /** message: { subject, text (SMS), email (branded HTML content, core/email-template.js) }. */
   async function deliver(users, event, message) {
     for (const user of users) {
@@ -160,7 +169,116 @@ function createNotificationsService({ db, notifier, config, logger }) {
     });
   }
 
-  return { adjustmentRequested, adjustmentReviewed, stockCountSubmitted };
+  const campaignWindow = (c) => `${new Date(c.startsAt).toLocaleDateString()} – ${new Date(c.endsAt).toLocaleDateString()}`;
+  const campaignDetails = (c) => [
+    ['Campaign', c.name],
+    ['Products', String(c.products.length)],
+    ['Window', campaignWindow(c)],
+    ['Requested by', c.requestedByUser?.fullName],
+  ];
+
+  /** A new sale campaign needs a reviewer: tell everyone who can approve it (across every warehouse it touches). */
+  function saleCampaignRequested(campaign, warehouseIds) {
+    fireAndForget('sale_campaign.requested', async () => {
+      const users = await recipientsAcrossWarehouses('sales.approve', warehouseIds, campaign.requestedBy);
+      const requester = campaign.requestedByUser.fullName;
+      await deliver(users, 'sale_campaign.requested', {
+        subject: `approval needed: sale campaign "${campaign.name}"`,
+        text: `Sale campaign "${campaign.name}" (${campaign.products.length} product(s), ${campaignWindow(campaign)}) awaiting your approval. Requested by ${requester}.`,
+        email: {
+          preheader: `${requester} scheduled "${campaign.name}"`,
+          eyebrow: 'Approval needed',
+          tone: 'warning',
+          heading: 'A sale campaign is waiting for your review',
+          paragraphs: [`${requester} has scheduled a sale campaign. It will not go live until someone with approval rights accepts it.`],
+          details: campaignDetails(campaign),
+          button: button('Review sale campaigns', '/sales'),
+          footnote: settingsFootnote('You are receiving this because you can approve sale campaigns for this warehouse.'),
+        },
+      });
+    });
+  }
+
+  /** The requester learns the outcome of their request. */
+  function saleCampaignReviewed(campaign, warehouseIds) {
+    fireAndForget('sale_campaign.reviewed', async () => {
+      const approved = campaign.status === 'SCHEDULED' || campaign.status === 'ACTIVE';
+      const verdict = approved ? 'approved' : 'rejected';
+      const reviewer = campaign.reviewedByUser?.fullName ?? 'a reviewer';
+      await deliver([await userById(campaign.requestedBy)], `sale_campaign.${verdict}`, {
+        subject: `sale campaign ${verdict}: ${campaign.name}`,
+        text:
+          `Your sale campaign "${campaign.name}" was ${verdict} by ${reviewer}.` +
+          (campaign.reviewNote ? ` Note: ${campaign.reviewNote}` : ''),
+        email: {
+          preheader: `${reviewer} ${verdict} your campaign "${campaign.name}"`,
+          eyebrow: approved ? 'Approved' : 'Rejected',
+          tone: approved ? 'success' : 'danger',
+          heading: `Your sale campaign was ${verdict}`,
+          paragraphs: [
+            approved
+              ? `${reviewer} approved your request — it ${campaign.status === 'ACTIVE' ? 'is now live' : 'will go live on schedule'}.`
+              : `${reviewer} rejected your request, so this campaign will not run.`,
+          ],
+          details: [...campaignDetails(campaign).slice(0, 3), ['Reviewed by', reviewer]],
+          quote: campaign.reviewNote ? { label: "Reviewer's note", text: campaign.reviewNote } : undefined,
+          button: button('View sale campaigns', '/sales'),
+          footnote: settingsFootnote('You are receiving this because you requested this sale campaign.'),
+        },
+      });
+    });
+  }
+
+  /** `scripts/sales-tick.js` calls these for every campaign it flips — same recipients as the approval request. */
+  function saleCampaignStarted(campaign, warehouseIds) {
+    fireAndForget('sale_campaign.started', async () => {
+      const users = await recipientsAcrossWarehouses('sales.approve', warehouseIds);
+      await deliver(users, 'sale_campaign.started', {
+        subject: `sale campaign started: ${campaign.name}`,
+        text: `Sale campaign "${campaign.name}" is now live (${campaign.products.length} product(s)).`,
+        email: {
+          preheader: `"${campaign.name}" is now live`,
+          eyebrow: 'Now live',
+          tone: 'success',
+          heading: `"${campaign.name}" has started`,
+          paragraphs: ['Its products are now priced at their sale terms.'],
+          details: campaignDetails(campaign),
+          button: button('View sale campaigns', '/sales'),
+          footnote: settingsFootnote('You are receiving this because you can approve sale campaigns for this warehouse.'),
+        },
+      });
+    });
+  }
+
+  function saleCampaignEnded(campaign, warehouseIds) {
+    fireAndForget('sale_campaign.ended', async () => {
+      const users = await recipientsAcrossWarehouses('sales.approve', warehouseIds);
+      await deliver(users, 'sale_campaign.ended', {
+        subject: `sale campaign ended: ${campaign.name}`,
+        text: `Sale campaign "${campaign.name}" has ended. Its products are back to regular pricing.`,
+        email: {
+          preheader: `"${campaign.name}" has ended`,
+          eyebrow: 'Ended',
+          tone: 'info',
+          heading: `"${campaign.name}" has ended`,
+          paragraphs: ['Its products are back to their regular selling price.'],
+          details: campaignDetails(campaign),
+          button: button('View sale campaigns', '/sales'),
+          footnote: settingsFootnote('You are receiving this because you can approve sale campaigns for this warehouse.'),
+        },
+      });
+    });
+  }
+
+  return {
+    adjustmentRequested,
+    adjustmentReviewed,
+    stockCountSubmitted,
+    saleCampaignRequested,
+    saleCampaignReviewed,
+    saleCampaignStarted,
+    saleCampaignEnded,
+  };
 }
 
 module.exports = { createNotificationsService };

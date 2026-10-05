@@ -18,9 +18,11 @@ import '../../inventory/domain/ledger_entry.dart';
 import '../../inventory/presentation/widgets/balance_preview.dart';
 import '../../locations/data/leaf_locations_provider.dart';
 import '../../products/domain/product.dart';
+import '../../products/domain/tracking_mode.dart';
 import '../../products/presentation/product_options.dart';
 import '../../products/presentation/products_list_providers.dart';
 import '../data/receiving_providers.dart';
+import 'scan_receive_sheet.dart';
 
 /// "Receive stock" as a right-hand sheet (from a product, a slot, Inventory…).
 Future<void> showReceiveSheet(BuildContext context, {String? productId, String? locationId}) => showNxSheet<void>(
@@ -80,6 +82,7 @@ class _ReceiveFormState extends ConsumerState<ReceiveForm> {
   });
 
   Future<void> _submit(Product? product) async {
+    if (product?.trackingMode == TrackingMode.serial) return; // unit-tracked — use Scan to receive instead
     final qty = double.tryParse(_qty.text.trim());
     final errors = <String, String>{
       if (_productId == null) 'product': 'Choose a product',
@@ -142,6 +145,7 @@ class _ReceiveFormState extends ConsumerState<ReceiveForm> {
     final leaves = ref.watch(leafLocationsProvider);
     final product = products.where((p) => p.id == _productId).firstOrNull;
     final leaf = leaves.value?.where((l) => l.id == _locationId).firstOrNull;
+    final isSerial = product?.trackingMode == TrackingMode.serial;
     final qty = double.tryParse(_qty.text.trim()) ?? 0;
     final before = _productId != null && _locationId != null
         ? ref.watch(productLocationBalanceProvider((productId: _productId!, locationId: _locationId!))).value?.onHand ?? 0
@@ -172,18 +176,34 @@ class _ReceiveFormState extends ConsumerState<ReceiveForm> {
             ),
           ),
         ),
-        NxField(
-          label: 'Quantity${product == null ? '' : ' (${product.uom})'}',
-          required: true,
-          error: _errors['qty'],
-          child: NxInput(
-            controller: _qty,
-            placeholder: '0',
-            inputFormatters: NxInput.decimals(),
-            error: _errors['qty'] != null,
-            onChanged: (_) => setState(() {}),
+        if (isSerial)
+          NxSpan2(
+            child: NxField(
+              label: 'Quantity',
+              hint: 'This product is unit-tracked — each physical unit carries its own code, scanned in instead of a typed quantity.',
+              child: NxButton(
+                label: 'Scan to receive instead',
+                icon: PhosphorIconsRegular.qrCode,
+                onPressed: () {
+                  if (!widget.page) Navigator.of(context).pop();
+                  showScanReceiveSheet(context, locationId: _locationId);
+                },
+              ),
+            ),
+          )
+        else
+          NxField(
+            label: 'Quantity${product == null ? '' : ' (${product.uom})'}',
+            required: true,
+            error: _errors['qty'],
+            child: NxInput(
+              controller: _qty,
+              placeholder: '0',
+              inputFormatters: NxInput.decimals(),
+              error: _errors['qty'] != null,
+              onChanged: (_) => setState(() {}),
+            ),
           ),
-        ),
         NxField(
           label: widget.page ? 'Destination location' : 'Destination',
           required: true,
@@ -241,7 +261,7 @@ class _ReceiveFormState extends ConsumerState<ReceiveForm> {
         NxButton.primary(
           label: _saving ? 'Receiving…' : 'Receive stock',
           icon: PhosphorIconsRegular.boxArrowDown,
-          onPressed: _saving ? null : () => _submit(product),
+          onPressed: _saving || isSerial ? null : () => _submit(product),
         ),
         widget.page
             ? NxButton.ghost(label: 'Clear', color: n.n400, onPressed: _saving ? null : _clear)

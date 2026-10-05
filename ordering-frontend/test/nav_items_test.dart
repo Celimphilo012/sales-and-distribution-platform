@@ -70,6 +70,11 @@ void main() {
         'roles.manage',
         'audit.view',
         'reports.view',
+        'sales.view',
+        'sales.eligibility.manage',
+        'finances.view',
+        'finances.expenses.record',
+        'finances.expenses.void',
       },
     );
 

@@ -51,7 +51,7 @@ const MODELS = {
   },
   customer: {
     table: 'customers',
-    fields: ['id', 'name', 'phone', 'address', 'locationText', 'status', 'notes', 'createdAt', 'updatedAt'],
+    fields: ['id', 'name', 'phone', 'address', 'locationText', 'status', 'notes', 'assignedConsultantId', 'createdAt', 'updatedAt'],
     defaults: { status: 'ACTIVE' },
   },
   order: {
@@ -67,15 +67,28 @@ const MODELS = {
     table: 'order_items',
     fields: [
       'id', 'orderId', 'productId', 'productName', 'quantityOrdered', 'quantityFulfilled', 'quantityPicked',
-      'quantityPacked', 'unitPrice', 'lineTotal', 'reservedLocationId',
+      'quantityPacked', 'unitPrice', 'originalUnitPrice', 'saleCampaignId', 'saleCampaignName', 'lineTotal',
+      'reservedLocationId', 'unitCost',
     ],
     defaults: { quantityFulfilled: 0, quantityPicked: 0, quantityPacked: 0 },
+  },
+  saleCampaignEligibleConsultant: {
+    table: 'sale_campaign_eligible_consultants',
+    fields: ['id', 'saleCampaignId', 'consultantId', 'createdAt'],
   },
   payment: {
     table: 'payments',
     fields: [
       'id', 'orderId', 'amount', 'method', 'reference', 'notes', 'paidAt', 'status', 'recordedBy', 'voidedBy',
       'voidedAt', 'voidReason', 'createdAt', 'updatedAt',
+    ],
+    defaults: { status: 'RECORDED' },
+  },
+  expense: {
+    table: 'expenses',
+    fields: [
+      'id', 'category', 'amount', 'description', 'incurredAt', 'status', 'recordedBy', 'voidedBy', 'voidedAt',
+      'voidReason', 'createdAt', 'updatedAt',
     ],
     defaults: { status: 'RECORDED' },
   },

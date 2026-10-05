@@ -1,6 +1,6 @@
 'use strict';
 
-const { obj, nonEmpty, str, num, uuid, dateString, opt } = require('../../core/schema');
+const { obj, nonEmpty, str, num, uuid, dateString, opt, arrayOf } = require('../../core/schema');
 
 // Up to 3 decimal places, strictly positive.
 const quantity = num({ multipleOf: 0.001, exclusiveMinimum: 0 });
@@ -9,13 +9,16 @@ const body = obj(
   {
     supplier: nonEmpty(),
     productId: uuid,
-    quantity,
+    // Exactly one of these, matching the product's trackingMode — enforced in the service (it needs
+    // the product row to know which), not here.
+    quantity: opt(quantity),
+    unitCodes: opt(arrayOf(nonEmpty(), { minItems: 1, uniqueItems: true })),
     toLocationId: uuid,
     receivedDate: opt(dateString),
     reference: opt(str()),
     notes: opt(str()),
   },
-  ['supplier', 'productId', 'quantity', 'toLocationId'],
+  ['supplier', 'productId', 'toLocationId'],
 );
 
 // Mounted at /inventory/receiving

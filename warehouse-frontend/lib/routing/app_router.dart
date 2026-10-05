@@ -20,6 +20,7 @@ import '../features/products/presentation/products_list_screen.dart';
 import '../features/receiving/presentation/receiving_screen.dart';
 import '../features/reports/presentation/reports_screen.dart';
 import '../features/roles/presentation/roles_screen.dart';
+import '../features/sales/presentation/sales_screen.dart';
 import '../features/settings/presentation/settings_screen.dart';
 import '../features/stock_adjustments/presentation/stock_adjustments_screen.dart';
 import '../features/stock_counts/presentation/stock_counts_screen.dart';
@@ -57,6 +58,7 @@ const _customBuiltPaths = {
   RoutePaths.transfers,
   RoutePaths.stockCounts,
   RoutePaths.stockAdjustments,
+  RoutePaths.sales,
   RoutePaths.packing,
   RoutePaths.users,
   RoutePaths.roles,
@@ -187,6 +189,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             redirect: (context, state) => '${RoutePaths.stockCounts}?open=${state.pathParameters['id']}',
           ),
           GoRoute(path: RoutePaths.stockAdjustments, builder: (context, state) => const StockAdjustmentsScreen()),
+          GoRoute(path: RoutePaths.sales, builder: (context, state) => const SalesScreen()),
           GoRoute(path: RoutePaths.packing, builder: (context, state) => const PackingScreen()),
           GoRoute(path: RoutePaths.users, builder: (context, state) => const UsersScreen()),
           GoRoute(

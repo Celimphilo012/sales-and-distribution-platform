@@ -1,7 +1,7 @@
 'use strict';
 
-const { ProductStatus } = require('../../core/enums');
-const { obj, nonEmpty, str, num, uuid, opt, arrayOf, enumOf, boolQuery, uuidParams } = require('../../core/schema');
+const { ProductStatus, TrackingMode } = require('../../core/enums');
+const { obj, nonEmpty, str, num, int, uuid, opt, arrayOf, enumOf, boolQuery, uuidParams } = require('../../core/schema');
 
 // Money/quantity fields: at most 2 decimal places (handled by Ajv's multipleOf precision option).
 const money = (extra = {}) => num({ multipleOf: 0.01, ...extra });
@@ -33,6 +33,7 @@ const createBody = obj(
     costPrice: opt(money({ minimum: 0 })),
     uom: nonEmpty(),
     minStockLevel: opt(money({ minimum: 0 })),
+    trackingMode: opt(enumOf(TrackingMode)),
     attributes: opt(arrayOf(attributeInput)),
   },
   ['sku', 'name', 'categoryId', 'sellingPrice', 'uom'],
@@ -49,11 +50,14 @@ const updateBody = obj({
   uom: opt(nonEmpty()),
   minStockLevel: opt(money({ minimum: 0 })),
   status: opt(enumOf(ProductStatus)),
+  trackingMode: opt(enumOf(TrackingMode)),
   attributes: opt(arrayOf(attributeInput)),
 });
 
+const generateUnitsBody = obj({ count: int({ minimum: 1, maximum: 500 }) }, ['count']);
+
 function productsRoutes(app) {
-  const { products, otp } = app.services;
+  const { products, otp, inventory } = app.services;
   const view = [app.authenticate, app.requirePermissions('catalogue.view')];
   const manage = [app.authenticate, app.requirePermissions('products.manage')];
   const idParams = { params: uuidParams('id') };
@@ -87,6 +91,20 @@ function productsRoutes(app) {
       request.auditOldValue = await products.getExisting(request.params.id);
       request.auditAction = 'DEACTIVATE';
       return products.remove(request.params.id, request.user.id);
+    },
+  );
+
+  // Pre-prints N unique unit labels for a SERIAL product, ahead of it physically arriving (see
+  // inventory_units in db/schema.sql). Returns the new units' ids — the frontend builds one
+  // QrLabel(payload: ScanCode.forUnit(id)) per id and prints them.
+  app.post(
+    '/:id/units/generate',
+    { onRequest: manage, schema: { ...idParams, body: generateUnitsBody } },
+    async (request) => {
+      const unitIds = await inventory.generateUnits(request.params.id, request.body.count);
+      request.auditEntity = 'inventory_units';
+      request.auditBody = { productId: request.params.id, count: unitIds.length };
+      return { unitIds };
     },
   );
 }

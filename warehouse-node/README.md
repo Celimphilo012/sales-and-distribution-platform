@@ -202,3 +202,17 @@ URL has a path (e.g. `/api`), set `API_BASE_PATH=api`. Then Restart.
 
 `argon2` is native: install on the server (never upload `node_modules` built on Windows). There is no
 generate step and no query-engine binary any more.
+
+### Sale campaign scheduler
+
+Sale campaigns start/end on a schedule (`SCHEDULED` -> `ACTIVE` -> `ENDED`), but Passenger gives no
+guaranteed long-lived process to run an in-process timer in. Instead, set `CRON_SECRET` in the
+environment, then add a cPanel **Cron Job** (cPanel → Advanced → Cron Jobs):
+
+```
+* * * * *  curl -fsS -X POST -H "X-Cron-Secret: <same value as CRON_SECRET>" https://<your-domain>/internal/sales-tick >/dev/null 2>&1
+```
+
+Runs every minute, inside the live app (so its in-memory cache is invalidated immediately when a
+campaign flips — not just eventually, via TTL). Leaving `CRON_SECRET` unset disables the endpoint
+(always 404s) rather than leaving it open.

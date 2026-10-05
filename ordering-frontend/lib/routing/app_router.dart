@@ -11,12 +11,14 @@ import '../features/audit/presentation/audit_log_screen.dart';
 import '../features/auth/presentation/login_screen.dart';
 import '../features/customers/presentation/customers_screen.dart';
 import '../features/dashboard/presentation/dashboard_screen.dart';
+import '../features/finances/presentation/finances_screen.dart';
 import '../features/payments/presentation/payments_screen.dart';
 import '../features/reports/presentation/reports_screen.dart';
 import '../features/orders/presentation/order_detail_screen.dart';
 import '../features/orders/presentation/order_form_screen.dart';
 import '../features/orders/presentation/orders_screen.dart';
 import '../features/roles/presentation/roles_screen.dart';
+import '../features/sales/presentation/sales_screen.dart';
 import '../features/settings/presentation/settings_screen.dart';
 import '../features/users/presentation/users_screen.dart';
 import '../shared/widgets/coming_soon_view.dart';
@@ -45,6 +47,8 @@ const _customBuiltPaths = {
   RoutePaths.settings,
   RoutePaths.reports,
   RoutePaths.payments,
+  RoutePaths.finances,
+  RoutePaths.saleCampaigns,
 };
 
 /// The app's single [GoRouter], keyed off [authProvider] for the splash
@@ -139,6 +143,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             ),
           ),
           GoRoute(path: RoutePaths.payments, builder: (context, state) => const PaymentsScreen()),
+          GoRoute(
+            path: RoutePaths.finances,
+            builder: (context, state) => FinancesScreen(
+              initialTab: state.uri.queryParameters['tab'] == 'statements' ? 1 : 0,
+              initialCustomerId: state.uri.queryParameters['customer'],
+            ),
+          ),
+          GoRoute(path: RoutePaths.saleCampaigns, builder: (context, state) => const SalesScreen()),
           GoRoute(
             path: RoutePaths.orderNew,
             builder: (context, state) => OrderFormScreen(initialCustomerId: state.uri.queryParameters['customer']),

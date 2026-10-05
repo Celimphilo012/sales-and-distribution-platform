@@ -49,6 +49,10 @@ function loadConfig() {
       catalogueTtlMs: int('CACHE_CATALOGUE_TTL_MS', 60_000),
       reportsTtlMs: int('CACHE_REPORTS_TTL_MS', 30_000),
     },
+    // Shared secret for the cPanel Cron Job that flips sale campaigns on schedule (POST
+    // /internal/sales-tick, header X-Cron-Secret) — see README.md's deploy section. Unset = the
+    // endpoint always 404s (never silently open).
+    cronSecret: process.env.CRON_SECRET,
     trustProxy: (process.env.TRUST_PROXY ?? 'true') !== 'false',
     appName: process.env.APP_NAME ?? 'Warehouse System',
     // Where people open the warehouse app (e.g. https://warehouse.example.com). Emails link to it

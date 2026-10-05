@@ -29,7 +29,10 @@ class _DeviceImagePickerState extends State<DeviceImagePicker> {
   Future<void> _pick() async {
     setState(() => _picking = true);
     try {
-      final file = await FilePicker.pickFile(type: FileType.custom, allowedExtensions: ['jpg', 'jpeg', 'png', 'webp']);
+      // FileType.image (accept="image/*"), not FileType.custom + extensions (accept=".jpg,.png,…")
+      // — iOS Safari only reliably offers "Take Photo" in the upload sheet for a MIME-based accept;
+      // an extension list frequently suppresses the camera option entirely.
+      final file = await FilePicker.pickFile(type: FileType.image);
       if (file == null) return; // user cancelled
       final bytes = await file.readAsBytes();
       widget.onPicked(bytes, file.name);

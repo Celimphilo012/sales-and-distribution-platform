@@ -27,8 +27,23 @@ const PERMISSION_CATALOG = [
   { key: 'users.manage', description: 'Manage users', module: 'users' },
   { key: 'roles.manage', description: 'Manage roles and role permissions', module: 'roles' },
 
+  { key: 'sales.view', description: "View the warehouse's sale campaigns", module: 'sales' },
+  {
+    key: 'sales.eligibility.manage',
+    description: 'Manage which customers are eligible for a restricted sale campaign',
+    module: 'sales',
+  },
+
   { key: 'audit.view', description: 'View audit logs', module: 'audit' },
   { key: 'reports.view', description: 'View reports and the manager dashboard', module: 'reports' },
+
+  { key: 'finances.view', description: 'View the Finances screen (dashboard, statements, expenses, margin)', module: 'finances' },
+  { key: 'finances.expenses.record', description: 'Record an expense', module: 'finances' },
+  {
+    key: 'finances.expenses.void',
+    description: 'Void a recorded expense (kept on record, with a reason)',
+    module: 'finances',
+  },
   {
     key: 'settings.manage',
     description: 'Configure system settings such as email (SMTP) and SMS (httpSMS) delivery',
@@ -51,6 +66,11 @@ const ROLE_PERMISSION_MAP = {
     'payments.void',
     'audit.view',
     'reports.view',
+    'sales.view',
+    'sales.eligibility.manage',
+    'finances.view',
+    'finances.expenses.record',
+    'finances.expenses.void',
   ],
   WAREHOUSE: ['orders.view_own', 'fulfilment.pick', 'fulfilment.pack', 'fulfilment.dispatch'],
   CONSULTANT: [

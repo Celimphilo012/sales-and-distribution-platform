@@ -17,6 +17,23 @@ const BUCKET_COLUMNS = {
   expired: 'expired',
 };
 
+/** Balance bucket -> the inventory_units.status a unit takes on when it arrives in that bucket. */
+const UNIT_STATUS_BY_BUCKET = {
+  onHand: 'ON_HAND',
+  reserved: 'RESERVED',
+  damaged: 'DAMAGED',
+  lost: 'LOST',
+  expired: 'EXPIRED',
+};
+
+// Phase 1 (receiving) only — see inventory_units in db/schema.sql. Each of these types produces
+// exactly one unambiguous "arrival" delta (a positive one) in resolveBucketDeltas' output, which is
+// what a unit-tracked transaction needs: the single destination (bucket, location) every scanned
+// unit moves to. TRANSFER/ADJUSTMENT/ISSUE/etc. need their own deliberate per-type design (which
+// specific on-hand units a DECREASE consumes is not yet decided) — passing unitIds for any type not
+// listed here is refused rather than guessed at.
+const UNIT_TRACKED_TYPES = new Set(['RECEIVE', 'RETURN']);
+
 // One MariaDB CHECK constraint per bucket (see inventory_balances in
 // db/schema.sql) — the database's own backstop against a bucket going negative,
 // on top of the DB-write guard trigger. No caller currently pre-validates
@@ -117,6 +134,15 @@ class InventoryService {
    * (§H). Both commit or both roll back together.
    */
   async applyTransaction(input) {
+    // A unit-tracked call's quantity is never trusted from the caller — it IS the unit count, always
+    // recomputed here, which is what structurally stops "type a number" for a SERIAL product
+    // (the scanning UI never even shows a quantity field for one, but this is the real backstop).
+    if (input.unitIds?.length) {
+      if (!UNIT_TRACKED_TYPES.has(input.type)) {
+        throw badRequest(`Unit-tracked quantities are not supported for ${input.type} yet`);
+      }
+      input = { ...input, quantity: input.unitIds.length };
+    }
     if (!Number.isFinite(input.quantity) || input.quantity <= 0) {
       throw badRequest('quantity must be a positive number');
     }
@@ -154,6 +180,9 @@ class InventoryService {
         for (const delta of deltas) {
           await this.applyBalanceDelta(tx, input.productId, delta);
         }
+        if (input.unitIds?.length) {
+          await this.applyUnitMoves(tx, transaction.id, input.unitIds, deltas);
+        }
         return transaction;
       } finally {
         await this.db.exec('SET @allow_balance_write = NULL', [], tx);
@@ -163,6 +192,93 @@ class InventoryService {
     // Committed: everything derived from the ledger (product totals, dashboards, reports) is now stale.
     await this.cache.invalidate(TAGS.STOCK);
     return result;
+  }
+
+  /**
+   * Moves every scanned unit to wherever this transaction's stock actually arrived, and records the
+   * link (rule 2's append-only ledger, extended to unit granularity). `deltas` always has exactly one
+   * positive ("arrival") entry for the types in UNIT_TRACKED_TYPES — that's the destination every
+   * unit takes on.
+   */
+  async applyUnitMoves(tx, transactionId, unitIds, deltas) {
+    const arrival = deltas.find((d) => d.delta > 0);
+    const status = UNIT_STATUS_BY_BUCKET[arrival.bucket];
+    await this.db.exec(
+      `UPDATE inventory_units SET status = ?, location_id = ?, updated_at = ? WHERE id IN (?)`,
+      [status, arrival.locationId, new Date(), unitIds],
+      tx,
+    );
+    await this.models.insertMany(
+      'inventoryTransactionUnit',
+      unitIds.map((unitId) => ({ transactionId, unitId })),
+      tx,
+    );
+  }
+
+  /**
+   * Pre-prints N unique labels for a SERIAL product, ahead of it physically arriving — each becomes
+   * a PENDING inventory_units row (unit_code = its own id, so the printed `WH:U:<id>` label IS the
+   * lookup key) that `resolveUnitsForReceive` picks up the first time it's scanned in.
+   */
+  async generateUnits(productId, count) {
+    const product = await this.productsService.getExisting(productId);
+    if (product.trackingMode !== 'SERIAL') {
+      throw badRequest('Only SERIAL-tracked products can have unit labels generated');
+    }
+    if (!Number.isInteger(count) || count < 1 || count > 500) {
+      throw badRequest('count must be a whole number between 1 and 500');
+    }
+    const rows = Array.from({ length: count }, () => {
+      const id = randomUUID();
+      return { id, productId, unitCode: id, source: 'GENERATED' };
+    });
+    await this.models.insertMany('inventoryUnit', rows);
+    return rows.map((r) => r.id);
+  }
+
+  /**
+   * Turns the codes scanned for a SERIAL receiving line into unitIds ready for applyTransaction —
+   * the one place that decides whether a scanned code is a pre-printed label coming in for the first
+   * time, a brand-new supplier barcode, or a code that can't be received (already received elsewhere,
+   * or printed for a different product). Throws a 409 naming every bad code at once (extra.rejectedCodes)
+   * so the caller can report exactly which scans to drop and retry, rather than stopping at the first one.
+   */
+  async resolveUnitsForReceive(productId, unitCodes) {
+    const codes = [...new Set(unitCodes)];
+    const existing = codes.length
+      ? await this.db.query(
+          'SELECT id, unit_code AS unitCode, product_id AS productId, status FROM inventory_units WHERE unit_code IN (?)',
+          [codes],
+        )
+      : [];
+    const byCode = new Map(existing.map((u) => [u.unitCode, u]));
+    const unitIds = [];
+    const toCreate = [];
+    const rejected = [];
+    for (const code of codes) {
+      const found = byCode.get(code);
+      if (!found) {
+        toCreate.push(code);
+      } else if (found.productId !== productId) {
+        rejected.push({ code, reason: 'This code is registered to a different product' });
+      } else if (found.status !== 'PENDING') {
+        rejected.push({ code, reason: found.status === 'ON_HAND' ? 'Already received' : `Not available (${found.status.toLowerCase()})` });
+      } else {
+        unitIds.push(found.id);
+      }
+    }
+    if (rejected.length) {
+      throw conflict(
+        `${rejected.length} scanned code${rejected.length === 1 ? '' : 's'} can't be received: ${rejected.map((r) => `${r.code} — ${r.reason}`).join('; ')}`,
+        { rejectedCodes: rejected },
+      );
+    }
+    if (toCreate.length) {
+      const created = toCreate.map((code) => ({ id: randomUUID(), productId, unitCode: code, source: 'SUPPLIER' }));
+      await this.models.insertMany('inventoryUnit', created);
+      unitIds.push(...created.map((c) => c.id));
+    }
+    return unitIds;
   }
 
   /**
@@ -241,6 +357,39 @@ class InventoryService {
     const limit = query.limit ? ` LIMIT ${Number(query.limit)}` : '';
     const rows = await this.db.query(`${TRANSACTION_SELECT} ${where.sql} ORDER BY t.created_at DESC${limit}`, where.params);
     return rows.map(nest);
+  }
+
+  /**
+   * One SERIAL product's units, paginated, newest first — every physical unit's own code, status
+   * and current location (null while PENDING or after ISSUED). Scoped by the PRODUCT's warehouse
+   * (via its category -> workstream), not the unit's own location, since a unit can legitimately
+   * have no location (unlike a balance row, which always has one).
+   */
+  async findUnits(query, viewerId) {
+    const scope = await this.access.warehouseScope(viewerId);
+    if (scope !== null && scope.length === 0) return { data: [], page: 1, pageSize: query.pageSize ?? 20, total: 0, totalPages: 0 };
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 20;
+    const where = new Where().eq('iu.product_id', query.productId).eq('iu.status', query.status);
+    if (scope !== null) where.raw('w.warehouse_id IN (?)', scope);
+    const joinScope = 'JOIN categories c ON c.id = p.category_id JOIN workstreams w ON w.id = c.workstream_id';
+    const [countRow, rows] = await Promise.all([
+      this.db.one(`SELECT COUNT(*) AS total FROM inventory_units iu JOIN products p ON p.id = iu.product_id ${joinScope} ${where.sql}`, where.params),
+      this.db.query(
+        `SELECT ${cols('inventoryUnit', 'iu')},
+                ${cols('location', 'l', ['id', 'name', 'code', 'warehouseId'], 'location.')}
+           FROM inventory_units iu
+           JOIN products p ON p.id = iu.product_id
+           ${joinScope}
+           LEFT JOIN locations l ON l.id = iu.location_id
+           ${where.sql}
+          ORDER BY iu.created_at DESC
+          LIMIT ? OFFSET ?`,
+        [...where.params, pageSize, (page - 1) * pageSize],
+      ),
+    ]);
+    const total = Number(countRow.total);
+    return { data: rows.map(nest), page, pageSize, total, totalPages: Math.ceil(total / pageSize) || 0 };
   }
 
   /**

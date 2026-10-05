@@ -57,6 +57,7 @@ describe('ordering API (Express port)', () => {
       assert.equal(order.status, 'DRAFT');
       assert.equal(order.items[0].productName, 'Bar Soap');
       assert.equal(order.items[0].unitPrice, '12.5');
+      assert.equal(order.items[0].unitCost, '5', 'snapshotted from the warehouse product.costPrice');
       assert.equal(order.items[0].lineTotal, '50');
       assert.equal(order.total, '50');
       assert.match(order.orderNumber, /^ORD-\d{8}-[A-Z0-9]{6}$/);

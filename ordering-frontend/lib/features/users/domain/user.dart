@@ -95,3 +95,18 @@ class WarehouseUser {
     mfaMethod: json['mfaMethod'] as String? ?? 'NONE',
   );
 }
+
+/// The minimal shape `GET /users/consultants` returns — active users who hold `orders.create`,
+/// for picking (a customer's assigned consultant, sale-campaign eligibility). Deliberately not
+/// [WarehouseUser]: that type requires fields (`status`, `roles`, ...) this directory-style
+/// endpoint doesn't send.
+class ConsultantRef {
+  const ConsultantRef({required this.id, required this.fullName, required this.email});
+
+  final String id;
+  final String fullName;
+  final String email;
+
+  factory ConsultantRef.fromJson(Map<String, dynamic> json) =>
+      ConsultantRef(id: json['id'] as String, fullName: json['fullName'] as String, email: json['email'] as String);
+}

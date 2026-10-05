@@ -64,9 +64,9 @@ const MODELS = {
     table: 'products',
     fields: [
       'id', 'sku', 'name', 'description', 'categoryId', 'sellingPrice', 'costPrice', 'uom',
-      'minStockLevel', 'status', 'createdAt', 'updatedAt',
+      'minStockLevel', 'status', 'trackingMode', 'createdAt', 'updatedAt',
     ],
-    defaults: { minStockLevel: 0, status: 'ACTIVE' },
+    defaults: { minStockLevel: 0, status: 'ACTIVE', trackingMode: 'BULK' },
   },
   attributeType: {
     table: 'attribute_types',
@@ -102,6 +102,16 @@ const MODELS = {
       'orderId', 'performedBy', 'createdAt',
     ],
   },
+  inventoryUnit: {
+    table: 'inventory_units',
+    fields: ['id', 'productId', 'unitCode', 'source', 'status', 'locationId', 'createdAt', 'updatedAt'],
+    defaults: { status: 'PENDING' },
+  },
+  inventoryTransactionUnit: {
+    table: 'inventory_transaction_units',
+    fields: ['transactionId', 'unitId'],
+    noId: true,
+  },
   stockAdjustment: {
     table: 'stock_adjustments',
     fields: [
@@ -136,6 +146,21 @@ const MODELS = {
     table: 'stock_reservation_lines',
     fields: ['id', 'reservationId', 'productId', 'locationId', 'quantity', 'issuedQuantity'],
     defaults: { issuedQuantity: 0 },
+  },
+  saleCampaign: {
+    table: 'sale_campaigns',
+    fields: [
+      'id', 'name', 'description', 'startsAt', 'endsAt', 'eligibility', 'status',
+      'requestedBy', 'requestedAt', 'reviewedBy', 'reviewedAt', 'reviewNote',
+      'dailyWindowStart', 'dailyWindowEnd', 'firstActivatedAt', 'maxUsesPerCustomer', 'createdAt', 'updatedAt',
+    ],
+    defaults: { eligibility: 'ALL_CUSTOMERS', status: 'PENDING_APPROVAL' },
+    nowFields: ['requestedAt'],
+  },
+  saleCampaignProduct: {
+    table: 'sale_campaign_products',
+    fields: ['id', 'campaignId', 'productId', 'discountType', 'discountValue', 'minQuantity'],
+    defaults: { minQuantity: 1 },
   },
 };
 

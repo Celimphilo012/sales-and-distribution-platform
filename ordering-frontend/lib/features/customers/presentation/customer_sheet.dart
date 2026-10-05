@@ -35,6 +35,7 @@ class _CustomerSheet extends ConsumerWidget {
     final user = ref.watch(authProvider).value?.user;
     final canEdit = user?.can('customers.create') ?? false;
     final canOrder = user?.can('orders.create') ?? false;
+    final canSeeStatement = user?.can('finances.view') ?? false;
     final async = ref.watch(customerDetailProvider(customerId));
     final orders = ref.watch(customerOrdersProvider(customerId));
 
@@ -99,6 +100,17 @@ class _CustomerSheet extends ConsumerWidget {
                       final router = GoRouter.of(context);
                       Navigator.of(context).pop();
                       router.go('${RoutePaths.orderNew}?customer=${c.id}');
+                    },
+                  ),
+                if (canSeeStatement)
+                  NxButton(
+                    label: 'Statement',
+                    icon: PhosphorIconsRegular.fileText,
+                    small: true,
+                    onPressed: () {
+                      final router = GoRouter.of(context);
+                      Navigator.of(context).pop();
+                      router.go('${RoutePaths.finances}?tab=statements&customer=${c.id}');
                     },
                   ),
                 if (canEdit) NxButton(label: 'Edit', icon: PhosphorIconsRegular.pencilSimple, small: true, onPressed: () => showCustomerFormDialog(context, customer: c)),

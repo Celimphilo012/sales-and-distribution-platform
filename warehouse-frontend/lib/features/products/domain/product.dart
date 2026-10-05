@@ -1,7 +1,9 @@
 import '../../workstreams/domain/workstream.dart';
+import 'active_sale.dart';
 import 'product_attribute.dart';
 import 'product_image.dart';
 import 'product_status.dart';
+import 'tracking_mode.dart';
 
 /// A category's `{id, name}` only — used for [ProductCategoryRef.parent],
 /// which never needs more than that to render "Parent (Sub-category)".
@@ -76,6 +78,8 @@ class Product {
     required this.uom,
     required this.minStockLevel,
     required this.status,
+    this.trackingMode = TrackingMode.bulk,
+    this.sale,
     required this.createdAt,
     required this.updatedAt,
     this.images = const [],
@@ -94,6 +98,8 @@ class Product {
   final String uom;
   final double minStockLevel;
   final ProductStatus status;
+  final TrackingMode trackingMode;
+  final ActiveSale? sale;
   final DateTime createdAt;
   final DateTime updatedAt;
   final List<ProductImage> images;
@@ -132,6 +138,8 @@ class Product {
     uom: json['uom'] as String,
     minStockLevel: _num(json['minStockLevel']) ?? 0,
     status: ProductStatus.fromJson(json['status'] as String),
+    trackingMode: json['trackingMode'] != null ? TrackingMode.fromJson(json['trackingMode'] as String) : TrackingMode.bulk,
+    sale: json['sale'] == null ? null : ActiveSale.fromJson(json['sale'] as Map<String, dynamic>),
     createdAt: DateTime.parse(json['createdAt'] as String),
     updatedAt: DateTime.parse(json['updatedAt'] as String),
     images: (json['images'] as List<dynamic>? ?? const [])

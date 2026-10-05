@@ -2,10 +2,10 @@
 
 const { cols, Where } = require('../core/models');
 const { CustomerStatus } = require('../core/enums');
-const { obj, str, opt, enumOf, boolQuery, uuidParams } = require('../core/schema');
+const { obj, str, opt, enumOf, boolQuery, uuid, uuidParams } = require('../core/schema');
 
 const containsPattern = (text) => `%${text.replace(/[\\%_]/g, '\\$&')}%`;
-const CUSTOMER_FIELDS = ['name', 'phone', 'address', 'locationText', 'notes'];
+const CUSTOMER_FIELDS = ['name', 'phone', 'address', 'locationText', 'notes', 'assignedConsultantId'];
 
 function createCustomersService({ db, models }) {
   function findAll(query = {}) {
@@ -39,7 +39,13 @@ function createCustomersService({ db, models }) {
   return { findAll, findOne: getExisting, getExisting, create, update, remove };
 }
 
-const optional = { phone: opt(str()), address: opt(str()), locationText: opt(str()), notes: opt(str()) };
+const optional = {
+  phone: opt(str()),
+  address: opt(str()),
+  locationText: opt(str()),
+  notes: opt(str()),
+  assignedConsultantId: opt(uuid),
+};
 
 function customersRoutes(app) {
   const { customers } = app.services;

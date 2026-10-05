@@ -79,7 +79,9 @@ class _AdjustmentFormState extends ConsumerState<_AdjustmentForm> {
   Future<void> _pickPhoto() async {
     setState(() => _picking = true);
     try {
-      final file = await FilePicker.pickFile(type: FileType.custom, allowedExtensions: ['jpg', 'jpeg', 'png', 'webp']);
+      // FileType.image, not custom+extensions — the latter's accept=".jpg,.png,…" frequently
+      // suppresses iOS Safari's "Take Photo" option; accept="image/*" shows it reliably.
+      final file = await FilePicker.pickFile(type: FileType.image);
       if (file == null) return;
       final bytes = await file.readAsBytes();
       if (bytes.length > 8 * 1024 * 1024) {

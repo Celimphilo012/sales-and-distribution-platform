@@ -76,6 +76,7 @@ const kReports = [
   ReportDef('customers', 'Sales by customer', 'What each customer bought, paid and still owes', 'Sales', PhosphorIconsDuotone.addressBook),
   ReportDef('consultants', 'Sales by consultant', 'Orders and value per consultant', 'Sales', PhosphorIconsDuotone.userCircle),
   ReportDef('products', 'Sales by product', 'Units and value ordered per product', 'Sales', PhosphorIconsDuotone.package),
+  ReportDef('sale-performance', 'Sale performance', 'Units sold at a discount, by campaign, and the revenue given up', 'Sales', PhosphorIconsDuotone.tag),
   ReportDef('payments', 'Payments received', 'Every recorded payment by date, method and reference', 'Money', PhosphorIconsDuotone.wallet),
   ReportDef('owed', 'Outstanding balances', 'Orders still owed money, largest first', 'Money', PhosphorIconsDuotone.coins),
 ];
@@ -187,6 +188,31 @@ ReportData buildReport(ReportDef def, ReportSources s, ReportPeriod period) {
         const ReportColumn('Units', nu, 10),
         const ReportColumn('Value', m, 15),
       ], rows, totalsFrom: 1, note: 'Drafts, rejected and cancelled orders excluded.');
+    case 'sale-performance':
+      final units = <String, double>{};
+      final revenueGivenUp = <String, double>{};
+      final saleRevenue = <String, double>{};
+      for (final o in live) {
+        for (final i in o.items.where((i) => i.wasDiscounted)) {
+          final name = i.saleCampaignName ?? i.saleCampaignId!;
+          units[name] = (units[name] ?? 0) + i.quantityOrdered;
+          revenueGivenUp[name] = (revenueGivenUp[name] ?? 0) + (i.originalUnitPrice! - i.unitPrice) * i.quantityOrdered;
+          saleRevenue[name] = (saleRevenue[name] ?? 0) + i.lineTotal;
+        }
+      }
+      final rows = [for (final name in units.keys) [name, units[name], saleRevenue[name], revenueGivenUp[name]]]
+        ..sort((a, b) => (b[2] as double).compareTo(a[2] as double));
+      return make(
+        [
+          const ReportColumn('Campaign', t, 28),
+          const ReportColumn('Units sold', nu, 14),
+          const ReportColumn('Revenue at sale price', m, 20),
+          const ReportColumn('Revenue given up', m, 20),
+        ],
+        rows,
+        totalsFrom: 1,
+        note: rows.isEmpty ? 'No discounted lines in this period.' : 'Drafts, rejected and cancelled orders excluded. "Revenue given up" is the discount applied, at the quantities actually ordered.',
+      );
     case 'payments':
       final pays = s.payments.where((p) => period.includes(p.paidAt)).toList()..sort((a, b) => b.paidAt.compareTo(a.paidAt));
       final voided = pays.where((p) => p.isVoided).length;

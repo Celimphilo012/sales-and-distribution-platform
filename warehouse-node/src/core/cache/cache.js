@@ -118,6 +118,7 @@ const TAGS = {
   STRUCTURE: 'structure', // warehouses + locations tree
   STOCK: 'stock', // anything derived from the inventory ledger
   SETTINGS: 'settings', // admin-editable app settings (email/SMS delivery)
+  SALES: 'sales', // sale campaigns + which products are currently on sale
 };
 
 module.exports = { Cache, createCache, TAGS };

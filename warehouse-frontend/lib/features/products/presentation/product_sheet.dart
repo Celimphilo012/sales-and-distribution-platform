@@ -14,11 +14,16 @@ import '../../../shared/nx/nx_primitives.dart';
 import '../../dashboard/presentation/dashboard_screen.dart' show txTone;
 import '../../inventory/data/inventory_providers.dart';
 import '../../receiving/presentation/receive_sheet.dart';
+import '../../sales/domain/sale_campaign.dart' show SaleDiscountType, SaleEligibility;
 import '../../scan/qr_label_dialog.dart';
 import '../data/products_providers.dart';
+import '../domain/active_sale.dart';
 import '../domain/product.dart';
 import '../domain/product_status.dart';
+import '../domain/tracking_mode.dart';
+import 'generate_unit_labels_dialog.dart';
 import 'product_form_dialog.dart';
+import 'product_units_sheet.dart';
 import 'products_list_providers.dart';
 import 'widgets/product_image_view.dart';
 
@@ -152,6 +157,20 @@ class _Body extends ConsumerWidget {
                 },
               ),
             NxButton(label: 'QR label', small: true, icon: PhosphorIconsRegular.qrCode, onPressed: () => showQrLabelDialog(context, productLabel(p))),
+            if (canManage && p.trackingMode == TrackingMode.serial)
+              NxButton(
+                label: 'Unit labels',
+                small: true,
+                icon: PhosphorIconsRegular.stackPlus,
+                onPressed: () => showGenerateUnitLabelsDialog(context, p),
+              ),
+            if (p.trackingMode == TrackingMode.serial && (user?.can('inventory.view') ?? false))
+              NxButton(
+                label: 'View units',
+                small: true,
+                icon: PhosphorIconsRegular.listChecks,
+                onPressed: () => showProductUnitsSheet(context, p),
+              ),
             if (canManage && active)
               NxButton(label: 'Deactivate', small: true, icon: PhosphorIconsRegular.prohibit, color: n.bad, onPressed: () => setStatus(false)),
             if (canManage && !active)
@@ -179,6 +198,7 @@ class _Body extends ConsumerWidget {
             ],
           ),
         ),
+        if (p.sale != null) ...[const SizedBox(height: 10), _SaleBanner(sale: p.sale!)],
         const SizedBox(height: 16),
         _H3('Stock by location'),
         stock.when(
@@ -345,4 +365,45 @@ class _H3 extends StatelessWidget {
     padding: const EdgeInsets.only(bottom: 6),
     child: Text(text, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: context.nx.text)),
   );
+}
+
+/// On the product sheet when `p.sale` is set — the campaign terms, read-only (managed from the
+/// Sale Campaigns screen, not here).
+class _SaleBanner extends StatelessWidget {
+  const _SaleBanner({required this.sale});
+
+  final ActiveSale sale;
+
+  @override
+  Widget build(BuildContext context) {
+    final n = context.nx;
+    final discount = switch (sale.discountType) {
+      SaleDiscountType.percent => '${fmtPlain(sale.discountValue)}% off',
+      SaleDiscountType.fixedAmount => '${fmtMoney(sale.discountValue)} off',
+      SaleDiscountType.fixedPrice => 'now ${fmtMoney(sale.discountValue)}',
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(color: n.warn.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(NxRadius.md)),
+      child: Row(
+        children: [
+          PhosphorIcon(PhosphorIconsFill.tag, size: 18, color: n.warn),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('On sale — ${sale.campaignName}', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: n.text)),
+                Text(
+                  [discount, if (sale.minQuantity > 1) 'min ${fmtNum(sale.minQuantity)}', if (sale.eligibility == SaleEligibility.restricted) 'restricted'].join(' · ') +
+                      (sale.effectivePrice != null ? ' → ${fmtMoney(sale.effectivePrice!)}' : ''),
+                  style: TextStyle(fontSize: 11, color: n.n400),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

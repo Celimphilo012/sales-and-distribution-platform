@@ -10,6 +10,7 @@ import '../../products/domain/product.dart';
 import '../../products/domain/products_filter.dart';
 import '../../warehouses/data/warehouses_providers.dart';
 import '../domain/inventory_balance.dart';
+import '../domain/inventory_unit.dart';
 import '../domain/ledger_entry.dart';
 import '../domain/product_location_stock.dart';
 import 'inventory_api.dart';
@@ -95,6 +96,12 @@ final productLedgerProvider = FutureProvider.autoDispose.family<List<LedgerEntry
   return ref.watch(inventoryApiProvider).transactions(productId: productId, limit: 8);
 });
 
+/// One page of a SERIAL product's units (the product sheet's "View units" screen).
+final productUnitsPageProvider = FutureProvider.autoDispose
+    .family<InventoryUnitsPage, ({String productId, InventoryUnitStatus? status, int page})>((ref, args) {
+      return ref.watch(inventoryApiProvider).units(productId: args.productId, status: args.status, page: args.page);
+    });
+
 /// Everything that moves stock invalidates these.
 void invalidateStockViews(WidgetRef ref) {
   ref.invalidate(allBalancesProvider);
@@ -103,4 +110,5 @@ void invalidateStockViews(WidgetRef ref) {
   ref.invalidate(productStockBreakdownProvider);
   ref.invalidate(locationBalancesProvider);
   ref.invalidate(productsListProvider);
+  ref.invalidate(productUnitsPageProvider);
 }

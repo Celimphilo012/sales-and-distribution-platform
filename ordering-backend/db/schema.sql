@@ -52,9 +52,40 @@ CREATE TABLE `customers` (
   `location_text` varchar(191) DEFAULT NULL,
   `status` enum('ACTIVE','INACTIVE') NOT NULL DEFAULT 'ACTIVE',
   `notes` varchar(191) DEFAULT NULL,
+  -- The consultant this customer belongs to, for consultant-based sale-campaign eligibility (a
+  -- RESTRICTED campaign is opened to consultants, not individual customers — see sale_campaign_
+  -- eligible_consultants below; every customer assigned to an eligible consultant qualifies).
+  `assigned_consultant_id` varchar(191) DEFAULT NULL,
   `created_at` datetime(3) NOT NULL DEFAULT current_timestamp(3),
   `updated_at` datetime(3) NOT NULL,
-  PRIMARY KEY (`id`)
+  PRIMARY KEY (`id`),
+  KEY `customers_assigned_consultant_id_idx` (`assigned_consultant_id`),
+  CONSTRAINT `customers_assigned_consultant_id_fkey` FOREIGN KEY (`assigned_consultant_id`) REFERENCES `users` (`id`) ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Money OUT, modelled directly on `payments` (money in): same shape, same void-not-edit-or-delete
+-- discipline. The category list is a starting default — confirm/adjust against how the business
+-- actually wants expenses categorized.
+CREATE TABLE `expenses` (
+  `id` varchar(191) NOT NULL,
+  `category` enum('RENT','SALARIES','UTILITIES','TRANSPORT','MARKETING','SUPPLIES','OTHER') NOT NULL,
+  `amount` decimal(12,2) NOT NULL,
+  `description` varchar(500) DEFAULT NULL,
+  `incurred_at` date NOT NULL,
+  `status` enum('RECORDED','VOIDED') NOT NULL DEFAULT 'RECORDED',
+  `recorded_by` varchar(191) NOT NULL,
+  `voided_by` varchar(191) DEFAULT NULL,
+  `voided_at` datetime(3) DEFAULT NULL,
+  `void_reason` varchar(500) DEFAULT NULL,
+  `created_at` datetime(3) NOT NULL DEFAULT current_timestamp(3),
+  `updated_at` datetime(3) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `expenses_incurred_at_idx` (`incurred_at`),
+  KEY `expenses_recorded_by_fkey` (`recorded_by`),
+  KEY `expenses_voided_by_fkey` (`voided_by`),
+  CONSTRAINT `expenses_recorded_by_fkey` FOREIGN KEY (`recorded_by`) REFERENCES `users` (`id`) ON UPDATE CASCADE,
+  CONSTRAINT `expenses_voided_by_fkey` FOREIGN KEY (`voided_by`) REFERENCES `users` (`id`) ON UPDATE CASCADE,
+  CONSTRAINT `expenses_amount_positive` CHECK (`amount` > 0)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE `notifications` (
@@ -100,6 +131,17 @@ CREATE TABLE `order_items` (
   `quantity_picked` decimal(14,3) NOT NULL DEFAULT 0.000,
   `product_name` varchar(191) DEFAULT NULL,
   `reserved_location_id` varchar(191) DEFAULT NULL,
+  -- Set only when a sale discount applied at save time (buildLineInputs in modules/orders.js) — a
+  -- snapshot, same principle as product_name: the warehouse's campaign is opaque here (no FK, same
+  -- as product_id — campaigns live in warehouse_db).
+  `original_unit_price` decimal(12,2) DEFAULT NULL,
+  `sale_campaign_id` varchar(191) DEFAULT NULL,
+  `sale_campaign_name` varchar(191) DEFAULT NULL,
+  -- Snapshot of the warehouse product's cost_price at save time (buildLineInputs), same principle
+  -- as original_unit_price above — null when the product has no cost_price set. Margin reporting
+  -- only sums rows where this is not null (see modules/finances.js) rather than treating an unknown
+  -- cost as zero.
+  `unit_cost` decimal(12,2) DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `order_items_order_id_idx` (`order_id`),
   KEY `order_items_product_id_idx` (`product_id`),
@@ -216,6 +258,24 @@ CREATE TABLE `role_permissions` (
   KEY `role_permissions_permission_id_fkey` (`permission_id`),
   CONSTRAINT `role_permissions_permission_id_fkey` FOREIGN KEY (`permission_id`) REFERENCES `permissions` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `role_permissions_role_id_fkey` FOREIGN KEY (`role_id`) REFERENCES `roles` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Which LOCAL customers may buy at a RESTRICTED sale campaign's price — `sale_campaign_id` is the
+-- warehouse's campaign id, opaque here (no FK, same principle as order_items.product_id: campaigns
+-- live in warehouse_db). Eligibility is assigned by CONSULTANT, not by individual customer — a
+-- manager picks which consultants' books of customers may buy at a RESTRICTED campaign's price;
+-- every customer whose `assigned_consultant_id` is in this set qualifies (see customers table and
+-- salesEligibility.isEligible in modules/sales-eligibility.js). `consultant_id` IS a real local FK
+-- (users are ours), same as `customer_id` was when this was per-customer.
+CREATE TABLE `sale_campaign_eligible_consultants` (
+  `id` varchar(191) NOT NULL,
+  `sale_campaign_id` varchar(191) NOT NULL,
+  `consultant_id` varchar(191) NOT NULL,
+  `created_at` datetime(3) NOT NULL DEFAULT current_timestamp(3),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `sale_campaign_eligible_consultants_campaign_consultant_key` (`sale_campaign_id`,`consultant_id`),
+  KEY `sale_campaign_eligible_consultants_consultant_id_idx` (`consultant_id`),
+  CONSTRAINT `sale_campaign_eligible_consultants_consultant_id_fkey` FOREIGN KEY (`consultant_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE `roles` (

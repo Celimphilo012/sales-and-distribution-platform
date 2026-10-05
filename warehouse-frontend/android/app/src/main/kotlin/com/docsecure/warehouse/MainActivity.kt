@@ -1,4 +1,4 @@
-package com.swoop.distribution_platform
+package com.docsecure.warehouse
 
 import io.flutter.embedding.android.FlutterActivity
 

@@ -22,6 +22,9 @@ const dateString = {
   pattern: /^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?)?$/.source,
 };
 
+// A time-of-day, no date — "15:00" or "15:00:00" (a daily recurring window, e.g. sale_campaigns).
+const timeString = { type: 'string', pattern: /^\d{2}:\d{2}(:\d{2})?$/.source };
+
 /** Marks a property optional AND nullable (class-validator's @IsOptional()). */
 function opt(schema) {
   const types = Array.isArray(schema.type) ? schema.type : [schema.type];
@@ -51,4 +54,4 @@ function uuidParams(...names) {
 /** `?includeInactive=true` style flag — coerced from the string form by Ajv. */
 const boolQuery = { type: 'boolean' };
 
-module.exports = { uuid, str, nonEmpty, int, num, bool, dateString, opt, obj, arrayOf, enumOf, uuidParams, boolQuery };
+module.exports = { uuid, str, nonEmpty, int, num, bool, dateString, timeString, opt, obj, arrayOf, enumOf, uuidParams, boolQuery };

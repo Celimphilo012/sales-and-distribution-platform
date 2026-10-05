@@ -38,6 +38,23 @@ function createUsersService({ db, models }) {
   const findAll = async () =>
     withRoles(await db.query(`SELECT ${cols('user', 'u', USER_FIELDS)} FROM users u ORDER BY u.created_at ASC`));
 
+  /**
+   * Active users who can actually place an order (hold `orders.create`, through any role) — the
+   * definition of "a consultant" for picking purposes (customer assignment, sale-campaign
+   * eligibility). Permission-based, not a role-name match (rule 1 — roles are admin-configurable
+   * data, a role could be renamed or restructured and this must still mean the same thing).
+   */
+  const findConsultants = () =>
+    db.query(
+      `SELECT DISTINCT ${cols('user', 'u', ['id', 'fullName', 'email'])}
+         FROM users u
+         JOIN user_roles ur ON ur.user_id = u.id
+         JOIN role_permissions rp ON rp.role_id = ur.role_id
+         JOIN permissions p ON p.id = rp.permission_id
+        WHERE u.status = 'ACTIVE' AND p.\`key\` = 'orders.create'
+        ORDER BY u.full_name ASC`,
+    );
+
   async function getExisting(id) {
     const user = await db.one(`SELECT ${cols('user', 'u', USER_FIELDS)} FROM users u WHERE u.id = ?`, [id]);
     if (!user) throw notFound(`User ${id} not found`);
@@ -140,7 +157,7 @@ function createUsersService({ db, models }) {
     return getExisting(id);
   }
 
-  return { findAll, findOne: getExisting, getExisting, create, update, updateOwnProfile, changeOwnPassword, resetMfa, remove };
+  return { findAll, findConsultants, findOne: getExisting, getExisting, create, update, updateOwnProfile, changeOwnPassword, resetMfa, remove };
 }
 
 const roleIds = arrayOf({ type: 'string', format: 'uuid' }, { uniqueItems: true });
@@ -155,6 +172,14 @@ function usersRoutes(app) {
   const deactivating = (req) => req.body.status != null && req.body.status !== 'ACTIVE';
 
   app.get('/me', { onRequest: [app.authenticate] }, async (request) => users.findOne(request.user.id));
+
+  // A minimal directory for pickers (assigning a customer's consultant, sale-campaign eligibility)
+  // — gated on customers.view, not users.manage, since that's the permission every caller who
+  // actually needs this (Manager/Admin) already holds, and the data returned (id/name/email) is
+  // non-sensitive directory info, not full user management.
+  app.get('/consultants', { onRequest: [app.authenticate, app.requirePermissions('customers.view')] }, async () =>
+    users.findConsultants(),
+  );
 
   // Self-service profile: name, phone number, notification channel.
   app.patch(

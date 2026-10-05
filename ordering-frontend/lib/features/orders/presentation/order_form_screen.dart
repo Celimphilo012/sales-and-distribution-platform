@@ -29,7 +29,16 @@ import '../domain/order_lifecycle.dart';
 /// price is an ESTIMATE from the catalogue for the running total; the real
 /// price is what the server snapshots on save (rule 8).
 class _DraftLine {
-  _DraftLine({required this.productId, required this.name, required this.sku, required this.uom, required this.price, required this.quantity});
+  _DraftLine({
+    required this.productId,
+    required this.name,
+    required this.sku,
+    required this.uom,
+    required this.price,
+    required this.quantity,
+    this.originalPrice,
+    this.saleCampaignName,
+  });
 
   final String productId;
   final String name;
@@ -37,6 +46,12 @@ class _DraftLine {
   final String uom;
   final double price;
   double quantity;
+
+  /// Set only when [price] is already a sale estimate (see `_add` — ALL_CUSTOMERS campaigns only;
+  /// a RESTRICTED one can't be estimated client-side, see WarehouseProductSale's doc comment). The
+  /// server re-resolves the real price (and eligibility) on save regardless — this is display only.
+  final double? originalPrice;
+  final String? saleCampaignName;
 
   double get total => price * quantity;
 }
@@ -98,7 +113,16 @@ class _FormState extends ConsumerState<_Form> {
   late String? _customerId = widget.initialOrder?.customerId ?? widget.initialCustomerId;
   late final List<_DraftLine> _lines = [
     for (final i in widget.initialOrder?.items ?? const <OrderItem>[])
-      _DraftLine(productId: i.productId, name: i.productName ?? '(unknown product)', sku: '', uom: '', price: i.unitPrice, quantity: i.quantityOrdered),
+      _DraftLine(
+        productId: i.productId,
+        name: i.productName ?? '(unknown product)',
+        sku: '',
+        uom: '',
+        price: i.unitPrice,
+        quantity: i.quantityOrdered,
+        originalPrice: i.originalUnitPrice,
+        saleCampaignName: i.saleCampaignName,
+      ),
   ];
   final Map<String, TextEditingController> _qty = {};
   bool _saving = false;
@@ -123,7 +147,21 @@ class _FormState extends ConsumerState<_Form> {
       _lines[i].quantity += 1;
       _qty[p.id]?.text = fmtPlain(_lines[i].quantity);
     } else {
-      _lines.add(_DraftLine(productId: p.id, name: p.name, sku: p.sku, uom: p.uom, price: p.sellingPrice, quantity: 1));
+      // An ALL_CUSTOMERS sale's price is shown as the estimate directly; a RESTRICTED one can't be
+      // (eligibility depends on the customer, which this picker doesn't resolve) — shown as a badge
+      // only, full price used for the running total until the server resolves it on save.
+      final sale = p.sale;
+      final estimated = sale != null && !sale.isRestricted ? sale.previewPrice(p.sellingPrice) : null;
+      _lines.add(_DraftLine(
+        productId: p.id,
+        name: p.name,
+        sku: p.sku,
+        uom: p.uom,
+        price: estimated ?? p.sellingPrice,
+        quantity: 1,
+        originalPrice: estimated == null ? null : p.sellingPrice,
+        saleCampaignName: sale?.campaignName,
+      ));
     }
     _error = null;
   });
@@ -269,8 +307,14 @@ class _FormState extends ConsumerState<_Form> {
                       NxOption(
                         p.id,
                         '${p.sku} — ${p.name}',
-                        sub: [p.category?.name, p.category?.workstream?.name].whereType<String>().join(' · '),
-                        trailing: '${fmtMoney(p.sellingPrice)} / ${p.uom}',
+                        sub: [
+                          p.category?.name,
+                          p.category?.workstream?.name,
+                          if (p.sale != null) '🏷 ${p.sale!.campaignName}${p.sale!.isRestricted ? ' (restricted)' : ''}',
+                        ].whereType<String>().join(' · '),
+                        trailing: p.sale != null && !p.sale!.isRestricted
+                            ? '${fmtMoney(p.sale!.previewPrice(p.sellingPrice))} / ${p.uom}'
+                            : '${fmtMoney(p.sellingPrice)} / ${p.uom}',
                       ),
                   ],
                   value: null,
@@ -298,10 +342,36 @@ class _FormState extends ConsumerState<_Form> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(l.name, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: n.text)),
-                              Text(
-                                '${l.sku.isEmpty ? '' : '${l.sku} · '}${fmtMoney(l.price)}${l.uom.isEmpty ? '' : ' / ${l.uom}'} (estimate)',
-                                style: TextStyle(fontSize: 11, color: n.n500),
+                              Row(
+                                children: [
+                                  Flexible(
+                                    child: Text(
+                                      l.name,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: n.text),
+                                    ),
+                                  ),
+                                  if (l.saleCampaignName != null) ...[
+                                    const SizedBox(width: 6),
+                                    NxTag(l.saleCampaignName!, tone: Tone.accent, small: true),
+                                  ],
+                                ],
+                              ),
+                              const SizedBox(height: 2),
+                              Text.rich(
+                                TextSpan(
+                                  style: TextStyle(fontSize: 11, color: n.n500),
+                                  children: [
+                                    if (l.sku.isNotEmpty) TextSpan(text: '${l.sku} · '),
+                                    if (l.originalPrice != null)
+                                      TextSpan(text: '${fmtMoney(l.originalPrice!)} ', style: const TextStyle(decoration: TextDecoration.lineThrough)),
+                                    TextSpan(
+                                      text: fmtMoney(l.price),
+                                      style: l.originalPrice != null ? TextStyle(color: n.warn, fontWeight: FontWeight.w600) : null,
+                                    ),
+                                    TextSpan(text: '${l.uom.isEmpty ? '' : ' / ${l.uom}'} (estimate)'),
+                                  ],
+                                ),
                               ),
                             ],
                           ),

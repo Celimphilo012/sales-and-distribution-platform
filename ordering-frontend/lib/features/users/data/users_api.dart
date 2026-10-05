@@ -20,6 +20,13 @@ class UsersApi {
     return WarehouseUser.fromJson(response.data!);
   }
 
+  /// `GET /users/consultants` — a minimal directory (gated `customers.view`, not `users.manage`)
+  /// for pickers: assigning a customer's consultant, sale-campaign eligibility.
+  Future<List<ConsultantRef>> consultants() async {
+    final response = await _apiClient.guard((dio) => dio.get<List<dynamic>>('/users/consultants'));
+    return response.data!.map((e) => ConsultantRef.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
   Future<WarehouseUser> create({
     required String email,
     required String password,

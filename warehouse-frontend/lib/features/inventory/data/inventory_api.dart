@@ -1,5 +1,6 @@
 import '../../../core/network/api_client.dart';
 import '../domain/inventory_balance.dart';
+import '../domain/inventory_unit.dart';
 import '../domain/ledger_entry.dart';
 
 /// `GET /inventory/*` — read-only in this app (6d displays inventory; it
@@ -35,5 +36,16 @@ class InventoryApi {
       ),
     );
     return response.data!.map((e) => LedgerEntry.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  /// `GET /inventory/units` — one SERIAL product's physical units, paginated, newest first.
+  Future<InventoryUnitsPage> units({required String productId, InventoryUnitStatus? status, int page = 1, int pageSize = 20}) async {
+    final response = await _apiClient.guard(
+      (dio) => dio.get<Map<String, dynamic>>(
+        '/inventory/units',
+        queryParameters: {'productId': productId, 'status': ?status?.toJson(), 'page': page, 'pageSize': pageSize},
+      ),
+    );
+    return InventoryUnitsPage.fromJson(response.data!);
   }
 }
